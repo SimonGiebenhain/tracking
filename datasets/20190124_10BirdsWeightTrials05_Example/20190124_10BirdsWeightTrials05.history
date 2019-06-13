@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<Trial name="20190124_10BirdsWeightTrials05" notes="">
+
+  <Parameters>
+    <Param header="0" name="Capture Date" value="2019-Jan-24 12:12:29"/>
+    <Param header="0" name="x2d" value="20190124_10BirdsWeightTrials05.x2d"/>
+    <Param header="0" name="vvid" value="20190124_10BirdsWeightTrials05.2118670.vvid"/>
+    <Param header="0" name="vvid" value="20190124_10BirdsWeightTrials05.2119571.vvid"/>
+    <Param header="0" name="vvid" value="20190124_10BirdsWeightTrials05.2122201.vvid"/>
+    <Param header="0" name="vvid" value="20190124_10BirdsWeightTrials05.2122204.vvid"/>
+    <Param header="0" name="vvid" value="20190124_10BirdsWeightTrials05.2122718.vvid"/>
+    <Param header="0" name="vvid" value="20190124_10BirdsWeightTrials05.2122725.vvid"/>
+  </Parameters>
+
+</Trial>
