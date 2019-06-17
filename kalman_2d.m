@@ -1,23 +1,6 @@
 % credit for inital code structure:
 % https://de.mathworks.com/matlabcentral/fileexchange/24486-kalman-filter-in-matlab-tutorial
-% Learning Kalman Filter Implementation
-%
-% USAGE:
-%
-% s = kalmanf(s)
-%
-% "s" is a "system" struct containing various fields used as input
-% and output. The state estimate "x" and its covariance "P" are
-% updated by the function. The other fields describe the mechanics
-% of the system and are left unchanged. A calling routine may change
-% these other fields as needed if state dynamics are time-dependent;
-% otherwise, they should be left alone after initial values are set.
-% The exceptions are the observation vectro "z" and the input control
-% (or forcing function) "u." If there is an input function, then
-% "u" should be set to some nonzero value by the calling routine.
-%
-% SYSTEM DYNAMICS:
-%
+
 % The system evolves according to the following difference equations,
 % where quantities are further defined below:
 %
@@ -81,7 +64,8 @@
 %
 
 global pattern;
-pattern = [0.5; 1; -0.1; -2];
+% pattern = [0.5; 1; -0.1; -2];
+pattern = [1 1; 0 0; 0 -2; -2 0];
 
 % global intra_pattern;
 % intra_pattern = zeros(length(pattern),length(pattern));
@@ -96,16 +80,17 @@ pattern = [0.5; 1; -0.1; -2];
 % Define the system as a constant of 12 volts:
 clear s
 %s.x = 12;
-s.A = [1 1 0; 0 1 0; 0 0 1];
+s.A = [1 0 1 0 0; 0 1 0 1 0; 0 0 1 0 0; 0 0 0 1 0; 0 0 0 0 1];
 % Define a process noise (stdev) of 2 volts as the car operates:
-s.Q = [15 0 0; 0 15 0; 0 0 0]; % variance, hence stdev^2
+s.Q = 10*eye(5); % variance, hence stdev^2
+s.Q(5,5) = 0;
 % Define the voltimeter to measure the voltage itself:
 global H;
-H = [ones(4,1) zeros(4,1) pattern];
+H = [ [ones(4,1); zeros(4,1)] [zeros(4,1); ones(4,1)] zeros(8,1) zeros(8,1) pattern(:)];
 s.H = H;
 % Define a measurement error (stdev) of 2 volts:
 global R;
-R = 5^2*eye(4); % variance, hence stdev^2
+R = 2^2*eye(8); % variance, hence stdev^2
 s.R = R;
 % Do not define any system input (control) functions:
 s.B = 0;
@@ -120,48 +105,73 @@ no_knowledge = 1;
 
 T = 100;
 for t=1:T
-    tru(end+1) = sin(t/4);
+    tru(end+1,:) = [sin(t/4) t];
     %if rand > 0.1
-        missed_detections = rand(4,1) < 0.4;
-        if sum(~missed_detections) < 2
-            in = randi(4);
-            missed_detections(in) = 0;
-            missed_detections( mod(in,4)+1 ) = 0;
-        end
-        sum(~missed_detections)
-        s(end).H = H(~missed_detections,:);
-        s(end).R = R(~missed_detections, ~missed_detections);
-        s(end).z = s(end).H * [tru(end); 0; 1] + mvnrnd(zeros(size(s(end).H,1),1), 0.01*eye(size(s(end).H,1)),1)'; % create a measurement
-        if no_knowledge
-            s(end).H = H;
-            s(end).R = R;
-        end
+    
+% TODOOOOOO: incorporate missed markers and missed detections
+
+
+
+%     missed_detections = rand(4,1) < 0.4;
+%     if sum(~missed_detections) < 2
+%         in = randi(4);
+%         missed_detections(in) = 0;
+%         missed_detections( mod(in,4)+1 ) = 0;
+%     end
+%     sum(~missed_detections)
+%     s(end).H = H(~missed_detections,:);
+%     s(end).R = R(~missed_detections, ~missed_detections);
+%     s(end).z = s(end).H * [tru(end); 0; 1] + mvnrnd(zeros(size(s(end).H,1),1), 0.01*eye(size(s(end).H,1)),1)'; % create a measurement
+    if no_knowledge
+        s(end).H = H;
+        s(end).R = R;
+    end
+
+    s(end).z = s(end).H * [tru(end,:)'; 0; 0; 1] + mvnrnd(zeros(size(s(end).H,1),1), 0.01*eye(size(s(end).H,1)),1)'; % create a measurement
+    
     %else
     %    s(end).z = [NaN;NaN;NaN;NaN];
     %end
     s(end+1)=kalmanf(s(end), no_knowledge); % perform a Kalman filter iteration
 end
+
 figure
 hold on
 grid on
+scatter([-5,5], [-2,110])
 % plot measurement data:
-for t=1:T
-    detections = s(t).z;
-    for i=1:length(detections)
-        scatter(t,detections(i), 'r.')
-    end
+detections = reshape(s(1).z,[],2);
+markers = scatter(detections(:,1), detections(:,2) , 'r.');
+
+states = scatter(s(2).x(1), s(2).x(2), 'b*');
+
+truths = scatter(tru(1,1), tru(1,2) ,'g');
+
+for t=2:T
+    detections = reshape(s(t).z,[],2);
+    
+    markers.XData = detections(:,1);
+    markers.YData = detections(:,2);
+    
+    states.XData = s(t+1).x(1);
+    states.YData = s(t+1).x(2);
+    
+    truths.XData = tru(t,1);
+    truths.YData = tru(t,2);
+    
+    
+    drawnow
+    pause(0.1)
+    
 end
-states = [s(2:end).x]';
-size(states)
-% plot a-posteriori state estimates:
-hk=plot(states(:,1),'b-');
-ht=plot(tru,'g-');
+
+
 %legend([hz hk ht],'observations','Kalman output','true voltage')
 title('Automobile Voltimeter Example')
 hold off
-figure;
-plot(states(:,2)); hold on;
-plot(states(:,3)); hold off;
+%figure;
+%plot(states(:,2)); hold on;
+%plot(states(:,3)); hold off;
 
 function s = kalmanf(s, no_knowledge)
 global pattern
@@ -187,11 +197,11 @@ if isnan(s.x)
     %end
     %s.x = inv(s.H)*s.z;
     if isfield(s, 'z') && sum(isnan(s.z)) < 1
-        s.x = [mean(s.z); 1; 1];
-        s.P = [30 0 0; 0 1000 0; 0 0 0];
+        s.x = [mean(s.z(1:4)); mean(s.z(5:8)); 0.25; 0.25; 1];
+        s.P = [30 0 0 0 0; 0 30 0 0 0; 0 0 1000 0 0; 0 0 0 1000 0; 0 0 0 0 0];
     else
-        s.x = [rand; 1; 1];
-        s.P = [100 0 0; 0 1000 0; 0 0 0];
+        s.x = [rand; rand; 0; 0; 1];
+        s.P = [100 0 0 0 0; 0 100 0 0 0; 0 0 1000 0 0; 0 0 0 1000 0; 0 0 0 0 0];
     end
     %s.P = inv(s.H)*s.R*inv(s.H');
 else
@@ -202,10 +212,11 @@ else
         detections = s.z;
         num_detections = size(detections,1);
         diff = zeros(num_detections);
-        assignment = match_patterns(pattern, detections)
+        
+        assignment = match_patterns(pattern, reshape(detections, [],2))
         % construct H from assignment vector
-        s.H = H(assignment,:);
-        s.R = R(assignment, assignment);
+        s.H = H([assignment';assignment'+4],:);
+        s.R = R([assignment';assignment'+4], [assignment';assignment'+4]);
     end
     % This is the code which implements the discrete Kalman filter:
     

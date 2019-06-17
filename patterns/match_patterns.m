@@ -12,7 +12,8 @@ function assignment = match_patterns(whole_pattern, detected_pattern)
 %   The algorithm is very simple and only a first draft.
 
     edges1 = get_edges(whole_pattern);
-    self_edges_idx = repmat(sum(abs(edges1),3) == 0,1,1,2);
+    dim = size(edges1,3);
+    self_edges_idx = repmat(sum(abs(edges1),3) == 0,1,1,dim);
     edges1(self_edges_idx) = Inf;
     edges2 = get_edges(detected_pattern);
 
@@ -42,7 +43,7 @@ function assignment = match_patterns(whole_pattern, detected_pattern)
             cost_matrix(i,j) = c;
         end
     end
-    [assignment, bi_cost] = munkers(cost_matrix)
+    [assignment, bi_cost] = munkers(cost_matrix);
     
     function leaving_edges = get_edges(marker)
     dim = size(marker,2);
