@@ -90,7 +90,7 @@ H = [ [ones(4,1); zeros(4,1)] [zeros(4,1); ones(4,1)] zeros(8,1) zeros(8,1) patt
 s.H = H;
 % Define a measurement error (stdev) of 2 volts:
 global R;
-R = 2^2*eye(8); % variance, hence stdev^2
+R = 50^2*eye(8); % variance, hence stdev^2
 s.R = R;
 % Do not define any system input (control) functions:
 s.B = 0;
@@ -103,9 +103,9 @@ tru=[]; % truth voltage
 
 no_knowledge = 1;
 
-T = 100;
+T = 10000;
 for t=1:T
-    tru(end+1,:) = [sin(t/4) t];
+    tru(end+1,:) = [sin(t/16) cos(t/34)*2];
     %if rand > 0.1
     
 % TODOOOOOO: incorporate missed markers and missed detections
@@ -127,7 +127,7 @@ for t=1:T
         s(end).R = R;
     end
 
-    s(end).z = s(end).H * [tru(end,:)'; 0; 0; 1] + mvnrnd(zeros(size(s(end).H,1),1), 0.01*eye(size(s(end).H,1)),1)'; % create a measurement
+    s(end).z = s(end).H * [tru(end,:)'; 0; 0; 1] + mvnrnd(zeros(size(s(end).H,1),1), 0.001*eye(size(s(end).H,1)),1)'; % create a measurement
     
     %else
     %    s(end).z = [NaN;NaN;NaN;NaN];
@@ -138,30 +138,37 @@ end
 figure
 hold on
 grid on
-scatter([-5,5], [-2,110])
+
+scatter([-5,5], [-5,5])
 % plot measurement data:
 detections = reshape(s(1).z,[],2);
 markers = scatter(detections(:,1), detections(:,2) , 'r.');
 
-states = scatter(s(2).x(1), s(2).x(2), 'b*');
+positions = [s(2:end).x]';
+%states = scatter(s(2).x(1), s(2).x(2), 'b*');
+plot(positions(2:3,1), positions(2:3,2), 'b-')
 
-truths = scatter(tru(1,1), tru(1,2) ,'g');
+
+%truths = scatter(tru(1,1), tru(1,2) ,'g');
+plot(tru(1:2,1),tru(1:2,2), 'g-')
 
 for t=2:T
     detections = reshape(s(t).z,[],2);
     
     markers.XData = detections(:,1);
     markers.YData = detections(:,2);
+    plot(positions(t+1:t+2,1), positions(t+1:t+2,2), 'b-')
+    plot(tru(t:t+1,1),tru(t:t+1,2), 'g-')
+
+    %states.XData = s(t+1).x(1);
+    %states.YData = s(t+1).x(2);
     
-    states.XData = s(t+1).x(1);
-    states.YData = s(t+1).x(2);
-    
-    truths.XData = tru(t,1);
-    truths.YData = tru(t,2);
+    %truths.XData = tru(t,1);
+    %truths.YData = tru(t,2);
     
     
     drawnow
-    pause(0.1)
+    %pause(0.1)
     
 end
 
