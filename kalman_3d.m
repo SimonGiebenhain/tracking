@@ -64,8 +64,7 @@
 %
 
 global pattern;
-% pattern = [0.5; 1; -0.1; -2];
-pattern = [1 1; 0 0; 0 -2; -2 0];
+pattern = [1 1 1; 0 0 0; 1 0 -2; -0.5 -2 0.5];
 
 % global intra_pattern;
 % intra_pattern = zeros(length(pattern),length(pattern));
@@ -80,17 +79,27 @@ pattern = [1 1; 0 0; 0 -2; -2 0];
 % Define the system as a constant of 12 volts:
 clear s
 %s.x = 12;
-s.A = [1 0 1 0 0; 0 1 0 1 0; 0 0 1 0 0; 0 0 0 1 0; 0 0 0 0 1];
+s.A = [ 1 0 0 1 0 0 0; 
+        0 1 0 0 1 0 0; 
+        0 0 1 0 0 1 0; 
+        0 0 0 1 0 0 0; 
+        0 0 0 0 1 0 0; 
+        0 0 0 0 0 1 0; 
+        0 0 0 0 0 0 1];
 % Define a process noise (stdev) of 2 volts as the car operates:
-s.Q = 10*eye(5); % variance, hence stdev^2
-s.Q(5,5) = 0;
+s.Q = 10*eye(7); % variance, hence stdev^2
+s.Q(7,7) = 0;
 % Define the voltimeter to measure the voltage itself:
 global H;
-H = [ [ones(4,1); zeros(4,1)] [zeros(4,1); ones(4,1)] zeros(8,1) zeros(8,1) pattern(:)];
+H = [ [ones(4,1); zeros(4,1); zeros(4,1)] ...
+      [zeros(4,1); ones(4,1); zeros(4,1)] ...
+      [zeros(4,1); zeros(4,1); ones(4,1)] ...
+      zeros(12,1) zeros(12,1) zeros(12,1) ... % velocity doesn't influence position of patterns, when we have the position
+      pattern(:)];
 s.H = H;
-% Define a measurement error (stdev) of 2 volts:
+% Define covariance matrix of the measurement error:
 global R;
-R = 40^2*eye(8); % variance, hence stdev^2
+R = 40^2*eye(12); % variance, hence stdev^2
 s.R = R;
 % Do not define any system input (control) functions:
 s.B = 0;
@@ -103,31 +112,44 @@ tru=[]; % truth voltage
 
 no_knowledge = 1;
 
+%TODO preallocate room for true trajactory and history of kalman objects
 T = 1000;
 for t=1:2:T
-    tru(end+1,:) = [sqrt(t/2)*1/10*sin(t/32) sin(t/30)*cos(t/68)^2*5];
-    if rand > 0.15    
-    missed_detections = rand(4,1) < 0.3;
-    missed_detections = [missed_detections; missed_detections];
-    if sum(~missed_detections) < 4
-        in = randi(4);
-        missed_detections(in) = 0;
-        missed_detections(in+4) = 0;
-        missed_detections( mod(in,4)+1 ) = 0;
-        missed_detections( mod(in,4)+1+4 ) = 0;
+    %tru(end+1,:) = [sqrt(t/2)*1/10*sin(t/32) sin(t/30)*cos(t/68)^2*5, t/T*3];
+    tru(end+1,:) = [t/T*5*sin(t/32) cos(t/68)^2*5, sin(t/20)^2*t/T*3];
+
+    % drop all detections in some frame
+    if rand > 0.15
+        % drop some individual markers in some frames
+        missed_detections = rand(4,1) < 0.3;
+        missed_detections = repmat(missed_detections, 3,1);
         
-    end
-    s(end).H = H(~missed_detections,:);
-    s(end).R = R(~missed_detections, ~missed_detections);
-    s(end).z = s(end).H * [tru(end,:)'; 0; 0; 1] + mvnrnd(zeros(size(s(end).H,1),1), 0.005*eye(size(s(end).H,1)),1)'; % create a measurement
-    if no_knowledge
-        s(end).H = H;
-        s(end).R = R;
-    end
-    
-    
+        % TODO handle cases when only 1 marker was detected per in a frame
+        % For now: Make sure there are at least two markers detected
+        if sum(~missed_detections) < 6
+            in = randi(4);
+            missed_detections(in) = 0;
+            missed_detections(in+4) = 0;
+            missed_detections(in+8) = 0;
+            
+            missed_detections( mod(in,4)+1 ) = 0;
+            missed_detections( mod(in,4)+1+4 ) = 0;
+            missed_detections( mod(in,4)+1+8 ) = 0;
+        end
+        
+        s(end).H = H(~missed_detections,:);
+        s(end).R = R(~missed_detections, ~missed_detections);
+        % Create the measurement
+        s(end).z = s(end).H * [tru(end,:)'; 0; 0; 0; 1] + mvnrnd(zeros(size(s(end).H,1),1), 0.005*eye(size(s(end).H,1)),1)';
+        
+        % Let the system not know which markers correspond to which detectio
+        if no_knowledge
+            s(end).H = H;
+            s(end).R = R;
+        end
+        
     else
-        s(end).z = [NaN;NaN;NaN;NaN;NaN;NaN;NaN;NaN];
+        s(end).z = [NaN;NaN;NaN;NaN;NaN;NaN;NaN;NaN;NaN;NaN;NaN;NaN];
     end
     s(end+1)=kalmanf(s(end), no_knowledge); % perform a Kalman filter iteration
 end
@@ -137,26 +159,27 @@ figure
 hold on
 grid on
 
-scatter([-5,5], [-5,5])
+scatter3([-5,5], [-5,5], [-5,5])
 % plot measurement data:
-detections = reshape(s(1).z,[],2);
-markers = scatter(detections(:,1), detections(:,2) , 'r.');
+detections = reshape(s(1).z,[],3);
+markers = scatter3(detections(:,1), detections(:,2), detections(:,3) , 'r.');
 
 positions = [s(2:end).x]';
 %states = scatter(s(2).x(1), s(2).x(2), 'b*');
-plot(positions(2:3,1), positions(2:3,2), 'b-')
+plot3(positions(2:3,1), positions(2:3,2), positions(2:3,3), 'b-')
 
 
 %truths = scatter(tru(1,1), tru(1,2) ,'g');
-plot(tru(1:2,1),tru(1:2,2), 'g-')
+plot3(tru(1:2,1),tru(1:2,2), tru(1:2,2), 'g-')
 
 for t=2:T
-    detections = reshape(s(t).z,[],2);
+    detections = reshape(s(t).z,[],3);
     
     markers.XData = detections(:,1);
     markers.YData = detections(:,2);
-    plot(positions(t:t+1,1), positions(t:t+1,2), 'b-')
-    plot(tru(t:t+1,1),tru(t:t+1,2), 'g-')
+    markers.ZData = detections(:,3);
+    plot3(positions(t:t+1,1), positions(t:t+1,2), positions(t:t+1,3), 'b-')
+    plot3(tru(t:t+1,1), tru(t:t+1,2), tru(t:t+1,3), 'g-')
     
     %states.XData = s(t+1).x(1);
     %states.YData = s(t+1).x(2);
@@ -206,11 +229,23 @@ if isnan(s.x)
     
     if isfield(s, 'z') && sum(isnan(s.z)) < 1
         n = size(s.z,1);
-        s.x = [mean(s.z(1:n/2)); mean(s.z(n/2+1:n)); 0.25; 0.25; 1];
-        s.P = [30 0 0 0 0; 0 30 0 0 0; 0 0 1000 0 0; 0 0 0 1000 0; 0 0 0 0 0];
+        s.x = [mean(s.z(1:n/3)); mean(s.z(n/3+1:2*n/3)); mean(s.z(2*n/3+1:n)); 0; 0; 0; 1];
+        s.P = [ 30 0 0 0 0 0 0; 
+                0 30 0 0 0 0 0;
+                0 0 30 0 0 0 0;
+                0 0 0 1000 0 0 0;
+                0 0 0 0 1000 0 0;
+                0 0 0 0 0 1000 0;
+                0 0 0 0 0 0 0];
     else
-        s.x = [rand; rand; 0; 0; 1];
-        s.P = [100 0 0 0 0; 0 100 0 0 0; 0 0 1000 0 0; 0 0 0 1000 0; 0 0 0 0 0];
+        s.x = [rand; rand; rand; 0; 0; 0; 1];
+        s.P = [ 100 0 0 0 0 0 0; 
+                0 100 0 0 0 0 0;
+                0 0 100 0 0 0 0;
+                0 0 0 1000 0 0 0;
+                0 0 0 0 1000 0 0;
+                0 0 0 0 0 1000 0;
+                0 0 0 0 0 0 0];
     end
     
     
@@ -224,14 +259,14 @@ else
         num_detections = size(detections,1);
         diff = zeros(num_detections);
         
-        assignment = match_patterns(pattern, reshape(detections, [],2));
+        assignment = match_patterns(pattern, reshape(detections, [],3));
         inversions = assignment(2:end) - assignment(1:end-1);
         if min(inversions) < 1
             assignment
         end
         % construct H from assignment vector
-        s.H = H([assignment';assignment'+4],:);
-        s.R = R([assignment';assignment'+4], [assignment';assignment'+4]);
+        s.H = H([assignment';assignment'+4; assignment'+8],:);
+        s.R = R([assignment';assignment'+4; assignment'+8], [assignment';assignment'+4; assignment'+8]);
     end
     % This is the code which implements the discrete Kalman filter:
     
@@ -256,6 +291,5 @@ else
 end
 
 end
-
 
 
