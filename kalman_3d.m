@@ -62,7 +62,7 @@
 % covariance to infinity.
 %
 %
-
+tic
 global pattern;
 pattern = [1 1 1; 0 0 0; 1 0 -2; -0.5 -2 0.5];
 
@@ -78,8 +78,17 @@ pattern = [1 1 1; 0 0 0; 1 0 -2; -0.5 -2 0.5];
 
 % Define the system as a constant of 12 volts:
 clear s
-%s.x = 12;
-s.A = [ 1 0 0 1 0 0 0; 
+T = 10000;
+
+% pre-allocate struct array (fields are not pre-allocated
+s(T+2).A = zeros(7);
+s(T+2).Q = zeros(7);
+s(T+2).H = zeros(12,7);
+s(T+2).R = zeros(12);
+s(T+2).x = zeros(7,1);
+s(T+2).P = zeros(7);
+
+s(1).A = [ 1 0 0 1 0 0 0; 
         0 1 0 0 1 0 0; 
         0 0 1 0 0 1 0; 
         0 0 0 1 0 0 0; 
@@ -87,8 +96,8 @@ s.A = [ 1 0 0 1 0 0 0;
         0 0 0 0 0 1 0; 
         0 0 0 0 0 0 1];
 % Define a process noise (stdev) of 2 volts as the car operates:
-s.Q = 10*eye(7); % variance, hence stdev^2
-s.Q(7,7) = 0;
+s(1).Q = 10*eye(7); % variance, hence stdev^2
+s(1).Q(7,7) = 0;
 % Define the voltimeter to measure the voltage itself:
 global H;
 H = [ [ones(4,1); zeros(4,1); zeros(4,1)] ...
@@ -96,32 +105,32 @@ H = [ [ones(4,1); zeros(4,1); zeros(4,1)] ...
       [zeros(4,1); zeros(4,1); ones(4,1)] ...
       zeros(12,1) zeros(12,1) zeros(12,1) ... % velocity doesn't influence position of patterns, when we have the position
       pattern(:)];
-s.H = H;
+s(1).H = H;
 % Define covariance matrix of the measurement error:
 global R;
-R = 40^2*eye(12); % variance, hence stdev^2
-s.R = R;
+R = 50^2*eye(12); 
+s(1).R = R;
 % Do not define any system input (control) functions:
-s.B = 0;
-s.u = 0;
+% s.B = 0;
+% s.u = 0;
 % Do not specify an initial state:
-s.x = nan;
-s.P = nan;
-% Generate random voltages and watch the filter operate.
-tru=[]; % truth voltage
+s(1).x = nan;
+s(1).P = nan;
+
+% Preallocate ground truth trajectory
+tru=zeros(T,3);
 
 no_knowledge = 1;
 
 %TODO preallocate room for true trajactory and history of kalman objects
-T = 1000;
-for t=1:2:T
+for t=1:T
     %tru(end+1,:) = [sqrt(t/2)*1/10*sin(t/32) sin(t/30)*cos(t/68)^2*5, t/T*3];
-    tru(end+1,:) = [t/T*5*sin(t/32) cos(t/68)^2*5, sin(t/20)^2*t/T*3];
+    tru(t,:) = [t/T*5*sin(t/32) cos(t/68)^2*5, sin(t/20)^2*t/T*3];
 
     % drop all detections in some frame
-    if rand > 0.15
+    if rand > 0.4
         % drop some individual markers in some frames
-        missed_detections = rand(4,1) < 0.3;
+        missed_detections = rand(4,1) < 0.5;
         missed_detections = repmat(missed_detections, 3,1);
         
         % TODO handle cases when only 1 marker was detected per in a frame
@@ -137,23 +146,27 @@ for t=1:2:T
             missed_detections( mod(in,4)+1+8 ) = 0;
         end
         
-        s(end).H = H(~missed_detections,:);
-        s(end).R = R(~missed_detections, ~missed_detections);
+        Hcur = H(~missed_detections,:);
+        Rcur = R(~missed_detections, ~missed_detections);
         % Create the measurement
-        s(end).z = s(end).H * [tru(end,:)'; 0; 0; 0; 1] + mvnrnd(zeros(size(s(end).H,1),1), 0.005*eye(size(s(end).H,1)),1)';
+        s(t).z = Hcur * [tru(t,:)'; 0; 0; 0; 1] + mvnrnd(zeros(size(Hcur,1),1), 0.01*eye(size(Hcur,1)),1)';
         
         % Let the system not know which markers correspond to which detectio
         if no_knowledge
-            s(end).H = H;
-            s(end).R = R;
+            s(t).H = H;
+            s(t).R = R;
+        else
+            s(t).H = Hcur;
+            s(t).R = Rcur;
         end
         
     else
-        s(end).z = [NaN;NaN;NaN;NaN;NaN;NaN;NaN;NaN;NaN;NaN;NaN;NaN];
+        s(t).z = [NaN;NaN;NaN;NaN;NaN;NaN;NaN;NaN;NaN;NaN;NaN;NaN];
     end
-    s(end+1)=kalmanf(s(end), no_knowledge); % perform a Kalman filter iteration
+    ret = kalmanf(s(t), no_knowledge); % perform a Kalman filter iteration
+    s(t+1) = ret;
 end
-
+toc
 %%
 figure
 hold on
@@ -211,21 +224,22 @@ global H;
 if ~isfield(s,'x'); s.x=nan*z; end
 if ~isfield(s,'P'); s.P=nan; end
 %if ~isfield(s,'z'); error('Observation vector missing'); end
-if ~isfield(s,'u'); s.u=0; end
+%if ~isfield(s,'u'); s.u=0; end
 if ~isfield(s,'A'); s.A=eye(length(x)); end
-if ~isfield(s,'B'); s.B=0; end
+%if ~isfield(s,'B'); s.B=0; end
 if ~isfield(s,'Q'); s.Q=zeros(length(x)); end
 if ~isfield(s,'R'); error('Observation covariance missing'); end
 if ~isfield(s,'H'); s.H=eye(length(x)); end
 
 if isnan(s.x)
+    
     % initialize state estimate from first observation
     %if diff(size(s.H))
     %error('Observation matrix must be square and invertible for state autointialization.');
     %end
     %s.x = inv(s.H)*s.z;
     
-    %TODO
+    %TODO better initial guess
     
     if isfield(s, 'z') && sum(isnan(s.z)) < 1
         n = size(s.z,1);
