@@ -85,6 +85,8 @@ pattern = [1 1 1; 0 0 0; 1 0 -2; -0.5 -2 0.5];
 % The number of timestep I run the simulation
 T = 1000;
 [s, global_params] = setup_kalman(pattern, T, 'linear', 2500, 5);
+global_params.init_pos_var = 30;
+global_params.init_motion_var = 1000;
 
 % Preallocate ground truth trajectory
 tru=zeros(T,3);
@@ -124,16 +126,16 @@ for t=1:T
         
         % Delete some rows in H and R to accomodate for the missed
         % measurements.
-        Hcur = H(~missed_detections,:);
-        Rcur = R(~missed_detections, ~missed_detections);
+        Hcur = global_params.H(~missed_detections,:);
+        Rcur = global_params.R(~missed_detections, ~missed_detections);
         % Create the measurement
         s(t).z = Hcur * [tru(t,:)'; 0; 0; 0; 1] + mvnrnd(zeros(size(Hcur,1),1), marker_noise*eye(size(Hcur,1)),1)';
         
         % Decide whether the system knows which of which markers the
         % detections were dropped.
         if no_knowledge
-            s(t).H = H;
-            s(t).R = R;
+            s(t).H = global_params.H;
+            s(t).R = global_params.R;
         else
             s(t).H = Hcur;
             s(t).R = Rcur;

@@ -6,6 +6,9 @@ R = global_params.R;
 pattern = global_params.pattern;
 H = global_params.H;
 
+num_markers = size(pattern,1);
+dim = size(pattern,2);
+
 % If state hasn't been initialized
 if isnan(s.x)
     
@@ -17,28 +20,19 @@ if isnan(s.x)
     %s.P = inv(s.H)*s.R*inv(s.H');
     
     
-    %TODO better initial guess
+    % TODO better initial guess
+    % TODO how to initially guess the velocity?
     if isfield(s, 'z') && sum(isnan(s.z)) < 1
-        n = size(s.z,1);
-        s.x = [mean(s.z(1:n/3)); mean(s.z(n/3+1:2*n/3)); mean(s.z(2*n/3+1:n)); 0; 0; 0; 1];
-        s.P = [ 30 0 0 0 0 0 0;
-            0 30 0 0 0 0 0;
-            0 0 30 0 0 0 0;
-            0 0 0 1000 0 0 0;
-            0 0 0 0 1000 0 0;
-            0 0 0 0 0 1000 0;
-            0 0 0 0 0 0 0];
+        detections = reshape(s.z, [], dim);
+        assignment = match_patterns(pattern, detections);
+        position_estimate = mean(detections - pattern(assignment,:),1);
+        s.x = [position_estimate'; zeros(dim,1); 1];   
+        s.P = eye(2*dim+1) .* repelem([global_params.init_pos_var; global_params.init_motion_var; 0], [dim, dim, 1]);    
     else
         % If we don't even have an observation, initialize at a random
         % position and zero velocity
-        s.x = [rand; rand; rand; 0; 0; 0; 1];
-        s.P = [ 100 0 0 0 0 0 0;
-            0 100 0 0 0 0 0;
-            0 0 100 0 0 0 0;
-            0 0 0 1000 0 0 0;
-            0 0 0 0 1000 0 0;
-            0 0 0 0 0 1000 0;
-            0 0 0 0 0 0 0];
+        s.x = [rand(dim,1); zeros(3,1); 1];
+        s.P = eye(2*dim+1) .* repelem([global_params.init_motion_var; global_params.init_motion_var; 0], [dim, dim, 1]);  
     end
     
 else
@@ -48,17 +42,22 @@ else
     if no_knowledge &&  isfield(s,'z') && sum(isnan(s.z)) < 1
         detections = s.z;
         % Find an assignment between the individual markers and the detections
-        assignment = match_patterns(pattern, reshape(detections, [],3));
+        assignment = match_patterns(pattern, reshape(detections, [],dim));
         
         % Print in case an error was made in the assignment
         inversions = assignment(2:end) - assignment(1:end-1);
         if min(inversions) < 1
             assignment
         end
+        
         % construct H and R from assignment vector, i.e. delete the
         % corresponding rows in H and R.
-        s.H = H([assignment';assignment'+4; assignment'+8],:);
-        s.R = R([assignment';assignment'+4; assignment'+8], [assignment';assignment'+4; assignment'+8]);
+        detections_idx = zeros(dim*length(assignment),1);
+        for i = 1:dim
+            detections_idx( (i-1)*length(assignment) + 1: (i-1)*length(assignment) + length(assignment)) = assignment' + num_markers*(i-1);
+        end
+        s.H = H(detections_idx,:);
+        s.R = R(detections_idx, detections_idx);
     end
     
     % Here the actal kalman filter begins:
