@@ -112,7 +112,8 @@ switch model
             if no_knowledge &&  isfield(s,'z') && sum(isnan(s.z)) < 1
                 detections = s.z;
                 % Find an assignment between the individual markers and the detections
-                assignment = match_patterns(pattern, reshape(detections, [],dim), 'ML');
+                Rot = quat_to_mat();
+                assignment = match_patterns(pattern, reshape(detections, [],dim) - s.x(1:dim)', 'ML', Rot(s.x(2*dim+1:2*dim+4)));
                 
                 % Print in case an error was made in the assignment
                 inversions = assignment(2:end) - assignment(1:end-1);
@@ -132,32 +133,23 @@ switch model
             
             % partial derivatives of rotation matrix w.r.t. quaternion
             % components
-%             partial_q1 = @(q) 2 * [0 -q(4) q(3); q(4) 0 -q(2); -q(3) q(2) 0          ] * 1/sum(q.^2) - quat_to_mat(q,0)* 1/sum(q.^2)^2 * 2*q(1);
-%             partial_q2 = @(q) 2 * [0 q(3) q(4); q(3) -2*q(2) -q(1); q(4) q(1) -2*q(2)] * 1/sum(q.^2) - quat_to_mat(q,0)* 1/sum(q.^2)^2 * 2*q(2);
-%             partial_q3 = @(q) 2 * [-2*q(3) q(2) q(1); q(2) 0 q(4); -q(1) q(4) -2*q(3)] * 1/sum(q.^2) - quat_to_mat(q,0)* 1/sum(q.^2)^2 * 2*q(3);
-%             partial_q4 = @(q) 2 * [-2*q(4) -q(1) q(2); q(1) -2*q(4) q(3); q(2) q(3) 0] * 1/sum(q.^2) - quat_to_mat(q,0)* 1/sum(q.^2)^2 * 2*q(4);
+            %             partial_q1 = @(q) 2 * [0 -q(4) q(3); q(4) 0 -q(2); -q(3) q(2) 0          ] * 1/sum(q.^2) - quat_to_mat(q,0)* 1/sum(q.^2)^2 * 2*q(1);
+            %             partial_q2 = @(q) 2 * [0 q(3) q(4); q(3) -2*q(2) -q(1); q(4) q(1) -2*q(2)] * 1/sum(q.^2) - quat_to_mat(q,0)* 1/sum(q.^2)^2 * 2*q(2);
+            %             partial_q3 = @(q) 2 * [-2*q(3) q(2) q(1); q(2) 0 q(4); -q(1) q(4) -2*q(3)] * 1/sum(q.^2) - quat_to_mat(q,0)* 1/sum(q.^2)^2 * 2*q(3);
+            %             partial_q4 = @(q) 2 * [-2*q(4) -q(1) q(2); q(1) -2*q(4) q(3); q(2) q(3) 0] * 1/sum(q.^2) - quat_to_mat(q,0)* 1/sum(q.^2)^2 * 2*q(4);
             
             % Supply quat as known, doesn't really make sense, doesn't work
             %s.x(2*dim+1:2*dim+4) = quat;
             %q = quat;
-                        
-            % Calculate Jacobian 
-%             q = s.x(2*dim+1:2*dim+4);
-%             part_of_J = @(pat,q) [eye(3) zeros(3) partial_q1(q)*pat partial_q2(q)*pat partial_q3(q)*pat partial_q4(q)*pat zeros(3,4)];
-%             J = zeros(num_markers*dim, 2*dim + 8);
-%             for i = 0:num_markers-1
-%                 J(i*dim+1:(i+1)*dim,:) = part_of_J(pattern(i+1,:)',q);
-%             end
             
-            J = s.J;
-            subindex = @(A, rows) A(rows, :);     % for row sub indexing
-            if no_knowledge
-                J = @(x) subindex(J(x(7), x(8), x(9), x(10)), detections_idx);
-            else
-                J = @(x) subindex(J(x(7), x(8), x(9), x(10)), ~missed_detections);
-            end
-            %Evaluate Jacobian at current position
-            J = J(s.x);
+            % Calculate Jacobian
+            %             q = s.x(2*dim+1:2*dim+4);
+            %             part_of_J = @(pat,q) [eye(3) zeros(3) partial_q1(q)*pat partial_q2(q)*pat partial_q3(q)*pat partial_q4(q)*pat zeros(3,4)];
+            %             J = zeros(num_markers*dim, 2*dim + 8);
+            %             for i = 0:num_markers-1
+            %                 J(i*dim+1:(i+1)*dim,:) = part_of_J(pattern(i+1,:)',q);
+            %             end
+            
             
             % Here the actal extended kalman filter begins:
             
@@ -165,13 +157,29 @@ switch model
             s.x = s.A*s.x;
             s.P = s.A * s.P * s.A' + s.Q;
             
-            % Compute Kalman gain factor:
-            K = s.P*J'*inv(J*s.P*J'+s.R);
+            
             
             % Correction based on observation (if observation is present):
             if isfield(s,'z') && sum(isnan(s.z)) < 1
+                
+                J = s.J;
+                subindex = @(A, rows) A(rows, :);     % for row sub indexing
                 if no_knowledge
-                    s.x = s.x + K*(s.z-s.H(s.x,assignment));
+                    J = @(x) subindex(J(x(7), x(8), x(9), x(10)), detections_idx);
+                else
+                    J = @(x) subindex(J(x(7), x(8), x(9), x(10)), ~missed_detections);
+                end
+                
+                %Evaluate Jacobian at current position
+                J = J(s.x);
+                % Compute Kalman gain factor:
+                K = s.P*J'*inv(J*s.P*J'+s.R);
+                
+                if no_knowledge
+                    z = s.H(s.x);
+                    %s.x = s.x + K*(s.z-z(repmat(assignment',3,1)));
+                    s.x = s.x + K*(s.z-z(detections_idx));
+
                 else
                     %Rot = @(q) subs(global_params.H.rot, [q1; q2; q3; q4], q );
                     %H = @(x) reshape( (Rot(x(2*dim+1:2*dim+4)) *pattern(~missed_detections(1:3:end),:)')' + x(1:dim)', [], 1 );

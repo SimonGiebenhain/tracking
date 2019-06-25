@@ -87,27 +87,27 @@ num_markers = size(pattern,1);
 
 % The number of timestep I run the simulation
 T = 1000;
-process_noise.pos = 20;
-process_noise.motion = 10;
+process_noise.pos = 30;
+process_noise.motion = 20;
 process_noise.quat = 30;
 process_noise.quat_mot = 30;
 model = 'extended';
-[s, global_params] = setup_kalman(pattern, T, model, 1, process_noise);
+[s, global_params] = setup_kalman(pattern, T, model, 2500, process_noise);
 global_params.init_pos_var = 10;
 global_params.init_motion_var = 100;
-global_params.init_quat_var = 100;
-global_params.init_quat_mot_var = 100;
+global_params.init_quat_var = 10000;
+global_params.init_quat_mot_var = 1000;
 
 % Preallocate ground truth trajectory
 tru=zeros(T,3);
 
 % When no_knowledge is true the system doesn't know which detection
 % corresponds to which marker.
-no_knowledge = 0;
+no_knowledge = 1;
 
-frame_drop_rate = 0;
-marker_drop_rate = 0.0;
-marker_noise = 0.00;
+frame_drop_rate = 0.2;
+marker_drop_rate = 0.3;
+marker_noise = 0.005;
 
 % Run the simulatio 
 for t=1:T
@@ -171,9 +171,9 @@ for t=1:T
             
             
             z = Hcur( [tru(t,:)'; zeros(3,1); quat; zeros(4,1)] ); % create measurement
-            s(t).z = z(~missed_detections);
-            %s(t).z = s(t).z + mvnrnd(zeros(dim*sum(~missed_detections_simple),1), marker_noise*eye(dim*sum(~missed_detections_simple)),1)'; % add noise
-
+            z = z(~missed_detections);
+            noise = mvnrnd(zeros(sum(~missed_detections),1), marker_noise*eye(sum(~missed_detections)),1)'; % add noise 
+            s(t).z = z + noise;
             % Decide whether the system knows which of which markers the
             % detections were dropped.
             if no_knowledge

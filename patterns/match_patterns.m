@@ -1,4 +1,4 @@
-function assignment = match_patterns(whole_pattern, detected_pattern, method)
+function assignment = match_patterns(whole_pattern, detected_pattern, method, Rot)
 %MATCH_PATTERNS Match points within two sets of points
 %   So far this method relies on a constant/known orientation of the point
 %   pattern.
@@ -11,7 +11,7 @@ function assignment = match_patterns(whole_pattern, detected_pattern, method)
 %   in both point sets.
 %   The algorithm is very simple and only a first draft.
 
-if ~exist(method, 'var')
+if ~exist('method', 'var')
     method = 'edges';
 end
 
@@ -51,7 +51,7 @@ switch method
         end
         [assignment, bi_cost] = munkers(cost_matrix);
     case 'ML'
-        cost_matrix = pdist2(detected_pattern, whole_pattern);
+        cost_matrix = pdist2(detected_pattern, (Rot*whole_pattern')');
         [assignment, ~] = munkers(cost_matrix);
 end
         function leaving_edges = get_edges(marker)
