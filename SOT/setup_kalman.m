@@ -84,12 +84,13 @@ switch model
         s(1).Q = process_noise_scale .* eye(state_dim);
         
         % The observation function
-        [Rot, JRow1, JRow2, JRow3] = quat_to_mat();
+        [H, J] = quat_to_mat(pattern);
         % Rot = subs(Rot_sym, [q1 q2 q3 q4], x(2*dim+1:2*dim+4));
         %H = @(x, observation_idx) reshape( (subs(quat_to_mat(x(2*dim+1:2*dim+4)),[q1 q2 q3 q4], x(2*dim+1:2*dim+4)) *pattern(observation_idx,:)')' + x(1:dim)', [], 1 );
         %H = @(x, observation_idx) reshape( (quat_to_mat(x(2*dim+1:2*dim+4)) *pattern(observation_idx,:)')' + x(1:dim)', [], 1 );
-        H = @(x, observation_idx) reshape( (Rot(x(2*dim+1:2*dim+4)) * pattern(observation_idx,:)')' + x(1:dim)', [], 1 );
-        J = precomputeJacobian(JRow1, JRow2, JRow3);
+        %H = @(x, observation_idx) reshape( (Rot(x(2*dim+1:2*dim+4)) * pattern(observation_idx,:)')' + x(1:dim)', [], 1 );
+        
+        %J = precomputeJacobian(JRow1, JRow2, JRow3);
         
         s(1).H = H;
         s(1).J = J;

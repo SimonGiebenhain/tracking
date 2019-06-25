@@ -26,7 +26,7 @@ switch model
             % TODO how to initially guess the velocity?
             if isfield(s, 'z') && sum(isnan(s.z)) < 1
                 detections = reshape(s.z, [], dim);
-                assignment = match_patterns(pattern, detections, 'ML');
+                assignment = match_patterns(pattern, detections, 'edges');
                 position_estimate = mean(detections - pattern(assignment,:),1);
                 s.x = [position_estimate'; zeros(dim,1); 1];
                 s.P = eye(2*dim+1) .* repelem([global_params.init_pos_var; global_params.init_motion_var; 0], [dim, dim, 1]);
@@ -112,7 +112,7 @@ switch model
             if no_knowledge &&  isfield(s,'z') && sum(isnan(s.z)) < 1
                 detections = s.z;
                 % Find an assignment between the individual markers and the detections
-                assignment = match_patterns(pattern, reshape(detections, [],dim), 'edges');
+                assignment = match_patterns(pattern, reshape(detections, [],dim), 'ML');
                 
                 % Print in case an error was made in the assignment
                 inversions = assignment(2:end) - assignment(1:end-1);
@@ -152,9 +152,9 @@ switch model
             J = s.J;
             subindex = @(A, rows) A(rows, :);     % for row sub indexing
             if no_knowledge
-                J = @(x) subindex(J(x), detections_idx);
+                J = @(x) subindex(J(x(7), x(8), x(9), x(10)), detections_idx);
             else
-                J = @(x) subindex(J(x), ~missed_detections);
+                J = @(x) subindex(J(x(7), x(8), x(9), x(10)), ~missed_detections);
             end
             %Evaluate Jacobian at current position
             J = J(s.x);
@@ -175,12 +175,14 @@ switch model
                 else
                     %Rot = @(q) subs(global_params.H.rot, [q1; q2; q3; q4], q );
                     %H = @(x) reshape( (Rot(x(2*dim+1:2*dim+4)) *pattern(~missed_detections(1:3:end),:)')' + x(1:dim)', [], 1 );
-                    s.x = s.x + K*(s.z-s.H(s.x));
+                    z = s.H(s.x);
+                    s.x = s.x + K*(s.z-z(~missed_detections));
                 end
+                % TODO immer machen? oder nur wenn detection?
+                % Correct covariance matrix estimate
+                s.P = s.P - K*J*s.P;
             end
-            % TODO immer machen? oder nur wenn detection?
-            % Correct covariance matrix estimate
-            s.P = s.P - K*J*s.P;
+            
         end
         
 end

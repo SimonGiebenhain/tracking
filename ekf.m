@@ -87,12 +87,12 @@ num_markers = size(pattern,1);
 
 % The number of timestep I run the simulation
 T = 1000;
-process_noise.pos = 30;
-process_noise.motion = 20;
-process_noise.quat = 1;
-process_noise.quat_mot = 1;
+process_noise.pos = 20;
+process_noise.motion = 10;
+process_noise.quat = 30;
+process_noise.quat_mot = 30;
 model = 'extended';
-[s, global_params] = setup_kalman(pattern, T, model, 2, process_noise);
+[s, global_params] = setup_kalman(pattern, T, model, 1, process_noise);
 global_params.init_pos_var = 10;
 global_params.init_motion_var = 100;
 global_params.init_quat_var = 100;
@@ -155,17 +155,23 @@ for t=1:T
             % Delete some rows in H and R to accomodate for the missed
             % measurements.
             
-            quat = [sin(t/1000);-cos(t/500);sin(t/600);cos(t/300)^2];
+            quat = [sin(t/100);-cos(t/50);sin(t/60);cos(t/30)^2];
+            %quat = [0.25, 0.25, 0.25, 0.25]';
             %quat = quat/sqrt(sum(quat.^2));
             
-            Hcur = @(x) global_params.H(x, ~missed_detections_simple);
+            %subindex = @(A, rows) A(rows, :);     % for row sub indexing
+            %Hcur = @(x) subindex(global_params.H(x), ~missed_detections_simple);
+            Hcur = @(x) global_params.H(x);
+
+            
             %Hcur = subs(Hcur, [q1 q2 q3 q4], x(2*dim+1:2*dim+4));
             %Hcur = @(x) global_params.H(x, ~missed_detections_simple);
             
             Rcur = global_params.R(~missed_detections, ~missed_detections);
             
             
-            s(t).z = Hcur( [tru(t,:)'; zeros(3,1); quat; zeros(4,1)] ); % create measurement
+            z = Hcur( [tru(t,:)'; zeros(3,1); quat; zeros(4,1)] ); % create measurement
+            s(t).z = z(~missed_detections);
             %s(t).z = s(t).z + mvnrnd(zeros(dim*sum(~missed_detections_simple),1), marker_noise*eye(dim*sum(~missed_detections_simple)),1)'; % add noise
 
             % Decide whether the system knows which of which markers the
