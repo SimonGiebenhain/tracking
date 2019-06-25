@@ -75,25 +75,24 @@ switch model
             s(1).A(i,dim+i) = 1;
         end
         for i =1:4
-           s(1).A(2*dim+i,2*dim+4+i) = 1; 
+            s(1).A(2*dim+i,2*dim+4+i) = 1;
         end
         
         % The process covariance matrix
         process_noise_scale = [ repmat(process_noise.pos,dim,1); repmat(process_noise.motion,dim,1);...
-                                repmat(process_noise.quat_mot,4,1); repmat(process_noise.quat_mot,4,1) ];
+            repmat(process_noise.quat_mot,4,1); repmat(process_noise.quat_mot,4,1) ];
         s(1).Q = process_noise_scale .* eye(state_dim);
         
         % The observation function
-        [Rot, q1, q2, q3, q4] = quat_to_mat();
+        [Rot, JRow1, JRow2, JRow3] = quat_to_mat();
         % Rot = subs(Rot_sym, [q1 q2 q3 q4], x(2*dim+1:2*dim+4));
         %H = @(x, observation_idx) reshape( (subs(quat_to_mat(x(2*dim+1:2*dim+4)),[q1 q2 q3 q4], x(2*dim+1:2*dim+4)) *pattern(observation_idx,:)')' + x(1:dim)', [], 1 );
         %H = @(x, observation_idx) reshape( (quat_to_mat(x(2*dim+1:2*dim+4)) *pattern(observation_idx,:)')' + x(1:dim)', [], 1 );
-        H.rot = Rot;
-        H.q1 = q1;
-        H.q2 = q2;
-        H.q3 = q3;
-        H.q4 = q4;
+        H = @(x, observation_idx) reshape( (Rot(x(2*dim+1:2*dim+4)) * pattern(observation_idx,:)')' + x(1:dim)', [], 1 );
+        J = precomputeJacobian(JRow1, JRow2, JRow3);
+        
         s(1).H = H;
+        s(1).J = J;
         % The measurment covariance matrix
         R = obs_noise*eye(observation_dim);
         s(1).R = R;
@@ -106,4 +105,26 @@ switch model
         s(1).x = nan;
         s(1).P = nan;
 end
+    function J = precomputeJacobian(JRow1, JRow2, JRow3)
+        % For speed avoid too many functions, just use 1 ugly one
+        J = @(x) [repmat(eye(3), 4, 1) zeros(12,3) ...
+                     [pattern(1,:) * JRow1(x(2*dim+1), x(2*dim+2), x(2*dim+3), x(2*dim+4));
+                      pattern(1,:) * JRow2(x(2*dim+1), x(2*dim+2), x(2*dim+3), x(2*dim+4));
+                      pattern(1,:) * JRow3(x(2*dim+1), x(2*dim+2), x(2*dim+3), x(2*dim+4));
+
+                      pattern(2,:) * JRow1(x(2*dim+1), x(2*dim+2), x(2*dim+3), x(2*dim+4));
+                      pattern(2,:) * JRow2(x(2*dim+1), x(2*dim+2), x(2*dim+3), x(2*dim+4));
+                      pattern(2,:) * JRow3(x(2*dim+1), x(2*dim+2), x(2*dim+3), x(2*dim+4));
+
+                      pattern(3,:) * JRow1(x(2*dim+1), x(2*dim+2), x(2*dim+3), x(2*dim+4));
+                      pattern(3,:) * JRow2(x(2*dim+1), x(2*dim+2), x(2*dim+3), x(2*dim+4));
+                      pattern(3,:) * JRow3(x(2*dim+1), x(2*dim+2), x(2*dim+3), x(2*dim+4));
+
+                      pattern(4,:) * JRow1(x(2*dim+1), x(2*dim+2), x(2*dim+3), x(2*dim+4));
+                      pattern(4,:) * JRow2(x(2*dim+1), x(2*dim+2), x(2*dim+3), x(2*dim+4));
+                      pattern(4,:) * JRow3(x(2*dim+1), x(2*dim+2), x(2*dim+3), x(2*dim+4));] ...
+                  zeros(12,4) ];
+    end
+end
+
 

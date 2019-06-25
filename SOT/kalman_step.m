@@ -149,24 +149,15 @@ switch model
 %                 J(i*dim+1:(i+1)*dim,:) = part_of_J(pattern(i+1,:)',q);
 %             end
             
-              Rot = s.H.rot;
-              q1 = s.H.q1;
-              q2 = s.H.q2;
-              q3 = s.H.q3;
-              q4 = s.H.q4;
-
-              %Rot = subs(global_params.H.rot, [global_params.H.q1, global_params.H.q2, global_params.H.q3, global_params.H.q4], [x(2*dim+1:2*dim+4)] );
-              HRot = reshape( (Rot*pattern')', [], 1 );
-              JRot = jacobian(HRot, [q1, q2, q3, q4]);
-              JRot = subs(JRot, [q1; q2; q3; q4], s.x(2*dim+1:2*dim+4));
-              
-              J = [repmat(eye(3), 4,1) zeros(12,3) JRot zeros(12,4)];
-            
+            J = s.J;
+            subindex = @(A, rows) A(rows, :);     % for row sub indexing
             if no_knowledge
-                J = J(detections_idx,:);
+                J = @(x) subindex(J(x), detections_idx);
             else
-                J = J(~missed_detections,:);
+                J = @(x) subindex(J(x), ~missed_detections);
             end
+            %Evaluate Jacobian at current position
+            J = J(s.x);
             
             % Here the actal extended kalman filter begins:
             
@@ -180,12 +171,11 @@ switch model
             % Correction based on observation (if observation is present):
             if isfield(s,'z') && sum(isnan(s.z)) < 1
                 if no_knowledge
-                    s.x = s.x + K*(s.z-H(s.x,assignment));
+                    s.x = s.x + K*(s.z-s.H(s.x,assignment));
                 else
-                    syms q1 q2 q3 q4;
-                    Rot = @(q) subs(global_params.H.rot, [q1; q2; q3; q4], q );
-                    H = @(x) reshape( (Rot(x(2*dim+1:2*dim+4)) *pattern(~missed_detections(1:3:end),:)')' + x(1:dim)', [], 1 );
-                    s.x = s.x + K*(s.z-H(s.x));
+                    %Rot = @(q) subs(global_params.H.rot, [q1; q2; q3; q4], q );
+                    %H = @(x) reshape( (Rot(x(2*dim+1:2*dim+4)) *pattern(~missed_detections(1:3:end),:)')' + x(1:dim)', [], 1 );
+                    s.x = s.x + K*(s.z-s.H(s.x));
                 end
             end
             % TODO immer machen? oder nur wenn detection?

@@ -158,12 +158,9 @@ for t=1:T
             quat = [sin(t/1000);-cos(t/500);sin(t/600);cos(t/300)^2];
             %quat = quat/sqrt(sum(quat.^2));
             
-            %Hcur = @(x) global_params.H(x, ~missed_detections_simple);
+            Hcur = @(x) global_params.H(x, ~missed_detections_simple);
             %Hcur = subs(Hcur, [q1 q2 q3 q4], x(2*dim+1:2*dim+4));
             %Hcur = @(x) global_params.H(x, ~missed_detections_simple);
-            syms q1 q2 q3 q4;
-            Rot = subs(global_params.H.rot, [q1; q2; q3; q4], quat );
-            Hcur = @(x) reshape( (Rot *pattern(~missed_detections_simple,:)')' + x(1:dim)', [], 1 );
             
             Rcur = global_params.R(~missed_detections, ~missed_detections);
             
@@ -177,7 +174,7 @@ for t=1:T
                 s(t).H = global_params.H;
                 s(t).R = global_params.R;
             else
-                s(t).H = global_params.H;
+                s(t).H = Hcur;
                 s(t).R = Rcur;
             end
             
