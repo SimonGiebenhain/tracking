@@ -84,7 +84,15 @@ switch model
         s(1).Q = process_noise_scale .* eye(state_dim);
         
         % The observation function
-        H = @(x, observation_idx) reshape( (quat_to_mat(x(2*dim+1:2*dim+4))*pattern(observation_idx,:)')' + x(1:dim)', [], 1 );
+        [Rot, q1, q2, q3, q4] = quat_to_mat();
+        % Rot = subs(Rot_sym, [q1 q2 q3 q4], x(2*dim+1:2*dim+4));
+        %H = @(x, observation_idx) reshape( (subs(quat_to_mat(x(2*dim+1:2*dim+4)),[q1 q2 q3 q4], x(2*dim+1:2*dim+4)) *pattern(observation_idx,:)')' + x(1:dim)', [], 1 );
+        %H = @(x, observation_idx) reshape( (quat_to_mat(x(2*dim+1:2*dim+4)) *pattern(observation_idx,:)')' + x(1:dim)', [], 1 );
+        H.rot = Rot;
+        H.q1 = q1;
+        H.q2 = q2;
+        H.q3 = q3;
+        H.q4 = q4;
         s(1).H = H;
         % The measurment covariance matrix
         R = obs_noise*eye(observation_dim);

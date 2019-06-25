@@ -94,7 +94,7 @@ switch model
             % TODO how to initially guess the velocity?
             if isfield(s, 'z') && sum(isnan(s.z)) < 1
                 detections = reshape(s.z, [], dim);
-                assignment = match_patterns(pattern, detections);
+                assignment = match_patterns(pattern, detections, 'edges');
                 position_estimate = mean(detections - pattern(assignment,:),1);
                 s.x = [position_estimate'; zeros(dim,1); 0.25*ones(4,1); zeros(4,1)];
                 s.P = eye(2*dim+8) .* repelem([global_params.init_pos_var; global_params.init_motion_var; global_params.init_quat_var; global_params.init_quat_mot_var], [dim, dim, 4, 4]);
@@ -112,7 +112,7 @@ switch model
             if no_knowledge &&  isfield(s,'z') && sum(isnan(s.z)) < 1
                 detections = s.z;
                 % Find an assignment between the individual markers and the detections
-                assignment = match_patterns(pattern, reshape(detections, [],dim));
+                assignment = match_patterns(pattern, reshape(detections, [],dim), 'edges');
                 
                 % Print in case an error was made in the assignment
                 inversions = assignment(2:end) - assignment(1:end-1);
@@ -132,19 +132,35 @@ switch model
             
             % partial derivatives of rotation matrix w.r.t. quaternion
             % components
-            partial_q1 = @(q) 2 * [0 -q(4) q(3); q(4) 0 -q(2); -q(3) q(2) 0          ] * 1/sum(q.^2) - quat_to_mat(q,0)* 1/sum(q.^2)^2 * 2*q(1);
-            partial_q2 = @(q) 2 * [0 q(3) q(4); q(3) -2*q(2) -q(1); q(4) q(1) -2*q(2)] * 1/sum(q.^2) - quat_to_mat(q,0)* 1/sum(q.^2)^2 * 2*q(2);
-            partial_q3 = @(q) 2 * [-2*q(3) q(2) q(1); q(2) 0 q(4); -q(1) q(4) -2*q(3)] * 1/sum(q.^2) - quat_to_mat(q,0)* 1/sum(q.^2)^2 * 2*q(3);
-            partial_q4 = @(q) 2 * [-2*q(4) -q(1) q(2); q(1) -2*q(4) q(3); q(2) q(3) 0] * 1/sum(q.^2) - quat_to_mat(q,0)* 1/sum(q.^2)^2 * 2*q(4);
+%             partial_q1 = @(q) 2 * [0 -q(4) q(3); q(4) 0 -q(2); -q(3) q(2) 0          ] * 1/sum(q.^2) - quat_to_mat(q,0)* 1/sum(q.^2)^2 * 2*q(1);
+%             partial_q2 = @(q) 2 * [0 q(3) q(4); q(3) -2*q(2) -q(1); q(4) q(1) -2*q(2)] * 1/sum(q.^2) - quat_to_mat(q,0)* 1/sum(q.^2)^2 * 2*q(2);
+%             partial_q3 = @(q) 2 * [-2*q(3) q(2) q(1); q(2) 0 q(4); -q(1) q(4) -2*q(3)] * 1/sum(q.^2) - quat_to_mat(q,0)* 1/sum(q.^2)^2 * 2*q(3);
+%             partial_q4 = @(q) 2 * [-2*q(4) -q(1) q(2); q(1) -2*q(4) q(3); q(2) q(3) 0] * 1/sum(q.^2) - quat_to_mat(q,0)* 1/sum(q.^2)^2 * 2*q(4);
             
+            % Supply quat as known, doesn't really make sense, doesn't work
+            %s.x(2*dim+1:2*dim+4) = quat;
+            %q = quat;
+                        
             % Calculate Jacobian 
-            s.x(2*dim+1:2*dim+4) = quat;
-            q = quat;
-            part_of_J = @(pat,q) [eye(3) zeros(3) partial_q1(q)*pat partial_q2(q)*pat partial_q3(q)*pat partial_q4(q)*pat zeros(3,4)];
-            J = zeros(num_markers*dim, 2*dim + 8);
-            for i = 0:num_markers-1
-                J(i*dim+1:(i+1)*dim,:) = part_of_J(pattern(i+1,:)',q);
-            end
+%             q = s.x(2*dim+1:2*dim+4);
+%             part_of_J = @(pat,q) [eye(3) zeros(3) partial_q1(q)*pat partial_q2(q)*pat partial_q3(q)*pat partial_q4(q)*pat zeros(3,4)];
+%             J = zeros(num_markers*dim, 2*dim + 8);
+%             for i = 0:num_markers-1
+%                 J(i*dim+1:(i+1)*dim,:) = part_of_J(pattern(i+1,:)',q);
+%             end
+            
+              Rot = s.H.rot;
+              q1 = s.H.q1;
+              q2 = s.H.q2;
+              q3 = s.H.q3;
+              q4 = s.H.q4;
+
+              %Rot = subs(global_params.H.rot, [global_params.H.q1, global_params.H.q2, global_params.H.q3, global_params.H.q4], [x(2*dim+1:2*dim+4)] );
+              HRot = reshape( (Rot*pattern')', [], 1 );
+              JRot = jacobian(HRot, [q1, q2, q3, q4]);
+              JRot = subs(JRot, [q1; q2; q3; q4], s.x(2*dim+1:2*dim+4));
+              
+              J = [repmat(eye(3), 4,1) zeros(12,3) JRot zeros(12,4)];
             
             if no_knowledge
                 J = J(detections_idx,:);
@@ -157,6 +173,7 @@ switch model
             % Prediction for state vector and covariance:
             s.x = s.A*s.x;
             s.P = s.A * s.P * s.A' + s.Q;
+            
             % Compute Kalman gain factor:
             K = s.P*J'*inv(J*s.P*J'+s.R);
             
@@ -165,7 +182,10 @@ switch model
                 if no_knowledge
                     s.x = s.x + K*(s.z-H(s.x,assignment));
                 else
-                    s.x = s.x + K*(s.z-s.H(s.x));
+                    syms q1 q2 q3 q4;
+                    Rot = @(q) subs(global_params.H.rot, [q1; q2; q3; q4], q );
+                    H = @(x) reshape( (Rot(x(2*dim+1:2*dim+4)) *pattern(~missed_detections(1:3:end),:)')' + x(1:dim)', [], 1 );
+                    s.x = s.x + K*(s.z-H(s.x));
                 end
             end
             % TODO immer machen? oder nur wenn detection?
