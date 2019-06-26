@@ -1,12 +1,14 @@
-function s = kalman_step(s, no_knowledge, global_params, model, missed_detections, quat)
-%KALMAN_STEP Summary of this function goes here
+function s = stepKalman(s, noKnowledge, globalParams, model, missedDetections)
+%STEPKALMAN Summary of this function goes here
 %   Detailed explanation goes here
 
-R = global_params.R;
-pattern = global_params.pattern;
-H = global_params.H;
+%TODO splitup into two dinctions predictKalman() and correctKalman()
 
-num_markers = size(pattern,1);
+R = globalParams.R;
+pattern = globalParams.pattern;
+H = globalParams.H;
+
+nMarkers = size(pattern,1);
 dim = size(pattern,2);
 
 switch model
@@ -27,21 +29,21 @@ switch model
             if isfield(s, 'z') && sum(isnan(s.z)) < 1
                 detections = reshape(s.z, [], dim);
                 assignment = match_patterns(pattern, detections, 'edges');
-                position_estimate = mean(detections - pattern(assignment,:),1);
-                s.x = [position_estimate'; zeros(dim,1); 1];
-                s.P = eye(2*dim+1) .* repelem([global_params.init_pos_var; global_params.init_motion_var; 0], [dim, dim, 1]);
+                positionEstimate = mean(detections - pattern(assignment,:),1);
+                s.x = [positionEstimate'; zeros(dim,1); 1];
+                s.P = eye(2*dim+1) .* repelem([globalParams.initPositionVar; globalParams.initMotionVar; 0], [dim, dim, 1]);
             else
                 % If we don't even have an observation, initialize at a random
                 % position and zero velocity
                 s.x = [rand(dim,1); zeros(3,1); 1];
-                s.P = eye(2*dim+1) .* repelem([global_params.init_motion_var; global_params.init_motion_var; 0], [dim, dim, 1]);
+                s.P = eye(2*dim+1) .* repelem([globalParams.initMotionVar; globalParams.initMotionVar; 0], [dim, dim, 1]);
             end
             
         else
             % If we don't know which detections are missing, we need to come up
             % with a prediction for what detections are missing (the detections of which marker that is), i.e. we need to
             % find H and R which best explain the measurements.
-            if no_knowledge &&  isfield(s,'z') && sum(isnan(s.z)) < 1
+            if noKnowledge &&  isfield(s,'z') && sum(isnan(s.z)) < 1
                 detections = s.z;
                 % Find an assignment between the individual markers and the detections
                 assignment = match_patterns(pattern, reshape(detections, [],dim), 'ML');
@@ -54,12 +56,12 @@ switch model
                 
                 % construct H and R from assignment vector, i.e. delete the
                 % corresponding rows in H and R.
-                detections_idx = zeros(dim*length(assignment),1);
+                detectionsIdx = zeros(dim*length(assignment),1);
                 for i = 1:dim
-                    detections_idx( (i-1)*length(assignment) + 1: (i-1)*length(assignment) + length(assignment)) = assignment' + num_markers*(i-1);
+                    detectionsIdx( (i-1)*length(assignment) + 1: (i-1)*length(assignment) + length(assignment)) = assignment' + nMarkers*(i-1);
                 end
-                s.H = H(detections_idx,:);
-                s.R = R(detections_idx, detections_idx);
+                s.H = H(detectionsIdx,:);
+                s.R = R(detectionsIdx, detectionsIdx);
             end
             
             % Here the actal kalman filter begins:
@@ -95,21 +97,21 @@ switch model
             if isfield(s, 'z') && sum(isnan(s.z)) < 1
                 detections = reshape(s.z, [], dim);
                 assignment = match_patterns(pattern, detections, 'edges');
-                position_estimate = mean(detections - pattern(assignment,:),1);
-                s.x = [position_estimate'; zeros(dim,1); 0.25*ones(4,1); zeros(4,1)];
-                s.P = eye(2*dim+8) .* repelem([global_params.init_pos_var; global_params.init_motion_var; global_params.init_quat_var; global_params.init_quat_mot_var], [dim, dim, 4, 4]);
+                positionEstimate = mean(detections - pattern(assignment,:),1);
+                s.x = [positionEstimate'; zeros(dim,1); 0.25*ones(4,1); zeros(4,1)];
+                s.P = eye(2*dim+8) .* repelem([globalParams.initPositionVar; globalParams.initMotionVar; globalParams.initQuatVar; globalParams.initQuatMotionVar], [dim, dim, 4, 4]);
             else
                 % If we don't even have an observation, initialize at a random
                 % position and zero velocity
                 s.x = [rand(dim,1); zeros(3,1); 0.25*ones(4,1); zeros(4,1)];
-                s.P = eye(2*dim+8) .* repelem([global_params.init_motion_var],2*dim+8)';
+                s.P = eye(2*dim+8) .* repelem([globalParams.initMotionVar],2*dim+8)';
             end
             
         else
             % If we don't know which detections are missing, we need to come up
             % with a prediction for what detections are missing (the detections of which marker that is), i.e. we need to
             % find H and R which best explain the measurements.
-            if no_knowledge &&  isfield(s,'z') && sum(isnan(s.z)) < 1
+            if noKnowledge &&  isfield(s,'z') && sum(isnan(s.z)) < 1
                 detections = s.z;
                 % Find an assignment between the individual markers and the detections
                 Rot = quatToMat();
@@ -123,12 +125,12 @@ switch model
                 
                 % construct H and R from assignment vector, i.e. delete the
                 % corresponding rows in H and R.
-                detections_idx = zeros(dim*length(assignment),1);
+                detectionsIdx = zeros(dim*length(assignment),1);
                 for i = 1:dim
-                    detections_idx( (i-1)*length(assignment) + 1: (i-1)*length(assignment) + length(assignment)) = assignment' + num_markers*(i-1);
+                    detectionsIdx( (i-1)*length(assignment) + 1: (i-1)*length(assignment) + length(assignment)) = assignment' + nMarkers*(i-1);
                 end
                 %s.H = @(x) s.H(x,assignment);
-                s.R = R(detections_idx, detections_idx);
+                s.R = R(detectionsIdx, detectionsIdx);
             end
             
             % partial derivatives of rotation matrix w.r.t. quaternion
@@ -145,8 +147,8 @@ switch model
             % Calculate Jacobian
             %             q = s.x(2*dim+1:2*dim+4);
             %             part_of_J = @(pat,q) [eye(3) zeros(3) partial_q1(q)*pat partial_q2(q)*pat partial_q3(q)*pat partial_q4(q)*pat zeros(3,4)];
-            %             J = zeros(num_markers*dim, 2*dim + 8);
-            %             for i = 0:num_markers-1
+            %             J = zeros(nMarkers*dim, 2*dim + 8);
+            %             for i = 0:nMarkers-1
             %                 J(i*dim+1:(i+1)*dim,:) = part_of_J(pattern(i+1,:)',q);
             %             end
             
@@ -164,10 +166,10 @@ switch model
                 
                 J = s.J;
                 subindex = @(A, rows) A(rows, :);     % for row sub indexing
-                if no_knowledge
-                    J = @(x) subindex(J(x(7), x(8), x(9), x(10)), detections_idx);
+                if noKnowledge
+                    J = @(x) subindex(J(x(7), x(8), x(9), x(10)), detectionsIdx);
                 else
-                    J = @(x) subindex(J(x(7), x(8), x(9), x(10)), ~missed_detections);
+                    J = @(x) subindex(J(x(7), x(8), x(9), x(10)), ~missedDetections);
                 end
                 
                 %Evaluate Jacobian at current position
@@ -175,16 +177,16 @@ switch model
                 % Compute Kalman gain factor:
                 K = s.P*J'*inv(J*s.P*J'+s.R);
                 
-                if no_knowledge
+                if noKnowledge
                     z = s.H(s.x);
                     %s.x = s.x + K*(s.z-z(repmat(assignment',3,1)));
-                    s.x = s.x + K*(s.z-z(detections_idx));
+                    s.x = s.x + K*(s.z-z(detectionsIdx));
 
                 else
-                    %Rot = @(q) subs(global_params.H.rot, [q1; q2; q3; q4], q );
-                    %H = @(x) reshape( (Rot(x(2*dim+1:2*dim+4)) *pattern(~missed_detections(1:3:end),:)')' + x(1:dim)', [], 1 );
+                    %Rot = @(q) subs(globalParams.H.rot, [q1; q2; q3; q4], q );
+                    %H = @(x) reshape( (Rot(x(2*dim+1:2*dim+4)) *pattern(~missedDetections(1:3:end),:)')' + x(1:dim)', [], 1 );
                     z = s.H(s.x);
-                    s.x = s.x + K*(s.z-z(~missed_detections));
+                    s.x = s.x + K*(s.z-z(~missedDetections));
                 end
                 % TODO immer machen? oder nur wenn detection?
                 % Correct covariance matrix estimate

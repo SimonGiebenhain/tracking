@@ -1,3 +1,5 @@
+%TODO move to READ.ME file
+
 %{
 % My system currently tracks a single object in 3d space. Observations are
 % made not directly of the position of the object, but of 4 markers which
@@ -83,31 +85,32 @@ clear s
 pattern = [1 1 1; 0 0 0; 1 0 -2; -0.5 -2 0.5];
 %pattern = [1 0 0];
 dim = size(pattern,2);
-num_markers = size(pattern,1);
+nMarkers = size(pattern,1);
 
 % The number of timestep I run the simulation
 T = 1000;
-process_noise.pos = 30;
-process_noise.motion = 20;
-process_noise.quat = 30;
-process_noise.quat_mot = 30;
+processNoise.position = 30;
+processNoise.motion = 20;
+processNoise.quat = 30;
+processNoise.quatMotion = 30;
+measurementNoise = 2500;
 model = 'extended';
-[s, global_params] = setup_kalman(pattern, T, model, 2500, process_noise);
-global_params.init_pos_var = 10;
-global_params.init_motion_var = 100;
-global_params.init_quat_var = 10000;
-global_params.init_quat_mot_var = 1000;
+[s, globalParams] = setupKalman(pattern, T, model, measurementNoise, processNoise);
+globalParams.initPositionVar = 10;
+globalParams.initMotionVar = 100;
+globalParams.initQuatVar = 10000;
+globalParams.initQuatMotionVar = 1000;
 
 % Preallocate ground truth trajectory
 tru=zeros(T,3);
 
-% When no_knowledge is true the system doesn't know which detection
+% When noKnowledge is true the system doesn't know which detection
 % corresponds to which marker.
-no_knowledge = 1;
+noKnowledge = 1;
 
-frame_drop_rate = 0.2;
-marker_drop_rate = 0.3;
-marker_noise = 0.005;
+frameDropRate = 0.2;
+markerDropRate = 0.3;
+markerNoise = 0.005;
 
 % Run the simulatio 
 for t=1:T
@@ -116,37 +119,37 @@ for t=1:T
     tru(t,:) = [t/T*5*sin(t/32) cos(t/68)^2*5, sin(t/20)^2*t/T*3];
 
     % In some frames drop all detections.
-    if rand > frame_drop_rate
+    if rand > frameDropRate
         % In some frames drop some individual markers
-        missed_detections_simple = rand(num_markers,1) < marker_drop_rate;
-        missed_detections = repmat(missed_detections_simple, 3,1);
+        missedDetectionsSimple = rand(nMarkers,1) < markerDropRate;
+        missedDetections = repmat(missedDetectionsSimple, 3,1);
         
         % TODO handle cases when only 1 marker was detected per in a frame
         % For now: Make sure there are at least two markers detected
-        if sum(~missed_detections) < 6 && num_markers > 1
+        if sum(~missedDetections) < 6 && nMarkers > 1
             in = randi(4);
-            missed_detections(in) = 0;
-            missed_detections(in+4) = 0;
-            missed_detections(in+8) = 0;
+            missedDetections(in) = 0;
+            missedDetections(in+4) = 0;
+            missedDetections(in+8) = 0;
             
-            missed_detections( mod(in,4)+1 ) = 0;
-            missed_detections( mod(in,4)+1+4 ) = 0;
-            missed_detections( mod(in,4)+1+8 ) = 0;
+            missedDetections( mod(in,4)+1 ) = 0;
+            missedDetections( mod(in,4)+1+4 ) = 0;
+            missedDetections( mod(in,4)+1+8 ) = 0;
         end
         
         if strcmp(model,'linear')
             % Delete some rows in H and R to accomodate for the missed
             % measurements.
-            Hcur = global_params.H(~missed_detections,:);
-            Rcur = global_params.R(~missed_detections, ~missed_detections);
+            Hcur = globalParams.H(~missedDetections,:);
+            Rcur = globalParams.R(~missedDetections, ~missedDetections);
             % Create the measurement
-            s(t).z = Hcur * [tru(t,:)'; 0; 0; 0; 1] + mvnrnd(zeros(size(Hcur,1),1), marker_noise*eye(size(Hcur,1)),1)';
+            s(t).z = Hcur * [tru(t,:)'; 0; 0; 0; 1] + mvnrnd(zeros(size(Hcur,1),1), markerNoise*eye(size(Hcur,1)),1)';
 
             % Decide whether the system knows which of which markers the
             % detections were dropped.
-            if no_knowledge
-                s(t).H = global_params.H;
-                s(t).R = global_params.R;
+            if noKnowledge
+                s(t).H = globalParams.H;
+                s(t).R = globalParams.R;
             else
                 s(t).H = Hcur;
                 s(t).R = Rcur;
@@ -160,25 +163,25 @@ for t=1:T
             %quat = quat/sqrt(sum(quat.^2));
             
             %subindex = @(A, rows) A(rows, :);     % for row sub indexing
-            %Hcur = @(x) subindex(global_params.H(x), ~missed_detections_simple);
-            Hcur = @(x) global_params.H(x);
+            %Hcur = @(x) subindex(globalParams.H(x), ~missedDetectionsSimple);
+            Hcur = @(x) globalParams.H(x);
 
             
             %Hcur = subs(Hcur, [q1 q2 q3 q4], x(2*dim+1:2*dim+4));
-            %Hcur = @(x) global_params.H(x, ~missed_detections_simple);
+            %Hcur = @(x) globalParams.H(x, ~missedDetectionsSimple);
             
-            Rcur = global_params.R(~missed_detections, ~missed_detections);
+            Rcur = globalParams.R(~missedDetections, ~missedDetections);
             
             
             z = Hcur( [tru(t,:)'; zeros(3,1); quat; zeros(4,1)] ); % create measurement
-            z = z(~missed_detections);
-            noise = mvnrnd(zeros(sum(~missed_detections),1), marker_noise*eye(sum(~missed_detections)),1)'; % add noise 
+            z = z(~missedDetections);
+            noise = mvnrnd(zeros(sum(~missedDetections),1), markerNoise*eye(sum(~missedDetections)),1)'; % add noise 
             s(t).z = z + noise;
             % Decide whether the system knows which of which markers the
             % detections were dropped.
-            if no_knowledge
-                s(t).H = global_params.H;
-                s(t).R = global_params.R;
+            if noKnowledge
+                s(t).H = globalParams.H;
+                s(t).R = globalParams.R;
             else
                 s(t).H = Hcur;
                 s(t).R = Rcur;
@@ -190,7 +193,12 @@ for t=1:T
         % dropped frames don't have any detections
         s(t).z = [NaN;NaN;NaN;NaN;NaN;NaN;NaN;NaN;NaN;NaN;NaN;NaN];
     end
-    s(t+1) = kalman_step(s(t), no_knowledge, global_params, model, missed_detections, quat); % perform a Kalman filter iteration
+    
+    if sum(~isnan(s(t).z)) > 0
+        s(t+1) = stepKalman(s(t), noKnowledge, globalParams, model, missedDetections); % perform a Kalman filter iteration
+    else
+        s(t+1) = stepKalman(s(t), noKnowledge, globalParams, model, missedDetections); % perform a Kalman filter iteration
+    end
 end
 
 %% Plot the results
