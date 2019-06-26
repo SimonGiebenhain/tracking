@@ -18,7 +18,7 @@
 %                  premultiplying by the "input matrix" B. There is also
 %                  gaussian process noise w.
 %                  There is no B and u in my model.
-% 
+%
 % z = Hx + v       meaning the observation vector z is a linear function
 %                  of the state vector, and this linear relationship is
 %                  represented by premultiplication by "observation
@@ -33,12 +33,12 @@
 %
 % VECTOR VARIABLES:
 %
-% s.x = state vector estimate. 
+% s.x = state vector estimate.
 %       In my code this is 7 dimensional. 3 dimensions are used to store
 %       the position. 3 dimensions are used to store the current velocity
 %       in 3d space and 1 dimension is fixed to 1. This is necessary to
 %       incorporate the pattern of markers which are observed.
-% 
+%
 % s.z = observation vector.
 %       In my code this is 12 dimensional, as there are 4 markers and each
 %       has a 3d position
@@ -112,12 +112,12 @@ frameDropRate = 0.2;
 markerDropRate = 0.3;
 markerNoise = 0.005;
 
-% Run the simulatio 
+% Run the simulatio
 for t=1:T
     % Get the true trajectory from some crazy function
     %tru(end+1,:) = [sqrt(t/2)*1/10*sin(t/32) sin(t/30)*cos(t/68)^2*5, t/T*3];
     tru(t,:) = [t/T*5*sin(t/32) cos(t/68)^2*5, sin(t/20)^2*t/T*3];
-
+    
     % In some frames drop all detections.
     if rand > frameDropRate
         % In some frames drop some individual markers
@@ -144,7 +144,7 @@ for t=1:T
             Rcur = globalParams.R(~missedDetections, ~missedDetections);
             % Create the measurement
             s(t).z = Hcur * [tru(t,:)'; 0; 0; 0; 1] + mvnrnd(zeros(size(Hcur,1),1), markerNoise*eye(size(Hcur,1)),1)';
-
+            
             % Decide whether the system knows which of which markers the
             % detections were dropped.
             if noKnowledge
@@ -165,7 +165,7 @@ for t=1:T
             %subindex = @(A, rows) A(rows, :);     % for row sub indexing
             %Hcur = @(x) subindex(globalParams.H(x), ~missedDetectionsSimple);
             Hcur = @(x) globalParams.H(x);
-
+            
             
             %Hcur = subs(Hcur, [q1 q2 q3 q4], x(2*dim+1:2*dim+4));
             %Hcur = @(x) globalParams.H(x, ~missedDetectionsSimple);
@@ -175,7 +175,7 @@ for t=1:T
             
             z = Hcur( [tru(t,:)'; zeros(3,1); quat; zeros(4,1)] ); % create measurement
             z = z(~missedDetections);
-            noise = mvnrnd(zeros(sum(~missedDetections),1), markerNoise*eye(sum(~missedDetections)),1)'; % add noise 
+            noise = mvnrnd(zeros(sum(~missedDetections),1), markerNoise*eye(sum(~missedDetections)),1)'; % add noise
             s(t).z = z + noise;
             % Decide whether the system knows which of which markers the
             % detections were dropped.
@@ -191,13 +191,19 @@ for t=1:T
         
     else
         % dropped frames don't have any detections
-        s(t).z = [NaN;NaN;NaN;NaN;NaN;NaN;NaN;NaN;NaN;NaN;NaN;NaN];
+        s(t).z = NaN * ones(nMarkers*dim,1);
     end
     
     if sum(~isnan(s(t).z)) > 0
-        s(t+1) = stepKalman(s(t), noKnowledge, globalParams, model, missedDetections); % perform a Kalman filter iteration
+        if noKnowledge
+            [s(t+1), detectionsIdx] = predictKalman(s(t), noKnowledge, globalParams, model);
+            s(t+1) = correctKalman(s(t+1), detectionsIdx);
+        else
+            s(t+1) = predictKalman(s(t), noKnowledge, globalParams, model);
+            s(t+1) = correctKalman(s(t+1), ~missedDetections);
+        end
     else
-        s(t+1) = stepKalman(s(t), noKnowledge, globalParams, model, missedDetections); % perform a Kalman filter iteration
+        s(t+1) = predictKalman(s(t), noKnowledge, globalParams, model);
     end
 end
 
@@ -243,6 +249,6 @@ hold off
 
 figure;
 plot(states(:,4), 'DisplayName', 'velocity in x direction'); hold on;
-plot(states(:,5), 'DisplayName', 'velocity in y direction'); 
-plot(states(:,6), 'DisplayName', 'velocity in z direction'); 
+plot(states(:,5), 'DisplayName', 'velocity in y direction');
+plot(states(:,6), 'DisplayName', 'velocity in z direction');
 legend; hold off;
