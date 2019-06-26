@@ -112,7 +112,7 @@ switch model
             if no_knowledge &&  isfield(s,'z') && sum(isnan(s.z)) < 1
                 detections = s.z;
                 % Find an assignment between the individual markers and the detections
-                Rot = quat_to_mat();
+                Rot = quatToMat();
                 assignment = match_patterns(pattern, reshape(detections, [],dim) - s.x(1:dim)', 'ML', Rot(s.x(2*dim+1:2*dim+4)));
                 
                 % Print in case an error was made in the assignment
