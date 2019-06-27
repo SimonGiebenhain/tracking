@@ -1,6 +1,42 @@
-function s = correctKalman(s, detectionsIdx)
+function s = correctKalman(s, noKnowledge, globalParams, missedDetections)
 %CORRECTKALMAN Summary of this function goes here
 %   Detailed explanation goes here
+
+R = globalParams.R;
+pattern = globalParams.pattern;
+
+nMarkers = size(pattern,1);
+dim = size(pattern,2);
+
+% If we don't know which detections are missing, we need to come up
+% with a prediction for what detections are missing (the detections of which marker that is), i.e. we need to
+% find H and R which best explain the measurements.
+if noKnowledge 
+    detections = s.z;
+    % Find an assignment between the individual markers and the detections
+    Rot = quatToMat();
+    assignment = match_patterns(pattern, reshape(detections, [],dim) - s.x(1:dim)', 'ML', Rot(s.x(2*dim+1:2*dim+4)));
+    
+    % Print in case an error was made in the assignment
+    inversions = assignment(2:end) - assignment(1:end-1);
+    if min(inversions) < 1
+        assignment
+    else
+        fprintf('yay\n')
+    end
+    
+    % construct H and R from assignment vector, i.e. delete the
+    % corresponding rows in H and R.
+    detectionsIdx = zeros(dim*length(assignment),1);
+    for i = 1:dim
+        detectionsIdx( (i-1)*length(assignment) + 1: (i-1)*length(assignment) + length(assignment)) = assignment' + nMarkers*(i-1);
+    end
+    %s.H = @(x) s.H(x,assignment);
+    s.R = R(detectionsIdx, detectionsIdx);
+else
+    detectionsIdx = ~missedDetections;
+end
+
 
 % Correction based on observation
 J = s.J;

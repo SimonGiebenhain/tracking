@@ -72,6 +72,7 @@ nextId = 1; % ID of the next track
 tracks = initializeTracks();
 
 P = cell(nObjects ,1);
+TruTraj = cell(nObjects,1);
 
 initializeFigure();
 
@@ -209,18 +210,19 @@ end
 % visible count by 1. Finally, the function sets the invisible count to 0.
 
     function updateAssignedTracks()
-        allAssignedTracksIdx = unique((assignments(:,1)-1)/nMarkers + 1);
+        assignments = double(assignments);
+        allAssignedTracksIdx = unique(floor((assignments(:,1)-1)/nMarkers) + 1);
         nAssignedTracks = length(allAssignedTracksIdx);
         for i = 1:nAssignedTracks
             currentTrackIdx = allAssignedTracksIdx(i);
-            assignmentsIdx = (assignments(:,1)-1)/nMarkers + 1 == currentTrackIdx;
+            assignmentsIdx = floor((assignments(:,1)-1)/nMarkers) + 1 == currentTrackIdx;
             detectionIdx = assignments(assignmentsIdx,2);
             detectedMarkersForCurrentTrack = detections(detectionIdx, :);
             
             % Correct the estimate of the object's location
             % using the new detection.
             tracks(i).kalmanFilter.z = reshape(detectedMarkersForCurrentTrack, [], 1);
-            tracks(i).kalmanFilter = correctKalman(tracks(i).kalmanFilter, tracks(i).kalmanParams);
+            tracks(i).kalmanFilter = correctKalman(tracks(i).kalmanFilter, 1, tracks(i).kalmanParams);
             
             % Replace predicted bounding box with detected
             % bounding box.
@@ -230,11 +232,11 @@ end
             %tracks(trackIdx).markers = detectedMarkersForCurrentTrack;
             
             % Update track's age.
-            tracks(trackIdx).age = tracks(trackIdx).age + 1;
+            tracks(i).age = tracks(i).age + 1;
             
             % Update visibility.
-            tracks(trackIdx).totalVisibleCount = tracks(trackIdx).totalVisibleCount + 1;
-            tracks(trackIdx).consecutiveInvisibleCount = 0;
+            tracks(i).totalVisibleCount = tracks(i).totalVisibleCount + 1;
+            tracks(i).consecutiveInvisibleCount = 0;
         end
     end
 
@@ -242,7 +244,8 @@ end
 % Mark each unassigned track as invisible, and increase its age by 1.
 
     function updateUnassignedTracks()
-        allUnassignedTracksIdx = unique((unassignedTracks-1)/nMarkers + 1);
+        unassignedTracks = double(unassignedTracks);
+        allUnassignedTracksIdx = unique(floor((unassignedTracks-1)/nMarkers) + 1);
         nUnassignedTracks = length(allUnassignedTracksIdx);
         for i = 1:nUnassignedTracks
             unassignedTrackIdx = allUnassignedTracksIdx(i);
@@ -322,11 +325,16 @@ end
 % displays the frame and the mask in their respective video players.
 
     function initializeFigure()
+        c = 'rb';
         scatter3([minPos(1), maxPos(1)], [minPos(2), maxPos(2)], [minPos(3), maxPos(3)], '*')
         hold on;
         for k = 1:length(P)
             dets = squeeze(D(1,(k-1)*nMarkers+1:k*nMarkers,1));
-            P{k} = plot3(dets(:,1),dets(:,2), dets(:,3), 'o', 'MarkerSize', 10);
+            P{k} = plot3(dets(:,1),dets(:,2), dets(:,3), 'o', 'MarkerSize', 10, 'MarkerEdgeColor', c(k));
+        end
+        for k = 1:length(TruTraj)
+            dets = squeeze(D(1,(k-1)*nMarkers+1:k*nMarkers,1));
+            TruTraj{k} = plot3(dets(:,1),dets(:,2), dets(:,3), '*', 'MarkerSize', 10, 'MarkerEdgeColor', c(k));
         end
         grid on;
         hold off
@@ -346,6 +354,10 @@ end
                 P{k}.ZData = NaN;
                 fprintf('missed track');
             end
+            dets = squeeze(D(t,(k-1)*nMarkers+1:k*nMarkers,1));
+            TruTraj{k}.XData = dets(:,1);
+            TruTraj{k}.YData = dets(:,2);
+            TruTraj{k}.ZData = dets(:,3);
         end
         drawnow
     end
