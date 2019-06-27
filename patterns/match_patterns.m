@@ -1,5 +1,17 @@
 function assignment = match_patterns(whole_pattern, detected_pattern, method, Rot)
-%MATCH_PATTERNS Match points within two sets of points
+%MATCH_PATTERNS Find corresponing points in two sets of points
+%
+%   assignment = MATCH_PATTERNS(whole_pattern, detected_pattern, 'ML', Rot)
+%
+%   When using the 'ML' method the function expects two roughly centered
+%   sets of points. Then whole_pattern is rotated by the rotation Matrix
+%   Rot. The assignment is then based on the distance between the points
+%   and solved with the Hungarian Algorithm.
+%
+%   The following method is outdated.
+%
+%   assignment = MATCH_PATTERNS(whole_pattern, detected_pattern, 'edges')
+%
 %   So far this method relies on a constant/known orientation of the point
 %   pattern.
 %   assignment(i) contains index of marker in whole_pattern assigned to the
