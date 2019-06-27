@@ -1,4 +1,4 @@
-function [s, globalParams] = setupKalman(pattern, T, model, obsNoise, processNoise)
+function [s, globalParams] = setupKalman(pattern, T, model, obsNoise, processNoise, initialNoise)
 %SETUPKALMAN This function initializes all necessary parameters and
 %functions for performing tracking with the kalman filter.
 %
@@ -112,6 +112,14 @@ switch model
         globalParams.R = R;
         globalParams.H = H;
         globalParams.pattern = pattern;
+        globalParams.obsNoise = obsNoise;
+        globalParams.processNoise = processNoise;
+        globalParams.initPositionVar   = initialNoise.initPositionVar;
+        globalParams.initMotionVar     = initialNoise.initMotionVar;
+        globalParams.initQuatVar       = initialNoise.initQuatVar;
+        globalParams.initQuatMotionVar = initialNoise.initQuatMotionVar;
+        
+        
         
         % Do not specify an initial state
         s(1).x = nan;

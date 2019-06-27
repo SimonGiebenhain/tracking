@@ -93,13 +93,14 @@ processNoise.position = 30;
 processNoise.motion = 20;
 processNoise.quat = 30;
 processNoise.quatMotion = 30;
-measurementNoise = 2500;
+measurementNoise = 5000;
 model = 'extended';
-[s, globalParams] = setupKalman(pattern, T, model, measurementNoise, processNoise);
-globalParams.initPositionVar = 10;
-globalParams.initMotionVar = 100;
-globalParams.initQuatVar = 10000;
-globalParams.initQuatMotionVar = 1000;
+initialNoise.initPositionVar = 10;
+initialNoise.initMotionVar = 100;
+initialNoise.initQuatVar = 10000;
+initialNoise.initQuatMotionVar = 1000;
+[s, globalParams] = setupKalman(pattern, T, model, measurementNoise, processNoise, initialNoise);
+
 
 % Preallocate ground truth trajectory
 tru=zeros(T,3);
@@ -119,7 +120,7 @@ for t=1:T
     tru(t,:) = [t/T*5*sin(t/32) cos(t/68)^2*5, sin(t/20)^2*t/T*3];
     
     % In some frames drop all detections.
-    if rand > frameDropRate
+    if rand > frameDropRate || t == 1
         % In some frames drop some individual markers
         missedDetectionsSimple = rand(nMarkers,1) < markerDropRate;
         missedDetections = repmat(missedDetectionsSimple, 3,1);
@@ -193,14 +194,18 @@ for t=1:T
         % dropped frames don't have any detections
         s(t).z = NaN * ones(nMarkers*dim,1);
     end
+    if isnan(s(t).x)
+        s(t+1) = initializeKalman(s(t), globalParams);
+        continue;
+    end
     
     if sum(~isnan(s(t).z)) > 0
         if noKnowledge
-            [s(t+1), detectionsIdx] = predictKalman(s(t), noKnowledge, globalParams, model);
-            s(t+1) = correctKalman(s(t+1), detectionsIdx);
+            s(t+1) = predictKalman(s(t), noKnowledge, globalParams, model);
+            s(t+1) = correctKalman(s(t+1), noKnowledge, globalParams);
         else
             s(t+1) = predictKalman(s(t), noKnowledge, globalParams, model);
-            s(t+1) = correctKalman(s(t+1), ~missedDetections);
+            s(t+1) = correctKalman(s(t+1), noKnowledge, globalParams, missedDetections);
         end
     else
         s(t+1) = predictKalman(s(t), noKnowledge, globalParams, model);
@@ -252,3 +257,15 @@ plot(states(:,4), 'DisplayName', 'velocity in x direction'); hold on;
 plot(states(:,5), 'DisplayName', 'velocity in y direction');
 plot(states(:,6), 'DisplayName', 'velocity in z direction');
 legend; hold off;
+
+%% verify tracking of rotation
+quats = zeros(1000,4);
+for t = 2:1001
+    quats(t-1,:) = s(t).x(2*dim+1:2*dim+4);
+    quats(t-1,:) = quats(t-1,:)/sqrt(sum(quats(t-1,:).^2));
+end
+allT = 2:1001;
+truQuats = [sin(allT'/100) -cos(allT'/50) sin(allT'/60) cos(allT'/30).^2];
+truQuats = truQuats ./ sqrt(sum(truQuats.^2,2));
+figure;
+plot(1:1000, sum((quats-truQuats).^2,2))
