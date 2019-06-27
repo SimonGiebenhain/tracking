@@ -7,19 +7,19 @@ timeDomain = (1:T)';
 positions = zeros(nObjects,T,3);
 quats = zeros(nObjects,T,4);
 
-positions(1,:,:) = [timeDomain/T*5.*sin(timeDomain/32) cos(timeDomain/68).^2*5 sin(timeDomain/20).^2.*timeDomain/T*3];
+positions(1,:,:) = [timeDomain/T*5.*sin(timeDomain/32) cos(timeDomain/68).^2*5 sin(timeDomain/20).^2.*timeDomain/T*5];
 quats(1,:,:) = [sin(timeDomain/100) -cos(timeDomain/50) sin(timeDomain/60) cos(timeDomain/30).^2];
 
 positions(2,:,:) = [5*timeDomain/T - 2.5 5*timeDomain/T - 2.5 5*timeDomain/T - 2.5];
 quats(2,:,:) = [zeros(T,1) -cos(timeDomain/50) timeDomain/T cos(timeDomain/30).^2];
 
 patterns = zeros(nObjects,nMarkers,3);
-patterns(1,:,:) = [1      1     1; 
+patterns(1,:,:) = 0.5 * [1      1     1; 
                    0      0     0; 
                    1      0    -2; 
                    -0.5  -2     0.5];
 
-patterns(2,:,:) = [-1     1     0; 
+patterns(2,:,:) = 0.5 * [-1     1     0; 
                    -0.4   0.2   1; 
                    1.2    0.5  -1.5; 
                    0      2     0.5];
@@ -57,7 +57,7 @@ for t=1:T
             Rot = Rot(quats(i,t,:));
             
             z = (Rot*squeeze(patterns(i,:,:))')' + squeeze(positions(i,t,:))';
-            z = z(~missedDetectionsSimple);
+            z = z(~missedDetectionsSimple, :);
             noise = reshape( ... 
                 mvnrnd(zeros(sum(~missedDetections),1), markerNoise*eye(sum(~missedDetections)),1)',...
                 sum(~missedDetectionsSimple),3); % add noise

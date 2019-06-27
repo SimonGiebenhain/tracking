@@ -329,11 +329,11 @@ end
         scatter3([minPos(1), maxPos(1)], [minPos(2), maxPos(2)], [minPos(3), maxPos(3)], '*')
         hold on;
         for k = 1:length(P)
-            dets = squeeze(D(1,(k-1)*nMarkers+1:k*nMarkers,1));
+            dets = squeeze(D(1,(k-1)*nMarkers+1:k*nMarkers,:));
             P{k} = plot3(dets(:,1),dets(:,2), dets(:,3), 'o', 'MarkerSize', 10, 'MarkerEdgeColor', c(k));
         end
         for k = 1:length(TruTraj)
-            dets = squeeze(D(1,(k-1)*nMarkers+1:k*nMarkers,1));
+            dets = squeeze(D(1,(k-1)*nMarkers+1:k*nMarkers,:));
             TruTraj{k} = plot3(dets(:,1),dets(:,2), dets(:,3), '*', 'MarkerSize', 10, 'MarkerEdgeColor', c(k));
         end
         grid on;
@@ -354,7 +354,7 @@ end
                 P{k}.ZData = NaN;
                 fprintf('missed track');
             end
-            dets = squeeze(D(t,(k-1)*nMarkers+1:k*nMarkers,1));
+            dets = squeeze(D(t,(k-1)*nMarkers+1:k*nMarkers,:));
             TruTraj{k}.XData = dets(:,1);
             TruTraj{k}.YData = dets(:,2);
             TruTraj{k}.ZData = dets(:,3);
