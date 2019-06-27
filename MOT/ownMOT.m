@@ -44,7 +44,7 @@
 % <matlab:helpview(fullfile(docroot,'toolbox','matlab','matlab_prog','matlab_prog.map'),'nested_functions') nested functions>
 % below.
 
-function ownMOT(D, patterns, initialStates)
+function ownMOT(D, patterns, initialStates, trueTrajectory)
 
 % Create System objects used for reading video, detecting moving objects,
 % and displaying the results.
@@ -72,7 +72,7 @@ nextId = 1; % ID of the next track
 tracks = initializeTracks();
 
 P = cell(nObjects ,1);
-TruTraj = cell(nObjects,1);
+markersForVisualization = cell(nObjects,1);
 
 initializeFigure();
 
@@ -90,6 +90,7 @@ for t = 1:N
     %createNewTracks();
     
     displayTrackingResults();
+    old_tracks = tracks;
 end
 
 
@@ -329,35 +330,32 @@ end
         scatter3([minPos(1), maxPos(1)], [minPos(2), maxPos(2)], [minPos(3), maxPos(3)], '*')
         hold on;
         for k = 1:length(P)
-            dets = squeeze(D(1,(k-1)*nMarkers+1:k*nMarkers,:));
-            P{k} = plot3(dets(:,1),dets(:,2), dets(:,3), 'o', 'MarkerSize', 10, 'MarkerEdgeColor', c(k));
+            plot3(trueTrajectory(k,1:2,1),trueTrajectory(k,1:2,2), trueTrajectory(k,1:2,3), c(k));
         end
-        for k = 1:length(TruTraj)
+        for k = 1:length(markersForVisualization)
             dets = squeeze(D(1,(k-1)*nMarkers+1:k*nMarkers,:));
-            TruTraj{k} = plot3(dets(:,1),dets(:,2), dets(:,3), '*', 'MarkerSize', 10, 'MarkerEdgeColor', c(k));
+            markersForVisualization{k} = plot3(dets(:,1),dets(:,2), dets(:,3), '*', 'MarkerSize', 10, 'MarkerEdgeColor', c(k));
         end
         grid on;
-        hold off
         axis manual
     end
 
     function displayTrackingResults()
+        cPredicted = 'rb';
+        cTrue = [1   0.5 0.5;
+                 0.5 0.5 1];
+        
         for k = 1:length(P)
-            if k <= length(tracks)
-                state = tracks(k).kalmanFilter.x;
-                P{k}.XData = state(1);
-                P{k}.YData = state(2);
-                P{k}.ZData = state(3);
-            else
-                P{k}.XData = NaN;
-                P{k}.YData = NaN;
-                P{k}.ZData = NaN;
-                fprintf('missed track');
+            if t < T && t > 1
+                plot3(trueTrajectory(k,t:t+1,1),trueTrajectory(k,t:t+1,2), trueTrajectory(k,t:t+1,3), 'Color', cTrue(k,:));
+                plot3( [old_tracks(k).kalmanFilter.x(1); tracks(k).kalmanFilter.x(1)], ...
+                       [old_tracks(k).kalmanFilter.x(2); tracks(k).kalmanFilter.x(2)],...
+                       [old_tracks(k).kalmanFilter.x(3); tracks(k).kalmanFilter.x(3)], 'Color', cPredicted(k));
             end
             dets = squeeze(D(t,(k-1)*nMarkers+1:k*nMarkers,:));
-            TruTraj{k}.XData = dets(:,1);
-            TruTraj{k}.YData = dets(:,2);
-            TruTraj{k}.ZData = dets(:,3);
+            markersForVisualization{k}.XData = dets(:,1);
+            markersForVisualization{k}.YData = dets(:,2);
+            markersForVisualization{k}.ZData = dets(:,3);
         end
         drawnow
     end
