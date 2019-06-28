@@ -7,10 +7,9 @@ timeDomain = (1:T)';
 positions = zeros(nObjects,T,3);
 quats = zeros(nObjects,T,4);
 
-positions(1,:,:) = [timeDomain/T*5.*sin(timeDomain/32) cos(timeDomain/68).^2*5 sin(timeDomain/20).^2.*timeDomain/T*5];
+positions(1,:,:) = [timeDomain/T*5.*sin(timeDomain/32) cos(timeDomain/68).^2*5 sin(timeDomain/20).^2.*timeDomain/T*3];
 quats(1,:,:) = [sin(timeDomain/100) -cos(timeDomain/50) sin(timeDomain/60) cos(timeDomain/30).^2];
 
-%positions(2,:,:) = [5*timeDomain/T - 2.5 5*timeDomain/T - 2.5 5*timeDomain/T - 2.5];
 positions(2,:,:) = squeeze(positions(1,:,:)) + [sin(timeDomain/60)+0.5,cos(timeDomain/100).^2,zeros(T,1)];
 quats(2,:,:) = [cos(timeDomain/60).^2 -cos(timeDomain/50) sin(timeDomain/40).^2 cos(timeDomain/30).^2];
 
@@ -27,8 +26,8 @@ patterns(2,:,:) = 0.5 * [-1     1     0;
                
 D = zeros(T,nObjects*nMarkers,3);
 
-frameDropRate = 0.1;
-markerDropRate = 0.1;
+frameDropRate = 0.2;
+markerDropRate = 0.3;
 markerNoise = 0.005;
 
 for t=1:T
@@ -80,4 +79,7 @@ for i = 1:nObjects
    initialStates(i,:) = [reshape(positions(i,1,:), 3,1); zeros(3,1); reshape(quats(i,1,:), 4,1); zeros(4,1)];
 end
 %% test MOT
-ownMOT(D, patterns, initialStates, positions)
+[estimatedPositions, estimatedQuats] = ownMOT(D, patterns, initialStates, positions);
+
+%%
+performanceVisualization(estimatedPositions, positions, estimatedQuats, quats);

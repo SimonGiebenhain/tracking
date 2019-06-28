@@ -44,7 +44,7 @@
 % <matlab:helpview(fullfile(docroot,'toolbox','matlab','matlab_prog','matlab_prog.map'),'nested_functions') nested functions>
 % below.
 
-function ownMOT(D, patterns, initialStates, trueTrajectory)
+function [estimatedPositions, estimatedQuats] = ownMOT(D, patterns, initialStates, trueTrajectory)
 
 % Create System objects used for reading video, detecting moving objects,
 % and displaying the results.
@@ -66,7 +66,7 @@ processNoise.position = 30;
 processNoise.motion = 20;
 processNoise.quat = 30;
 processNoise.quatMotion = 30;
-measurementNoise = 10000;
+measurementNoise = 5000;
 model = 'extended';
 initialNoise.initPositionVar = 10;
 initialNoise.initMotionVar = 100;
@@ -83,6 +83,9 @@ markersForVisualization = cell(nObjects,1);
 
 %visParams = animateMOT('init', visParams);
 initializeFigure();
+
+estimatedPositions = zeros(nObjects, T, 3);
+estimatedQuats = zeros(nObjects, T, 4);
 
 
 % Detect moving objects, and track them across video frames.
@@ -106,8 +109,17 @@ for t = 1:T
         %visParams = animateMOT('step', visParams, t);
         displayTrackingResults();
     end
+    
+    % Store tracking results
+    for ii = 1:nObjects
+        state = tracks(ii).kalmanFilter.x;
+        estimatedPositions(ii,t,:) = state(1:dim);
+        estimatedQuats(ii,t,:) = state(2*dim+1:2*dim+4);
+    end
+    
     oldTracks = tracks;
 end
+
 
 
 %% Initialize Tracks
@@ -150,13 +162,13 @@ end
             s.P = eye(2*dim+8) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initQuatVar; kalmanParams.initQuatMotionVar], [dim, dim, 4, 4]);
             s.pattern = squeeze(patterns(i,:,:));
             tracks(i) = struct(...
-                        'id', nextId, ... %'center', , ...
-                        'kalmanFilter', s, ...
-                        'kalmanParams', kalmanParams, ...
-                        'age', 1, ...
-                        'totalVisibleCount', 1, ...
-                        'consecutiveInvisibleCount', 0);
-                    nextId = nextId + 1;
+                'id', nextId, ... %'center', , ...
+                'kalmanFilter', s, ...
+                'kalmanParams', kalmanParams, ...
+                'age', 1, ...
+                'totalVisibleCount', 1, ...
+                'consecutiveInvisibleCount', 0);
+            nextId = nextId + 1;
         end
     end
 
@@ -359,6 +371,7 @@ end
 % displays the frame and the mask in their respective video players.
 
     function initializeFigure()
+        figure;
         c = 'rb';
         scatter3([minPos(1), maxPos(1)], [minPos(2), maxPos(2)], [minPos(3), maxPos(3)], '*')
         hold on;
@@ -376,14 +389,14 @@ end
     function displayTrackingResults()
         cPredicted = 'rb';
         cTrue = [1   0.5 0.5;
-                 0.5 0.5 1];
+            0.5 0.5 1];
         
         for k = 1:length(P)
             if t < T && t > 1
                 plot3(trueTrajectory(k,t:t+1,1),trueTrajectory(k,t:t+1,2), trueTrajectory(k,t:t+1,3), 'Color', cTrue(k,:));
                 plot3( [oldTracks(k).kalmanFilter.x(1); tracks(k).kalmanFilter.x(1)], ...
-                       [oldTracks(k).kalmanFilter.x(2); tracks(k).kalmanFilter.x(2)],...
-                       [oldTracks(k).kalmanFilter.x(3); tracks(k).kalmanFilter.x(3)], 'Color', cPredicted(k));
+                    [oldTracks(k).kalmanFilter.x(2); tracks(k).kalmanFilter.x(2)],...
+                    [oldTracks(k).kalmanFilter.x(3); tracks(k).kalmanFilter.x(3)], 'Color', cPredicted(k));
             end
             dets = squeeze(D(t,(k-1)*nMarkers+1:k*nMarkers,:));
             markersForVisualization{k}.XData = dets(:,1);
@@ -393,6 +406,8 @@ end
         drawnow
         %pause(0.1)
     end
+
+    
 
 %% Summary
 % This example created a motion-based system for detecting and
