@@ -10,8 +10,9 @@ quats = zeros(nObjects,T,4);
 positions(1,:,:) = [timeDomain/T*5.*sin(timeDomain/32) cos(timeDomain/68).^2*5 sin(timeDomain/20).^2.*timeDomain/T*5];
 quats(1,:,:) = [sin(timeDomain/100) -cos(timeDomain/50) sin(timeDomain/60) cos(timeDomain/30).^2];
 
-positions(2,:,:) = [5*timeDomain/T - 2.5 5*timeDomain/T - 2.5 5*timeDomain/T - 2.5];
-quats(2,:,:) = [zeros(T,1) -cos(timeDomain/50) timeDomain/T cos(timeDomain/30).^2];
+%positions(2,:,:) = [5*timeDomain/T - 2.5 5*timeDomain/T - 2.5 5*timeDomain/T - 2.5];
+positions(2,:,:) = squeeze(positions(1,:,:)) + [sin(timeDomain/60)+0.5,cos(timeDomain/100).^2,zeros(T,1)];
+quats(2,:,:) = [cos(timeDomain/60).^2 -cos(timeDomain/50) sin(timeDomain/40).^2 cos(timeDomain/30).^2];
 
 patterns = zeros(nObjects,nMarkers,3);
 patterns(1,:,:) = 0.5 * [1      1     1; 
@@ -26,8 +27,8 @@ patterns(2,:,:) = 0.5 * [-1     1     0;
                
 D = zeros(T,nObjects*nMarkers,3);
 
-frameDropRate = 0.0;
-markerDropRate = 0.0;
+frameDropRate = 0.1;
+markerDropRate = 0.1;
 markerNoise = 0.005;
 
 for t=1:T
@@ -42,10 +43,12 @@ for t=1:T
             % For now: Make sure there are at least two markers detected
             if sum(~missedDetections) < 6 && nMarkers > 1
                 in = randi(4);
+                missedDetectionsSimple(in) = 0;
                 missedDetections(in) = 0;
                 missedDetections(in+4) = 0;
                 missedDetections(in+8) = 0;
-
+                
+                missedDetectionsSimple( mod(in,4)+1 ) = 0;
                 missedDetections( mod(in,4)+1 ) = 0;
                 missedDetections( mod(in,4)+1+4 ) = 0;
                 missedDetections( mod(in,4)+1+8 ) = 0;
@@ -62,11 +65,13 @@ for t=1:T
                 mvnrnd(zeros(sum(~missedDetections),1), markerNoise*eye(sum(~missedDetections)),1)',...
                 sum(~missedDetectionsSimple),3); % add noise
             z = z + noise;
+            detections = NaN*ones(nMarkers, 3);
+            detections(~missedDetectionsSimple,:) = z;
         else
             % dropped frames don't have any detections
-            z = NaN * ones(nMarkers,3);
+            detections = NaN * ones(nMarkers,3);
         end
-        D(t, (i-1)*nMarkers+1:i*nMarkers, :) = z;
+        D(t, (i-1)*nMarkers+1:i*nMarkers, :) = detections;
     end
 end
 
@@ -75,4 +80,4 @@ for i = 1:nObjects
    initialStates(i,:) = [reshape(positions(i,1,:), 3,1); zeros(3,1); reshape(quats(i,1,:), 4,1); zeros(4,1)];
 end
 %% test MOT
-ownMOT(D, patterns, initialStates)
+ownMOT(D, patterns, initialStates, positions)

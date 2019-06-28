@@ -52,16 +52,21 @@ function ownMOT(D, patterns, initialStates, trueTrajectory)
 nObjects = 2;
 nMarkers = 4;
 
-[N, ~, dim] = size(D);
+[T, ~, dim] = size(D);
+%visParams.maxPos = squeeze(max(D,[],[1 2]));
+%visParams.minPos = squeeze(min(D,[],[1 2]));
 maxPos = squeeze(max(D,[],[1 2]));
 minPos = squeeze(min(D,[],[1 2]));
+visParams.trueTrajectory = trueTrajectory;
+visParams.D = D;
+visParams.nMarkers = nMarkers;
+visParams.T = T;
 
-T = N;
 processNoise.position = 30;
 processNoise.motion = 20;
 processNoise.quat = 30;
 processNoise.quatMotion = 30;
-measurementNoise = 5000;
+measurementNoise = 10000;
 model = 'extended';
 initialNoise.initPositionVar = 10;
 initialNoise.initMotionVar = 100;
@@ -72,14 +77,19 @@ nextId = 1; % ID of the next track
 tracks = initializeTracks();
 
 P = cell(nObjects ,1);
+%visParams.markersForVisualization = cell(nObjects,1);
 markersForVisualization = cell(nObjects,1);
 
+
+%visParams = animateMOT('init', visParams);
 initializeFigure();
 
 
 % Detect moving objects, and track them across video frames.
-for t = 1:N
+for t = 1:T
     detections = squeeze(D(t,:,:));
+    detections = reshape(detections(~isnan(detections)),[],dim);
+    
     predictNewLocationsOfTracks();
     [assignments, unassignedTracks, unassignedDetections] = detectionToTrackAssignment();
     
@@ -89,8 +99,14 @@ for t = 1:N
     %TODO implement createNewTracks
     %createNewTracks();
     
-    displayTrackingResults();
-    old_tracks = tracks;
+    %displayTrackingResults();
+    if t > 1 && t < 1000
+        %visParams.tracks = tracks;
+        %visParams.oldTracks = oldTracks;
+        %visParams = animateMOT('step', visParams, t);
+        displayTrackingResults();
+    end
+    oldTracks = tracks;
 end
 
 
@@ -203,6 +219,23 @@ end
         [assignments, unassignedTracks, unassignedDetections] = assignDetectionsToTracks(cost, costOfNonAssignment);
     end
 
+
+    function [assignments, unassignedTracks, unassignedDetections] = newDetectionToTrackAssignment()
+        
+        nTracks = length(tracks);
+        nDetections = size(detections, 1);
+        
+        % Compute the cost of assigning each detection to each marker.
+        cost = zeros(nTracks*nMarkers, nDetections);
+        for i = 1:nTracks
+            cost((i-1)*nMarkers+1:i*nMarkers, :) = distanceKalman(tracks(i).kalmanFilter, detections);
+        end
+        
+        % Solve the assignment problem.
+        costOfNonAssignment = 100;
+        [assignments, unassignedTracks, unassignedDetections] = assignDetectionsToTracks(cost, costOfNonAssignment);
+    end
+
 %% Update Assigned Tracks
 % The |updateAssignedTracks| function updates each assigned track with the
 % corresponding detection. It calls the |correct| method of
@@ -222,8 +255,8 @@ end
             
             % Correct the estimate of the object's location
             % using the new detection.
-            tracks(i).kalmanFilter.z = reshape(detectedMarkersForCurrentTrack, [], 1);
-            tracks(i).kalmanFilter = correctKalman(tracks(i).kalmanFilter, 1, tracks(i).kalmanParams);
+            tracks(currentTrackIdx).kalmanFilter.z = reshape(detectedMarkersForCurrentTrack, [], 1);
+            tracks(currentTrackIdx).kalmanFilter = correctKalman(tracks(currentTrackIdx).kalmanFilter, 1, tracks(currentTrackIdx).kalmanParams);
             
             % Replace predicted bounding box with detected
             % bounding box.
@@ -233,11 +266,11 @@ end
             %tracks(trackIdx).markers = detectedMarkersForCurrentTrack;
             
             % Update track's age.
-            tracks(i).age = tracks(i).age + 1;
+            tracks(currentTrackIdx).age = tracks(currentTrackIdx).age + 1;
             
             % Update visibility.
-            tracks(i).totalVisibleCount = tracks(i).totalVisibleCount + 1;
-            tracks(i).consecutiveInvisibleCount = 0;
+            tracks(currentTrackIdx).totalVisibleCount = tracks(currentTrackIdx).totalVisibleCount + 1;
+            tracks(currentTrackIdx).consecutiveInvisibleCount = 0;
         end
     end
 
@@ -348,9 +381,9 @@ end
         for k = 1:length(P)
             if t < T && t > 1
                 plot3(trueTrajectory(k,t:t+1,1),trueTrajectory(k,t:t+1,2), trueTrajectory(k,t:t+1,3), 'Color', cTrue(k,:));
-                plot3( [old_tracks(k).kalmanFilter.x(1); tracks(k).kalmanFilter.x(1)], ...
-                       [old_tracks(k).kalmanFilter.x(2); tracks(k).kalmanFilter.x(2)],...
-                       [old_tracks(k).kalmanFilter.x(3); tracks(k).kalmanFilter.x(3)], 'Color', cPredicted(k));
+                plot3( [oldTracks(k).kalmanFilter.x(1); tracks(k).kalmanFilter.x(1)], ...
+                       [oldTracks(k).kalmanFilter.x(2); tracks(k).kalmanFilter.x(2)],...
+                       [oldTracks(k).kalmanFilter.x(3); tracks(k).kalmanFilter.x(3)], 'Color', cPredicted(k));
             end
             dets = squeeze(D(t,(k-1)*nMarkers+1:k*nMarkers,:));
             markersForVisualization{k}.XData = dets(:,1);
@@ -358,6 +391,7 @@ end
             markersForVisualization{k}.ZData = dets(:,3);
         end
         drawnow
+        %pause(0.1)
     end
 
 %% Summary
