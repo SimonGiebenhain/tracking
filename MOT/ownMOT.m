@@ -49,7 +49,7 @@ function [estimatedPositions, estimatedQuats] = ownMOT(D, patterns, initialState
 % Create System objects used for reading video, detecting moving objects,
 % and displaying the results.
 
-nObjects = 2;
+nObjects = 3;
 nMarkers = 4;
 
 [T, ~, dim] = size(D);
@@ -76,7 +76,7 @@ initialNoise.initQuatMotionVar = 1000;
 nextId = 1; % ID of the next track
 tracks = initializeTracks();
 
-P = cell(nObjects ,1);
+%P = cell(nObjects ,1);
 %visParams.markersForVisualization = cell(nObjects,1);
 markersForVisualization = cell(nObjects,1);
 
@@ -372,31 +372,30 @@ end
 
     function initializeFigure()
         figure;
-        c = 'rb';
+        colors = distinguishable_colors(nObjects);
         scatter3([minPos(1), maxPos(1)], [minPos(2), maxPos(2)], [minPos(3), maxPos(3)], '*')
         hold on;
-        for k = 1:length(P)
-            plot3(trueTrajectory(k,1:2,1),trueTrajectory(k,1:2,2), trueTrajectory(k,1:2,3), c(k));
+        for k = 1:nObjects
+            plot3(trueTrajectory(k,1:2,1),trueTrajectory(k,1:2,2), trueTrajectory(k,1:2,3), 'Color', colors(k,:));
         end
-        for k = 1:length(markersForVisualization)
+        for k = 1:nObjects
             dets = squeeze(D(1,(k-1)*nMarkers+1:k*nMarkers,:));
-            markersForVisualization{k} = plot3(dets(:,1),dets(:,2), dets(:,3), '*', 'MarkerSize', 10, 'MarkerEdgeColor', c(k));
+            markersForVisualization{k} = plot3(dets(:,1),dets(:,2), dets(:,3), '*', 'MarkerSize', 10, 'MarkerEdgeColor', colors(k,:));
         end
         grid on;
         axis manual
     end
 
     function displayTrackingResults()
-        cPredicted = 'rb';
-        cTrue = [1   0.5 0.5;
-            0.5 0.5 1];
+        colorsPredicted = distinguishable_colors(nObjects);
+        colorsTrue = (colors + 2) ./ (max(colors,[],2) +2);
         
-        for k = 1:length(P)
+        for k = 1:nObjects
             if t < T && t > 1
-                plot3(trueTrajectory(k,t:t+1,1),trueTrajectory(k,t:t+1,2), trueTrajectory(k,t:t+1,3), 'Color', cTrue(k,:));
+                plot3(trueTrajectory(k,t:t+1,1),trueTrajectory(k,t:t+1,2), trueTrajectory(k,t:t+1,3), 'Color', colorsTrue(k,:));
                 plot3( [oldTracks(k).kalmanFilter.x(1); tracks(k).kalmanFilter.x(1)], ...
                     [oldTracks(k).kalmanFilter.x(2); tracks(k).kalmanFilter.x(2)],...
-                    [oldTracks(k).kalmanFilter.x(3); tracks(k).kalmanFilter.x(3)], 'Color', cPredicted(k));
+                    [oldTracks(k).kalmanFilter.x(3); tracks(k).kalmanFilter.x(3)], 'Color', colorsPredicted(k,:));
             end
             dets = squeeze(D(t,(k-1)*nMarkers+1:k*nMarkers,:));
             markersForVisualization{k}.XData = dets(:,1);

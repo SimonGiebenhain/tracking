@@ -1,17 +1,25 @@
 %% Generate Data
 T = 1000;
 nMarkers = 4;
-nObjects = 2;
+nObjects = 3;
 timeDomain = (1:T)';
 
 positions = zeros(nObjects,T,3);
 quats = zeros(nObjects,T,4);
 
-positions(1,:,:) = [timeDomain/T*5.*sin(timeDomain/32) cos(timeDomain/68).^2*5 sin(timeDomain/20).^2.*timeDomain/T*3];
-quats(1,:,:) = [sin(timeDomain/100) -cos(timeDomain/50) sin(timeDomain/60) cos(timeDomain/30).^2];
+funsPos{1} = @(x) [x/T*5.*sin(x/32) cos(x/68).^2*5 sin(x/20).^2.*x/T*3];
+funsPos{2} = @(x) funsPos{1}(x) + [sin(x/60)+0.5,cos(x/100).^2,zeros(T,1)];
+funsPos{3} = @(x) [x/T*5.*sin(x/32).^2 cos(x/68)*5 sin(x/90).^2.*x/T*3];
 
-positions(2,:,:) = squeeze(positions(1,:,:)) + [sin(timeDomain/60)+0.5,cos(timeDomain/100).^2,zeros(T,1)];
-quats(2,:,:) = [cos(timeDomain/60).^2 -cos(timeDomain/50) sin(timeDomain/40).^2 cos(timeDomain/30).^2];
+funsQuats{1} = @(x) [sin(x/100) -cos(x/50) sin(x/60) cos(x/30).^2];
+funsQuats{2} = @(x) [sin(x/1000).^2 -cos(x/50)*2 sin(x/60).^2 cos(x/30).^2];
+funsQuats{3} = @(x) [sin(x/100)*4 -cos(x/50) sin(x/60)*4 cos(x/30)];
+
+for i = 1:nObjects
+    positions(i,:,:) = funsPos{i}(timeDomain);
+    quats(i,:,:) = funsQuats{i}(timeDomain);
+end
+
 
 patterns = zeros(nObjects,nMarkers,3);
 patterns(1,:,:) = 0.5 * [1      1     1; 
@@ -23,6 +31,10 @@ patterns(2,:,:) = 0.5 * [-1     1     0;
                    -0.4   0.2   1; 
                    1.2    0.5  -1.5; 
                    0      2     0.5];
+patterns(3,:,:) = 0.5 * [-0.8     -0.5     0.4; 
+                   -1   0.5   1; 
+                   1.2    -0.5  0.6; 
+                   0.3      -2     -0.6];
                
 D = zeros(T,nObjects*nMarkers,3);
 
@@ -81,5 +93,6 @@ end
 %% test MOT
 [estimatedPositions, estimatedQuats] = ownMOT(D, patterns, initialStates, positions);
 
-%%
+%% Evaluate tracking performance 
+% Plot the estimation error of the positions and orientations
 performanceVisualization(estimatedPositions, positions, estimatedQuats, quats);
