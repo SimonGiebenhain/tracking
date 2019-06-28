@@ -1,5 +1,15 @@
 function performanceVisualization(estimatedPositions, positions, estimatedQuats, quats)
+%PERFORMANCEVISUALIZATION Visualize tracking errors of postion and
+%orientation for each object to track
+%   This function is not finished yet!
+%   TODO: Handle partial tracks!
+%
+%   this function visualizes the euclidean distances of the true position
+%   and orientation to the estimated ones for each tracked object.
+%   For large number of objects the visualization looks very messy.
+
     [nObjects, T, ~] = size(estimatedPositions);
+    colors = distinguishable_colors(nObjects);
     
     positionDistances = sqrt(sum((estimatedPositions - positions).^2,3));
     
@@ -18,7 +28,7 @@ function performanceVisualization(estimatedPositions, positions, estimatedQuats,
     hold on;
     for i =1:nObjects
         name = sprintf('Object %d', i);
-        plot(1:T, positionDistances(i,:), 'DisplayName', name)
+        plot(1:T, positionDistances(i,:), 'DisplayName', name, 'Color', colors(i,:))
     end
     legend;
     title('Position estimation error');
@@ -28,7 +38,7 @@ function performanceVisualization(estimatedPositions, positions, estimatedQuats,
     hold on;
     for i = 1:nObjects
         name = sprintf('Object %d', i);
-        plot(1:T, quatsDistances(i,:), 'DisplayName', name)
+        plot(1:T, quatsDistances(i,:), 'DisplayName', name, 'Color', colors(i,:))
     end
     legend;
     title('Orientation estimaton error');

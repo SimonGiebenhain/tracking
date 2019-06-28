@@ -44,12 +44,11 @@
 % <matlab:helpview(fullfile(docroot,'toolbox','matlab','matlab_prog','matlab_prog.map'),'nested_functions') nested functions>
 % below.
 
-function [estimatedPositions, estimatedQuats] = ownMOT(D, patterns, initialStates, trueTrajectory)
+function [estimatedPositions, estimatedQuats] = ownMOT(D, patterns, initialStates, nObjects, trueTrajectory)
 
 % Create System objects used for reading video, detecting moving objects,
 % and displaying the results.
 
-nObjects = 3;
 nMarkers = 4;
 
 [T, ~, dim] = size(D);
@@ -57,10 +56,11 @@ nMarkers = 4;
 %visParams.minPos = squeeze(min(D,[],[1 2]));
 maxPos = squeeze(max(D,[],[1 2]));
 minPos = squeeze(min(D,[],[1 2]));
-visParams.trueTrajectory = trueTrajectory;
-visParams.D = D;
-visParams.nMarkers = nMarkers;
-visParams.T = T;
+
+%visParams.trueTrajectory = trueTrajectory;
+%visParams.D = D;
+%visParams.nMarkers = nMarkers;
+%visParams.T = T;
 
 processNoise.position = 30;
 processNoise.motion = 20;
@@ -227,7 +227,7 @@ end
         end
         
         % Solve the assignment problem.
-        costOfNonAssignment = 300;
+        costOfNonAssignment = 3000;
         [assignments, unassignedTracks, unassignedDetections] = assignDetectionsToTracks(cost, costOfNonAssignment);
     end
 
@@ -335,30 +335,39 @@ end
 % to eliminate noisy detections, such as size, location, or appearance.
 
     function createNewTracks()
-        centers = detections(unassignedDetections, :);
-        
-        for i = 1:size(centers, 1)
-            
-            center = centers(i,:);
-            
-            % Create a Kalman filter object.
-            kalmanFilter = configureKalmanFilter('ConstantVelocity', ...
-                center, [100, 40], [100, 70], 100);
-            
-            % Create a new track.
-            newTrack = struct(...
-                'id', nextId, ...
-                'center', center, ...
-                'kalmanFilter', kalmanFilter, ...
-                'age', 1, ...
-                'totalVisibleCount', 1, ...
-                'consecutiveInvisibleCount', 0);
-            
-            % Add it to the array of tracks.
-            tracks(end + 1) = newTrack;
-            
-            % Increment the next id.
-            nextId = nextId + 1;
+        if ~isempty(unassignedDetections)
+
+            %TODO
+            [positions, quaternions, patternIdx] = match_patterns( detections(unassignedDetections, :), patterns, 'initial');
+
+            for i = 1:size(positions, 1)
+
+                pos = positions(i,:);
+                quat = quaternions(i,:);
+
+                % Create a Kalman filter object.
+                %kalmanFilter = configureKalmanFilter('ConstantVelocity', ...
+                %    center, [100, 40], [100, 70], 100);
+
+                [s, kalmanParams] = setupKalman(squeeze(patterns(i,:,:)), -1, model, measurementNoise, processNoise, initialNoise);
+                s.x = [pos'; zeros(3,1); quat'; zeros(4,1)];
+                % TODO also estimate uncertainty
+                s.P = eye(2*dim+8) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initQuatVar; kalmanParams.initQuatMotionVar], [dim, dim, 4, 4]);
+                s.pattern = squeeze(patterns(patternIdx(i),:,:));
+                tracks(i) = struct(...
+                    'id', nextId, ... %'center', , ...
+                    'kalmanFilter', s, ...
+                    'kalmanParams', kalmanParams, ...
+                    'age', 1, ...
+                    'totalVisibleCount', 1, ...
+                    'consecutiveInvisibleCount', 0);
+
+                % Add it to the array of tracks.
+                tracks(end + 1) = newTrack;
+
+                % Increment the next id.
+                nextId = nextId + 1;
+            end
         end
     end
 
@@ -375,8 +384,10 @@ end
         colors = distinguishable_colors(nObjects);
         scatter3([minPos(1), maxPos(1)], [minPos(2), maxPos(2)], [minPos(3), maxPos(3)], '*')
         hold on;
-        for k = 1:nObjects
-            plot3(trueTrajectory(k,1:2,1),trueTrajectory(k,1:2,2), trueTrajectory(k,1:2,3), 'Color', colors(k,:));
+        if exist('trueTrajectory', 'var')
+            for k = 1:nObjects
+                plot3(trueTrajectory(k,1:2,1),trueTrajectory(k,1:2,2), trueTrajectory(k,1:2,3), 'Color', colors(k,:));
+            end
         end
         for k = 1:nObjects
             dets = squeeze(D(1,(k-1)*nMarkers+1:k*nMarkers,:));
@@ -388,14 +399,18 @@ end
 
     function displayTrackingResults()
         colorsPredicted = distinguishable_colors(nObjects);
-        colorsTrue = (colors + 2) ./ (max(colors,[],2) +2);
+        colorsTrue = (colorsPredicted + 2) ./ (max(colorsPredicted,[],2) +2);
         
         for k = 1:nObjects
             if t < T && t > 1
-                plot3(trueTrajectory(k,t:t+1,1),trueTrajectory(k,t:t+1,2), trueTrajectory(k,t:t+1,3), 'Color', colorsTrue(k,:));
+                if exist('trueTrajectory', 'var')
+                    plot3(trueTrajectory(k,t:t+1,1), trueTrajectory(k,t:t+1,2), ...
+                          trueTrajectory(k,t:t+1,3), 'Color', colorsTrue(k,:));
+                end
                 plot3( [oldTracks(k).kalmanFilter.x(1); tracks(k).kalmanFilter.x(1)], ...
-                    [oldTracks(k).kalmanFilter.x(2); tracks(k).kalmanFilter.x(2)],...
-                    [oldTracks(k).kalmanFilter.x(3); tracks(k).kalmanFilter.x(3)], 'Color', colorsPredicted(k,:));
+                       [oldTracks(k).kalmanFilter.x(2); tracks(k).kalmanFilter.x(2)], ...
+                       [oldTracks(k).kalmanFilter.x(3); tracks(k).kalmanFilter.x(3)], ... 
+                       'Color', colorsPredicted(k,:));
             end
             dets = squeeze(D(t,(k-1)*nMarkers+1:k*nMarkers,:));
             markersForVisualization{k}.XData = dets(:,1);

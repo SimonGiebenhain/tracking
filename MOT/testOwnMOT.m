@@ -38,8 +38,8 @@ patterns(3,:,:) = 0.5 * [-0.8     -0.5     0.4;
                
 D = zeros(T,nObjects*nMarkers,3);
 
-frameDropRate = 0.2;
-markerDropRate = 0.3;
+frameDropRate = 0.0;
+markerDropRate = 0.2;
 markerNoise = 0.005;
 
 for t=1:T
@@ -65,19 +65,24 @@ for t=1:T
                 missedDetections( mod(in,4)+1+8 ) = 0;
             end
 
-            % Delete some rows in H and R to accomodate for the missed
-            % measurements.
-            Rot = quatToMat();
-            Rot = Rot(quats(i,t,:));
-            
-            z = (Rot*squeeze(patterns(i,:,:))')' + squeeze(positions(i,t,:))';
-            z = z(~missedDetectionsSimple, :);
-            noise = reshape( ... 
-                mvnrnd(zeros(sum(~missedDetections),1), markerNoise*eye(sum(~missedDetections)),1)',...
-                sum(~missedDetectionsSimple),3); % add noise
-            z = z + noise;
-            detections = NaN*ones(nMarkers, 3);
-            detections(~missedDetectionsSimple,:) = z;
+            if sum(~missedDetections) < 6
+                detections = NaN * ones(nMarkers,3);
+            else
+
+                % Delete some rows in H and R to accomodate for the missed
+                % measurements.
+                Rot = quatToMat();
+                Rot = Rot(quats(i,t,:));
+
+                z = (Rot*squeeze(patterns(i,:,:))')' + squeeze(positions(i,t,:))';
+                z = z(~missedDetectionsSimple, :);
+                noise = reshape( ... 
+                    mvnrnd(zeros(sum(~missedDetections),1), markerNoise*eye(sum(~missedDetections)),1)',...
+                    sum(~missedDetectionsSimple),3); % add noise
+                z = z + noise;
+                detections = NaN*ones(nMarkers, 3);
+                detections(~missedDetectionsSimple,:) = z;
+            end
         else
             % dropped frames don't have any detections
             detections = NaN * ones(nMarkers,3);
