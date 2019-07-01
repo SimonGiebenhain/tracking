@@ -66,15 +66,16 @@ processNoise.position = 30;
 processNoise.motion = 20;
 processNoise.quat = 30;
 processNoise.quatMotion = 30;
-measurementNoise = 5000;
+measurementNoise = 100;
 model = 'extended';
-initialNoise.initPositionVar = 10;
-initialNoise.initMotionVar = 100;
-initialNoise.initQuatVar = 10000;
-initialNoise.initQuatMotionVar = 1000;
+initialNoise.initPositionVar = 5;
+initialNoise.initMotionVar = 5;
+initialNoise.initQuatVar = 5;
+initialNoise.initQuatMotionVar = 5;
 
 nextId = 1; % ID of the next track
 tracks = initializeTracks();
+unassignedPatterns = {};
 
 %P = cell(nObjects ,1);
 %visParams.markersForVisualization = cell(nObjects,1);
@@ -82,7 +83,7 @@ markersForVisualization = cell(nObjects,1);
 
 
 %visParams = animateMOT('init', visParams);
-initializeFigure();
+%initializeFigure();
 
 estimatedPositions = zeros(nObjects, T, 3);
 estimatedQuats = zeros(nObjects, T, 4);
@@ -100,15 +101,16 @@ for t = 1:T
     updateUnassignedTracks();
     deleteLostTracks();
     %TODO implement createNewTracks
-    %createNewTracks();
+    createNewTracks();
     
+    t
     %displayTrackingResults();
-    if t > 1 && t < 1000
-        %visParams.tracks = tracks;
-        %visParams.oldTracks = oldTracks;
-        %visParams = animateMOT('step', visParams, t);
-        displayTrackingResults();
-    end
+    %if t > 1 && t < T
+    %visParams.tracks = tracks;
+    %visParams.oldTracks = oldTracks;
+    %visParams = animateMOT('step', visParams, t);
+    %displayTrackingResults();
+    %end
     
     % Store tracking results
     for ii = 1:nObjects
@@ -227,7 +229,7 @@ end
         end
         
         % Solve the assignment problem.
-        costOfNonAssignment = 3000;
+        costOfNonAssignment = 150;
         [assignments, unassignedTracks, unassignedDetections] = assignDetectionsToTracks(cost, costOfNonAssignment);
     end
 
@@ -244,7 +246,7 @@ end
         end
         
         % Solve the assignment problem.
-        costOfNonAssignment = 100;
+        costOfNonAssignment = 500;
         [assignments, unassignedTracks, unassignedDetections] = assignDetectionsToTracks(cost, costOfNonAssignment);
     end
 
@@ -311,7 +313,7 @@ end
         end
         
         invisibleForTooLong = 150;
-        ageThreshold = 5;
+        ageThreshold = 0;
         visibilityFraction = 0.5;
         
         % Compute the fraction of the track's age for which it was visible.
@@ -320,10 +322,13 @@ end
         visibility = totalVisibleCounts ./ ages;
         
         % Find the indices of 'lost' tracks.
-        lostInds = (ages < ageThreshold & visibility < visibilityFraction) | [tracks(:).consecutiveInvisibleCount] >= invisibleForTooLong;
+        lostIdx = (ages < ageThreshold & visibility < visibilityFraction) | [tracks(:).consecutiveInvisibleCount] >= invisibleForTooLong;
         
+        for i=1:length(lostIdx)
+            unassignedPatterns{end+1} = tracks(i).klamanFilter.pattern;
+        end
         % Delete lost tracks.
-        tracks = tracks(~lostInds);
+        tracks = tracks(~lostIdx);
     end
 
 
@@ -336,38 +341,63 @@ end
 
     function createNewTracks()
         if ~isempty(unassignedDetections)
-
-            %TODO
-            [positions, quaternions, patternIdx] = match_patterns( detections(unassignedDetections, :), patterns, 'initial');
-
-            for i = 1:size(positions, 1)
-
-                pos = positions(i,:);
-                quat = quaternions(i,:);
-
+            clusters = clusterUnassignedDetections(unassignedDetections, epsilon);
+            
+            costMatrix = zeros(length(unassignedPatterns), length(clusters));
+            rotMatsMatrix = zeros(length(unassignedPatterns), length(clusters), 3,3);
+            translationsMatrix = zeros(length(unassignedPatterns), length(clusters), 3);
+            for i = 1:length(unassignedPatterns)
+                for j = 1:length(clusters)
+                    [R, translation, MSE] = umeyama(unassignedPatterns{i}', clusters{j}');
+                    costMatrix(i,j) = MSE;
+                    rotMatsMatrix(i,j,:,:) = R;
+                    translationsMatrix(i,j,:) = translation;
+                end
+            end
+            
+            costOfNonAssignment = 50;
+            [patternToClusterAssignment, stillUnassignedPatterns, ~] = ...
+                assignDetectionsTpTracks(costMatrix, costOfNonAssignment);
+            
+            
+            %for each (i,j) in patternToClusterAssignment createNewTrack
+            for i=1:size(patternToClusterAssignment,1)
+                [patternIdx, clusterIdx] = patternToClusterAssignment(i,:);
+                pos = squeeze( translationsMatrix(patternIdx, clusterIdx,:) );
+                quat = matToQuat( squeeze(rotMatsMatrix(patternIdx, clusterIdx, :,:)) );
+                
                 % Create a Kalman filter object.
-                %kalmanFilter = configureKalmanFilter('ConstantVelocity', ...
-                %    center, [100, 40], [100, 70], 100);
-
-                [s, kalmanParams] = setupKalman(squeeze(patterns(i,:,:)), -1, model, measurementNoise, processNoise, initialNoise);
+                %TODO adaptive initial Noise!!!!
+                [s, kalmanParams] = setupKalman(squeeze(unassignedPatterns{patternIdx}), -1, model, measurementNoise, processNoise, initialNoise);
                 s.x = [pos'; zeros(3,1); quat'; zeros(4,1)];
                 % TODO also estimate uncertainty
                 s.P = eye(2*dim+8) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initQuatVar; kalmanParams.initQuatMotionVar], [dim, dim, 4, 4]);
-                s.pattern = squeeze(patterns(patternIdx(i),:,:));
-                tracks(i) = struct(...
+                s.pattern = squeeze(unassignedPatterns{patternIdx});
+                newTrack = struct(...
                     'id', nextId, ... %'center', , ...
                     'kalmanFilter', s, ...
                     'kalmanParams', kalmanParams, ...
                     'age', 1, ...
                     'totalVisibleCount', 1, ...
                     'consecutiveInvisibleCount', 0);
-
+                
                 % Add it to the array of tracks.
                 tracks(end + 1) = newTrack;
-
+                
                 % Increment the next id.
                 nextId = nextId + 1;
+                
             end
+            
+            %remove patternToClusterAssignment(:,1) from unassignedPatterns
+            unassignedPatterns = unassignedPatterns{stillUnassignedPatterns};
+            
+            % then do pattern matching
+            % then maybe umeyama to get rotation an translation
+            % from that get initial center and rotation
+            % Question how many detections in a cluster do I need for it to
+            % work?
+            
         end
     end
 
@@ -400,17 +430,16 @@ end
     function displayTrackingResults()
         colorsPredicted = distinguishable_colors(nObjects);
         colorsTrue = (colorsPredicted + 2) ./ (max(colorsPredicted,[],2) +2);
-        
         for k = 1:nObjects
             if t < T && t > 1
                 if exist('trueTrajectory', 'var')
                     plot3(trueTrajectory(k,t:t+1,1), trueTrajectory(k,t:t+1,2), ...
-                          trueTrajectory(k,t:t+1,3), 'Color', colorsTrue(k,:));
+                        trueTrajectory(k,t:t+1,3), 'Color', colorsTrue(k,:));
                 end
                 plot3( [oldTracks(k).kalmanFilter.x(1); tracks(k).kalmanFilter.x(1)], ...
-                       [oldTracks(k).kalmanFilter.x(2); tracks(k).kalmanFilter.x(2)], ...
-                       [oldTracks(k).kalmanFilter.x(3); tracks(k).kalmanFilter.x(3)], ... 
-                       'Color', colorsPredicted(k,:));
+                    [oldTracks(k).kalmanFilter.x(2); tracks(k).kalmanFilter.x(2)], ...
+                    [oldTracks(k).kalmanFilter.x(3); tracks(k).kalmanFilter.x(3)], ...
+                    'Color', colorsPredicted(k,:));
             end
             dets = squeeze(D(t,(k-1)*nMarkers+1:k*nMarkers,:));
             markersForVisualization{k}.XData = dets(:,1);
@@ -419,9 +448,12 @@ end
         end
         drawnow
         %pause(0.1)
+        %for k=1:nObjects
+        %   delete(birds{k});
+        %end
     end
 
-    
+
 
 %% Summary
 % This example created a motion-based system for detecting and
