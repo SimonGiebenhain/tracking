@@ -75,7 +75,7 @@ initialNoise.initQuatMotionVar = 5;
 
 nextId = 1; % ID of the next track
 tracks = initializeTracks();
-unassignedPatterns = {};
+unassignedPatterns = zeros(nObjects, 1);
 
 %P = cell(nObjects ,1);
 %visParams.markersForVisualization = cell(nObjects,1);
@@ -83,7 +83,7 @@ markersForVisualization = cell(nObjects,1);
 
 
 %visParams = animateMOT('init', visParams);
-%initializeFigure();
+initializeFigure();
 
 estimatedPositions = zeros(nObjects, T, 3);
 estimatedQuats = zeros(nObjects, T, 4);
@@ -104,7 +104,10 @@ for t = 1:T
     createNewTracks();
     
     t
-    %displayTrackingResults();
+    if t > 3000
+        displayTrackingResults();
+    end
+    
     %if t > 1 && t < T
     %visParams.tracks = tracks;
     %visParams.oldTracks = oldTracks;
@@ -114,9 +117,14 @@ for t = 1:T
     
     % Store tracking results
     for ii = 1:nObjects
-        state = tracks(ii).kalmanFilter.x;
-        estimatedPositions(ii,t,:) = state(1:dim);
-        estimatedQuats(ii,t,:) = state(2*dim+1:2*dim+4);
+        if tracks(ii).age > 0
+            state = tracks(ii).kalmanFilter.x;
+            estimatedPositions(ii,t,:) = state(1:dim);
+            estimatedQuats(ii,t,:) = state(2*dim+1:2*dim+4);
+        else
+            estimatedPositions(ii,t,:) = ones(3,1) * NaN;
+            estimatedQuats(ii,t,:) = ones(4,1) * NaN;
+        end
     end
     
     oldTracks = tracks;
@@ -180,8 +188,10 @@ end
 
     function predictNewLocationsOfTracks()
         for i = 1:length(tracks)
+            if tracks(i).age > 0
             % Predict the current location of the track.
-            tracks(i).kalmanFilter = predictKalman(tracks(i).kalmanFilter, 1, tracks(i).kalmanParams, 'extended');
+                tracks(i).kalmanFilter = predictKalman(tracks(i).kalmanFilter, 1, tracks(i).kalmanParams, 'extended');
+            end
         end
     end
 
@@ -225,11 +235,15 @@ end
         % Compute the cost of assigning each detection to each marker.
         cost = zeros(nTracks*nMarkers, nDetections);
         for i = 1:nTracks
-            cost((i-1)*nMarkers+1:i*nMarkers, :) = distanceKalman(tracks(i).kalmanFilter, detections);
+            if tracks(i).age > 0
+                cost((i-1)*nMarkers+1:i*nMarkers, :) = distanceKalman(tracks(i).kalmanFilter, detections);
+            else
+                cost((i-1)*nMarkers+1:i*nMarkers, :) = Inf;
+            end
         end
         
         % Solve the assignment problem.
-        costOfNonAssignment = 150;
+        costOfNonAssignment = 120;
         [assignments, unassignedTracks, unassignedDetections] = assignDetectionsToTracks(cost, costOfNonAssignment);
     end
 
@@ -258,6 +272,16 @@ end
 % visible count by 1. Finally, the function sets the invisible count to 0.
 
     function updateAssignedTracks()
+        
+        
+        
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        % TOOOOODDDDDDOOOOOOO
+        % handle lost tracks, i.e. age == 0 !!!!
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        
+        
+        
         assignments = double(assignments);
         allAssignedTracksIdx = unique(floor((assignments(:,1)-1)/nMarkers) + 1);
         nAssignedTracks = length(allAssignedTracksIdx);
@@ -297,8 +321,10 @@ end
         nUnassignedTracks = length(allUnassignedTracksIdx);
         for i = 1:nUnassignedTracks
             unassignedTrackIdx = allUnassignedTracksIdx(i);
-            tracks(unassignedTrackIdx).age = tracks(unassignedTrackIdx).age + 1;
-            tracks(unassignedTrackIdx).consecutiveInvisibleCount = tracks(unassignedTrackIdx).consecutiveInvisibleCount + 1;
+            if tracks(unassignedTrackIdx).age > 0;
+                tracks(unassignedTrackIdx).age = tracks(unassignedTrackIdx).age + 1;
+                tracks(unassignedTrackIdx).consecutiveInvisibleCount = tracks(unassignedTrackIdx).consecutiveInvisibleCount + 1;
+            end
         end
     end
 
@@ -312,7 +338,7 @@ end
             return;
         end
         
-        invisibleForTooLong = 150;
+        invisibleForTooLong = 160;
         ageThreshold = 0;
         visibilityFraction = 0.5;
         
@@ -322,13 +348,17 @@ end
         visibility = totalVisibleCounts ./ ages;
         
         % Find the indices of 'lost' tracks.
-        lostIdx = (ages < ageThreshold & visibility < visibilityFraction) | [tracks(:).consecutiveInvisibleCount] >= invisibleForTooLong;
-        
-        for i=1:length(lostIdx)
-            unassignedPatterns{end+1} = tracks(i).klamanFilter.pattern;
+        lostIdxBool = (( ages < ageThreshold & visibility < visibilityFraction) | [tracks(:).consecutiveInvisibleCount] >= invisibleForTooLong) & (ages > 0);
+        lostIdx = find(lostIdxBool);
+        if ~isempty(lostIdx)
+            for i=1:length(lostIdx)
+                %unassignedPatterns{end+1} = tracks(lostIdx(i)).kalmanFilter.pattern;
+                unassignedPatterns(lostIdx(i)) = 1;
+                % Mark track as lost, i.e. set age to 0
+                % TODO: Also wipe other attributes
+                tracks(lostIdx(i)).age = 0;
+            end
         end
-        % Delete lost tracks.
-        tracks = tracks(~lostIdx);
     end
 
 
@@ -340,41 +370,59 @@ end
 % to eliminate noisy detections, such as size, location, or appearance.
 
     function createNewTracks()
-        if ~isempty(unassignedDetections)
-            clusters = clusterUnassignedDetections(unassignedDetections, epsilon);
+        if length(unassignedDetections) > 1 && sum(unassignedPatterns) > 0
+            epsilon = 100;
+            clustersRaw = clusterUnassignedDetections(unassignedDetections, epsilon);
+            nClusters = 0;
+            for i=1:length(clustersRaw)
+                if size(clustersRaw{i},1) == 4
+                    clusters{i} = clustersRaw{i};
+                    nClusters = nClusters + 1;
+                end
+            end
             
-            costMatrix = zeros(length(unassignedPatterns), length(clusters));
-            rotMatsMatrix = zeros(length(unassignedPatterns), length(clusters), 3,3);
-            translationsMatrix = zeros(length(unassignedPatterns), length(clusters), 3);
-            for i = 1:length(unassignedPatterns)
+            if nClusters < 1
+                return
+            end
+            
+            costMatrix = zeros(sum(unassignedPatterns), length(clusters));
+            rotMatsMatrix = zeros(sum(unassignedPatterns), length(clusters), 3,3);
+            translationsMatrix = zeros(sum(unassignedPatterns), length(clusters), 3);
+            unassignedPatternsIdx = find(unassignedPatterns);
+            for i = 1:sum(unassignedPatterns)
                 for j = 1:length(clusters)
-                    [R, translation, MSE] = umeyama(unassignedPatterns{i}', clusters{j}');
+                    pattern = squeeze(patterns(unassignedPatternsIdx(i),:,:));
+                    % TODO bettern method that works for different number
+                    % of points as well
+                    [R, translation, MSE] = umeyama(pattern', detections(clusters{j},:)');
                     costMatrix(i,j) = MSE;
                     rotMatsMatrix(i,j,:,:) = R;
                     translationsMatrix(i,j,:) = translation;
                 end
             end
             
-            costOfNonAssignment = 50;
+            costOfNonAssignment = 3000;
             [patternToClusterAssignment, stillUnassignedPatterns, ~] = ...
-                assignDetectionsTpTracks(costMatrix, costOfNonAssignment);
+                assignDetectionsToTracks(costMatrix, costOfNonAssignment);
             
             
             %for each (i,j) in patternToClusterAssignment createNewTrack
             for i=1:size(patternToClusterAssignment,1)
-                [patternIdx, clusterIdx] = patternToClusterAssignment(i,:);
-                pos = squeeze( translationsMatrix(patternIdx, clusterIdx,:) );
-                quat = matToQuat( squeeze(rotMatsMatrix(patternIdx, clusterIdx, :,:)) );
+                [specificPatternIdx, clusterIdx] = patternToClusterAssignment(i,:);
+                pos = squeeze( translationsMatrix(specificPatternIdx, clusterIdx,:) );
+                quat = matToQuat( squeeze(rotMatsMatrix(specificPatternIdx, clusterIdx, :,:)) );
                 
                 % Create a Kalman filter object.
                 %TODO adaptive initial Noise!!!!
-                [s, kalmanParams] = setupKalman(squeeze(unassignedPatterns{patternIdx}), -1, model, measurementNoise, processNoise, initialNoise);
+                patternIdx = unassignedPatternIdx(specificPatternIdx);
+                pattern = squeeze( patterns(patternIdx,:,:));
+                [s, kalmanParams] = setupKalman(pattern, -1, model, measurementNoise, processNoise, initialNoise);
                 s.x = [pos'; zeros(3,1); quat'; zeros(4,1)];
                 % TODO also estimate uncertainty
                 s.P = eye(2*dim+8) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initQuatVar; kalmanParams.initQuatMotionVar], [dim, dim, 4, 4]);
-                s.pattern = squeeze(unassignedPatterns{patternIdx});
+                s.pattern = pattern;
                 newTrack = struct(...
-                    'id', nextId, ... %'center', , ...
+                    'id', patternIdx, ... 
                     'kalmanFilter', s, ...
                     'kalmanParams', kalmanParams, ...
                     'age', 1, ...
@@ -382,15 +430,15 @@ end
                     'consecutiveInvisibleCount', 0);
                 
                 % Add it to the array of tracks.
-                tracks(end + 1) = newTrack;
+                tracks(patternIdx) = newTrack;
                 
                 % Increment the next id.
-                nextId = nextId + 1;
+                %nextId = nextId + 1;
+                unassignedPatterns(patternIdx) = 0;
                 
             end
             
-            %remove patternToClusterAssignment(:,1) from unassignedPatterns
-            unassignedPatterns = unassignedPatterns{stillUnassignedPatterns};
+           
             
             % then do pattern matching
             % then maybe umeyama to get rotation an translation
@@ -436,10 +484,12 @@ end
                     plot3(trueTrajectory(k,t:t+1,1), trueTrajectory(k,t:t+1,2), ...
                         trueTrajectory(k,t:t+1,3), 'Color', colorsTrue(k,:));
                 end
-                plot3( [oldTracks(k).kalmanFilter.x(1); tracks(k).kalmanFilter.x(1)], ...
-                    [oldTracks(k).kalmanFilter.x(2); tracks(k).kalmanFilter.x(2)], ...
-                    [oldTracks(k).kalmanFilter.x(3); tracks(k).kalmanFilter.x(3)], ...
-                    'Color', colorsPredicted(k,:));
+                if oldTracks(k).age > 0 && tracks(k).age > 0
+                    plot3( [oldTracks(k).kalmanFilter.x(1); tracks(k).kalmanFilter.x(1)], ...
+                        [oldTracks(k).kalmanFilter.x(2); tracks(k).kalmanFilter.x(2)], ...
+                        [oldTracks(k).kalmanFilter.x(3); tracks(k).kalmanFilter.x(3)], ...
+                        'Color', colorsPredicted(k,:));
+                end
             end
             dets = squeeze(D(t,(k-1)*nMarkers+1:k*nMarkers,:));
             markersForVisualization{k}.XData = dets(:,1);

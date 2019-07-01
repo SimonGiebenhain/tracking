@@ -70,7 +70,7 @@ switch model
             s.x = s.A*s.x;
             s.P = s.A * s.P * s.A' + s.Q;
             % Compute Kalman gain factor:
-            K = s.P*s.H'*inv(s.H*s.P*s.H'+s.R);
+            K = s.P*s.H'/(s.H*s.P*s.H'+s.R);
             
             % Correction based on observation (if observation is present):
             if isfield(s,'z') && sum(isnan(s.z)) < 1
@@ -175,7 +175,7 @@ switch model
                 %Evaluate Jacobian at current position
                 J = J(s.x);
                 % Compute Kalman gain factor:
-                K = s.P*J'*inv(J*s.P*J'+s.R);
+                K = s.P*J'/(J*s.P*J'+s.R);
                 
                 if noKnowledge
                     z = s.H(s.x);

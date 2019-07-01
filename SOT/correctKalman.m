@@ -18,12 +18,12 @@ if noKnowledge
     assignment = match_patterns(pattern, reshape(detections, [],dim) - s.x(1:dim)', 'ML', Rot(s.x(2*dim+1:2*dim+4)));
     
     % Print in case an error was made in the assignment
-    inversions = assignment(2:end) - assignment(1:end-1);
-    if min(inversions) < 1
-        assignment
-    else
-        fprintf('yay\n')
-    end
+    %inversions = assignment(2:end) - assignment(1:end-1);
+    %if min(inversions) < 1
+    %    assignment
+    %else
+    %    fprintf('yay\n')
+    %end
     
     % construct H and R from assignment vector, i.e. delete the
     % corresponding rows in H and R.

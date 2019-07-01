@@ -268,4 +268,4 @@ allT = 2:1001;
 truQuats = [sin(allT'/100) -cos(allT'/50) sin(allT'/60) cos(allT'/30).^2];
 truQuats = truQuats ./ sqrt(sum(truQuats.^2,2));
 figure;
-plot(1:1000, sum((quats-truQuats).^2,2))
+plot(1:1000, sqrt(sum((quats-truQuats).^2,2)))

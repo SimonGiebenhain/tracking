@@ -119,23 +119,18 @@ for t=1:T
         missed_detections_simple = rand(4,1) < marker_drop_rate;
         missed_detections = repmat(missed_detections_simple, 3,1);
         
-        if sum(missed_detections_simple) == 4
-            s(t).z = [NaN;NaN;NaN;NaN;NaN;NaN;NaN;NaN;NaN;NaN;NaN;NaN];
-            s(t+1) = kalman_step(s(t), no_knowledge, global_params, model, missed_detections);
-            continue;
-        end
         % TODO handle cases when only 1 marker was detected per in a frame
         % For now: Make sure there are at least two markers detected
-%         if sum(~missed_detections) < 6
-%             in = randi(4);
-%             missed_detections(in) = 0;
-%             missed_detections(in+4) = 0;
-%             missed_detections(in+8) = 0;
-%             
-%             missed_detections( mod(in,4)+1 ) = 0;
-%             missed_detections( mod(in,4)+1+4 ) = 0;
-%             missed_detections( mod(in,4)+1+8 ) = 0;
-%         end
+        if sum(~missed_detections) < 6
+            in = randi(4);
+            missed_detections(in) = 0;
+            missed_detections(in+4) = 0;
+            missed_detections(in+8) = 0;
+            
+            missed_detections( mod(in,4)+1 ) = 0;
+            missed_detections( mod(in,4)+1+4 ) = 0;
+            missed_detections( mod(in,4)+1+8 ) = 0;
+        end
         
         if strcmp(model,'linear')
             % Delete some rows in H and R to accomodate for the missed
