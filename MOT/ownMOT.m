@@ -1,97 +1,60 @@
-%% Motion-Based Multiple Object Tracking
-% This example shows how to perform automatic detection and motion-based
-% tracking of moving objects in a video from a stationary camera.
-%
-%   Copyright 2014 The MathWorks, Inc.
+%% Multi Object Tracking
+% The original code structure comes from the MATLAB tutorial for motioan
+% based multi object tracking: 
+% https://de.mathworks.com/help/vision/examples/motion-based-multiple-object-tracking.html
 
-%%
-% Detection of moving objects and motion-based tracking are important
-% components of many computer vision applications, including activity
-% recognition, traffic monitoring, and automotive safety.  The problem of
-% motion-based object tracking can be divided into two parts:
-%
-% # Detecting moving objects in each frame
-% # Associating the detections corresponding to the same object over time
-%
-% The detection of moving objects uses a background subtraction algorithm
-% based on Gaussian mixture models. Morphological operations are applied to
-% the resulting foreground mask to eliminate noise. Finally, blob analysis
-% detects groups of connected pixels, which are likely to correspond to
-% moving objects.
-%
-% The association of detections to the same object is based solely on
-% motion. The motion of each track is estimated by a Kalman filter. The
-% filter is used to predict the track's location in each frame, and
-% determine the likelihood of each detection being assigned to each
-% track.
-%
-% Track maintenance becomes an important aspect of this example. In any
-% given frame, some detections may be assigned to tracks, while other
-% detections and tracks may remain unassigned. The assigned tracks are
-% updated using the corresponding detections. The unassigned tracks are
-% marked invisible. An unassigned detection begins a new track.
-%
-% Each track keeps count of the number of consecutive frames, where it
-% remained unassigned. If the count exceeds a specified threshold, the
-% example assumes that the object left the field of view and it deletes the
-% track.
-%
-% For more information please see
-% <matlab:helpview(fullfile(docroot,'toolbox','vision','vision.map'),'multipleObjectTracking') Multiple Object Tracking>.
-%
-% This example is a function with the main body at the top and helper
-% routines in the form of
-% <matlab:helpview(fullfile(docroot,'toolbox','matlab','matlab_prog','matlab_prog.map'),'nested_functions') nested functions>
-% below.
+% TODO
+% Explanation goes here
 
 function [estimatedPositions, estimatedQuats] = ownMOT(D, patterns, initialStates, nObjects, trueTrajectory)
-
-% Create System objects used for reading video, detecting moving objects,
-% and displaying the results.
+% OWNMOT does multi object tracking
+%   @D all observations/detections in the format:
+%       T x maxDetectionsPerFrame x 3
+%
+%   @patterns array of dimensions nObjects x nMarkers x 3
+%       Each object has a unique pattern of nMarker 3d points
+%
+%   @initialStates values used for the initialization of EKF.
+%       TODO: use own initialzation method instead of values from VICON.
+%
+%   @nObject the number of objects to track
+%
+%   @trueTrajectory array of dimensions nObjects x T x 3
+%       Holds ground truth trajectory. When supplied this is used for the
+%       visualization.
 
 nMarkers = 4;
 
 [T, ~, dim] = size(D);
-%visParams.maxPos = squeeze(max(D,[],[1 2]));
-%visParams.minPos = squeeze(min(D,[],[1 2]));
+
 maxPos = squeeze(max(D,[],[1 2]));
 minPos = squeeze(min(D,[],[1 2]));
 
-%visParams.trueTrajectory = trueTrajectory;
-%visParams.D = D;
-%visParams.nMarkers = nMarkers;
-%visParams.T = T;
-
-processNoise.position = 30;
+processNoise.position = 20;
 processNoise.motion = 20;
 processNoise.quat = 30;
 processNoise.quatMotion = 30;
-measurementNoise = 100;
+measurementNoise = 1000;
 model = 'extended';
 initialNoise.initPositionVar = 5;
-initialNoise.initMotionVar = 5;
-initialNoise.initQuatVar = 5;
-initialNoise.initQuatMotionVar = 5;
+initialNoise.initMotionVar = 50;
+initialNoise.initQuatVar = 15;
+initialNoise.initQuatMotionVar = 50;
 
-nextId = 1; % ID of the next track
+nextId = 1;
 tracks = initializeTracks();
 unassignedPatterns = zeros(nObjects, 1);
 
-%P = cell(nObjects ,1);
-%visParams.markersForVisualization = cell(nObjects,1);
 markersForVisualization = cell(nObjects,1);
 birdsTrajectories = cell(nObjects,1);
 birdsPositions = cell(nObjects,1);
 
-
-%visParams = animateMOT('init', visParams);
 initializeFigure();
 
 estimatedPositions = zeros(nObjects, T, 3);
 estimatedQuats = zeros(nObjects, T, 4);
 
 
-% Detect moving objects, and track them across video frames.
 for t = 1:T
     detections = squeeze(D(t,:,:));
     detections = reshape(detections(~isnan(detections)),[],dim);
@@ -102,19 +65,12 @@ for t = 1:T
     updateAssignedTracks();
     updateUnassignedTracks();
     deleteLostTracks();
-    %TODO implement createNewTracks
+
     createNewTracks();
     
     t
-    %if t > 4000
+    %if t > 9000
         displayTrackingResults();
-    %end
-    
-    %if t > 1 && t < T
-    %visParams.tracks = tracks;
-    %visParams.oldTracks = oldTracks;
-    %visParams = animateMOT('step', visParams, t);
-    %displayTrackingResults();
     %end
     
     % Store tracking results
@@ -129,12 +85,12 @@ for t = 1:T
         end
     end
     
-    oldTracks = tracks;
 end
 
 
 
 %% Initialize Tracks
+%{
 % The |initializeTracks| function creates an array of tracks, where each
 % track is a structure representing a moving object in the video. The
 % purpose of the structure is to maintain the state of a tracked object.
@@ -166,6 +122,7 @@ end
 % exceeds a specified threshold. A track may also get deleted as noise if
 % it was tracked for a short time, and marked invisible for most of the
 % frames.
+%}
 
     function tracks = initializeTracks()
         for i = 1:nObjects
@@ -198,6 +155,7 @@ end
     end
 
 %% Assign Detections to Tracks
+%{
 % Assigning object detections in the current frame to existing tracks is
 % done by minimizing cost. The cost is defined as the negative
 % log-likelihood of a detection corresponding to a track.
@@ -228,6 +186,7 @@ end
 % cost. It returns an M x 2 matrix containing the corresponding indices of
 % assigned tracks and detections in its two columns. It also returns the
 % indices of tracks and detections that remained unassigned.
+%}
 
     function [assignments, unassignedTracks, unassignedDetections] = detectionToTrackAssignment()
         
@@ -251,14 +210,15 @@ end
 
 
 %% Update Assigned Tracks
+%{
 % The |updateAssignedTracks| function updates each assigned track with the
 % corresponding detection. It calls the |correct| method of
 % |vision.KalmanFilter| to correct the location estimate. Next, it stores
 % the new bounding box, and increases the age of the track and the total
 % visible count by 1. Finally, the function sets the invisible count to 0.
+%}
 
     function updateAssignedTracks()
-        
         
         
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -324,7 +284,7 @@ end
             return;
         end
         
-        invisibleForTooLong = 50;
+        invisibleForTooLong = 150;
         ageThreshold = 0;
         visibilityFraction = 0.5;
         
@@ -466,11 +426,10 @@ end
 
 
 
-%% Display Tracking Results
-% The |displayTrackingResults| function draws a bounding box and label ID
-% for each track on the video frame and the foreground mask. It then
-% displays the frame and the mask in their respective video players.
+%% Vizualization methods
 
+    % This function sets up the figure.
+    %
     function initializeFigure()
         figure;
         colors = distinguishable_colors(nObjects);
@@ -506,11 +465,21 @@ end
                         trueTrajectory(k,t:t+1,3), 'Color', colorsTrue(k,:));
                 end
                 
-                if oldTracks(k).age > 0 && tracks(k).age > 0
-                    %timeIdx = mod(t, vizHistoryLength)+1;
-                    birdsTrajectories{k}.XData = [birdsTrajectories{k}.XData oldTracks(k).kalmanFilter.x(1) tracks(k).kalmanFilter.x(1)];
-                    birdsTrajectories{k}.YData = [birdsTrajectories{k}.YData oldTracks(k).kalmanFilter.x(2) tracks(k).kalmanFilter.x(2)];
-                    birdsTrajectories{k}.ZData = [birdsTrajectories{k}.ZData oldTracks(k).kalmanFilter.x(3) tracks(k).kalmanFilter.x(3)];
+                if tracks(k).age > 0
+                    newXData = [birdsTrajectories{k}.XData tracks(k).kalmanFilter.x(1)];
+                    newYData = [birdsTrajectories{k}.YData tracks(k).kalmanFilter.x(2)];
+                    newZData = [birdsTrajectories{k}.ZData tracks(k).kalmanFilter.x(3)];
+                    % only plot the trajectory in the most recent 1000
+                    % frames.
+                    %vizLength = length(newXData);
+                    %if vizLength > 1000
+                    %   newXData = newXData(1,vizLength-1000:vizLength);
+                    %   newYData = newYData(1,vizLength-1000:vizLength);
+                    %   newZData = newZData(1,vizLength-1000:vizLength);
+                    %end
+                    birdsTrajectories{k}.XData = newXData;
+                    birdsTrajectories{k}.YData = newYData;
+                    birdsTrajectories{k}.ZData = newZData;
                 
                     birdsPositions{k}.XData = tracks(k).kalmanFilter.x(1);
                     birdsPositions{k}.YData = tracks(k).kalmanFilter.x(2);
@@ -524,30 +493,8 @@ end
             markersForVisualization{k}.ZData = dets(:,3);
         end
         drawnow
-        %pause(0.1)
-        %for k=1:nObjects
-        %   delete(birds{k});
-        %end
     end
 
-
-
-%% Summary
-% This example created a motion-based system for detecting and
-% tracking multiple moving objects. Try using a different video to see if
-% you are able to detect and track objects. Try modifying the parameters
-% for the detection, assignment, and deletion steps.
-%
-% The tracking in this example was solely based on motion with the
-% assumption that all objects move in a straight line with constant speed.
-% When the motion of an object significantly deviates from this model, the
-% example may produce tracking errors. Notice the mistake in tracking the
-% person labeled #12, when he is occluded by the tree.
-%
-% The likelihood of tracking errors can be reduced by using a more complex
-% motion model, such as constant acceleration, or by using multiple Kalman
-% filters for every object. Also, you can incorporate other cues for
-% associating detections over time, such as size, shape, and color.
 
 %% helper functions
     function cluster_centers = process_clusters(clusters)
