@@ -471,7 +471,7 @@ end
         Rot = quatToMat();
         for k = 1:nObjects
             if t < T && t > 1
-                if shouldShowTruth && exist('trueTrajectory', 'var')
+                if shouldShowTruth && exist('trueTrajectory', 'var') && size(trueTrajectory,2) > t
                     newXTrue = [trueTrajectories{k}.XData trueTrajectory(k,t,1)];
                     newYTrue = [trueTrajectories{k}.YData trueTrajectory(k,t,2)];
                     newZTrue = [trueTrajectories{k}.ZData trueTrajectory(k,t,3)];

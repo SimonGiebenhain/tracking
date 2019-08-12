@@ -65,19 +65,69 @@ switch method
     case 'ML'
         cost_matrix = pdist2(detected_pattern, (Rot*whole_pattern')');
         [assignment, ~] = munkers(cost_matrix);
+    case 'new'
+        lambda = 30;
+        nMarkers = size(whole_pattern,1);
+        allPerms = perms(1:nMarkers);
+        cost = zeros(size(allPerms, 1),1);
+        for iii=1:size(allPerms,1)
+           p = allPerms(iii,:);
+           dets = NaN * zeros(nMarkers, 3);
+           if size(detected_pattern,1) == 3
+                dets(p,:) = [detected_pattern; NaN*zeros(1,3)];
+           else
+               dets(p,:) = detected_pattern;
+           end
+           distDetections = pdist(dets);
+           distPattern = pdist(whole_pattern);
+           diff = abs(distDetections - distPattern);
+           cost(iii) = sum(diff(~isnan(diff)), 'all');
+           anglesDetections = getInternalAngles(dets);
+           anglesPattern = getInternalAngles(whole_pattern);
+           angleDiff = abs(anglesDetections - anglesPattern);
+           cost(iii) = cost(iii) + lambda * sum(angleDiff(~isnan(angleDiff)), 'all');
+           eucDist = (dets - whole_pattern).^2;
+           eucDist = reshape( eucDist(~isnan(eucDist)), [], 3);
+           cost(iii) = cost(iii) + sum(sqrt(sum(eucDist,2)));
+        end
+        [c, minIdx] = min(cost);
+        assignment = allPerms(minIdx,:);
 end
-        function leaving_edges = get_edges(marker)
-        dim = size(marker,2);
-        num_markers = size(marker,1);
-        leaving_edges = zeros(num_markers,num_markers,dim);
-        
-        for ii=1:num_markers
-            for jj=1:num_markers
-                if ii == jj
-                    continue;
-                end
-                leaving_edges(ii,jj,:) = marker(jj,:) - marker(ii,:);
+
+function leaving_edges = get_edges(marker)
+    dim = size(marker,2);
+    num_markers = size(marker,1);
+    leaving_edges = zeros(num_markers,num_markers,dim);
+    
+    for ii=1:num_markers
+        for jj=1:num_markers
+            if ii == jj
+                continue;
             end
+            leaving_edges(ii,jj,:) = marker(jj,:) - marker(ii,:);
         end
+    end
+end
+
+function angles = getInternalAngles(points)
+    N = size(points, 1);
+    angles = zeros(N, nchoosek(N,2));
+    allPairs = nchoosek(1:N,2);
+    for i = 1:size(angles, 1)
+        for j = 1:size(angles,2)
+            p1 = points(allPairs(j,1),:);
+            p2 = points(allPairs(j,2),:);
+            v1 = p1 - points(i,:);
+            v2 = p2 - points(i,:);
+            angles(i,j) = getAngle(v1, v2);
         end
+    end
+end
+
+function angle = getAngle(v1, v2)
+    vn = cross(v1,v2);
+    normVn = sqrt(sum(vn.^2));
+    angle = atan2(normVn, dot(v1, v2));
+end
+
 end

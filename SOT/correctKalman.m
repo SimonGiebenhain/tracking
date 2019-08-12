@@ -12,11 +12,15 @@ dim = size(pattern,2);
 % with a prediction for what detections are missing (the detections of which marker that is), i.e. we need to
 % find H and R which best explain the measurements.
 if noKnowledge 
-    detections = s.z;
+    detections = reshape(s.z, [], dim);
     % Find an assignment between the individual markers and the detections
     Rot = quatToMat();
-    assignment = match_patterns(pattern, reshape(detections, [],dim) - s.x(1:dim)', 'ML', Rot(s.x(2*dim+1:2*dim+4)));
-    
+    if size(detections,1) > 2
+        assignment = match_patterns(pattern, detections - s.x(1:dim)', 'new', Rot(s.x(2*dim+1:2*dim+4)));
+        assignment = assignment(1,1:size(detections,1));
+    else
+        assignment = match_patterns(pattern, detections - s.x(1:dim)', 'ML', Rot(s.x(2*dim+1:2*dim+4)));
+    end
     % Print in case an error was made in the assignment
     %inversions = assignment(2:end) - assignment(1:end-1);
     %if min(inversions) < 1
