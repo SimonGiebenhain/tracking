@@ -1,5 +1,5 @@
 %% Multi Object Tracking
-% The original code structure comes from the MATLAB tutorial for motioan
+% The original code structure comes from the MATLAB tutorial for motion
 % based multi object tracking: 
 % https://de.mathworks.com/help/vision/examples/motion-based-multiple-object-tracking.html
 
@@ -32,14 +32,14 @@ minPos = squeeze(min(D,[],[1 2]));
 
 processNoise.position = 20;
 processNoise.motion = 20;
-processNoise.quat = 30;
-processNoise.quatMotion = 30;
+processNoise.quat = 40;
+processNoise.quatMotion = 10;
 measurementNoise = 1000;
 model = 'extended';
 initialNoise.initPositionVar = 5;
-initialNoise.initMotionVar = 50;
-initialNoise.initQuatVar = 15;
-initialNoise.initQuatMotionVar = 50;
+initialNoise.initMotionVar = 5;
+initialNoise.initQuatVar = 100;
+initialNoise.initQuatMotionVar = 20;
 
 nextId = 1;
 tracks = initializeTracks();
@@ -47,8 +47,12 @@ unassignedPatterns = zeros(nObjects, 1);
 
 markersForVisualization = cell(nObjects,1);
 birdsTrajectories = cell(nObjects,1);
+trueTrajectories = cell(nObjects,1);
 birdsPositions = cell(nObjects,1);
+markerPositions = cell(nObjects, nMarkers);
 
+colorsPredicted = distinguishable_colors(nObjects);
+colorsTrue = (colorsPredicted + 2) ./ (max(colorsPredicted,[],2) +2);
 initializeFigure();
 
 estimatedPositions = zeros(nObjects, T, 3);
@@ -67,7 +71,9 @@ for t = 1:T
     deleteLostTracks();
 
     createNewTracks();
-    
+    if t == 221
+       t 
+    end
     t
     %if t > 9000
         displayTrackingResults();
@@ -204,7 +210,7 @@ end
         end
         
         % Solve the assignment problem.
-        costOfNonAssignment = 100;
+        costOfNonAssignment = 50;
         [assignments, unassignedTracks, unassignedDetections] = assignDetectionsToTracks(cost, costOfNonAssignment);
     end
 
@@ -432,22 +438,25 @@ end
     %
     function initializeFigure()
         figure;
-        colors = distinguishable_colors(nObjects);
         scatter3([minPos(1), maxPos(1)], [minPos(2), maxPos(2)], [minPos(3), maxPos(3)], '*')
         hold on;
         if exist('trueTrajectory', 'var')
             for k = 1:nObjects
-                birdsTrajectories{k} = plot3(trueTrajectory(k,1:2,1),trueTrajectory(k,1:2,2), trueTrajectory(k,1:2,3), 'Color', colors(k,:));
+                trueTrajectories{k} = plot3(trueTrajectory(k,1,1),trueTrajectory(k,1,2), trueTrajectory(k,1,3), 'Color', colorsTrue(k,:));
             end
-        else
-                for k = 1:nObjects
-                    birdsTrajectories{k} = plot3(NaN, NaN, NaN, 'Color', colors(k,:));
-                end
         end
+        
+        for k = 1:nObjects
+            birdsTrajectories{k} = plot3(NaN, NaN, NaN, 'Color', colorsPredicted(k,:));
+        end
+        
         for k = 1:nObjects
             dets = squeeze(D(1,(k-1)*nMarkers+1:k*nMarkers,:));
             markersForVisualization{k} = plot3(dets(:,1),dets(:,2), dets(:,3), '*', 'MarkerSize', 5, 'MarkerEdgeColor', [0.5; 0.5; 0.5]);
-            birdsPositions{k} = plot3(NaN, NaN, NaN, 'o', 'MarkerSize', 10, 'MarkerEdgeColor', colors(k,:));
+            %birdsPositions{k} = plot3(NaN, NaN, NaN, 'o', 'MarkerSize', 10, 'MarkerEdgeColor', colors(k,:));
+            for n = 1:nMarkers
+               markerPositions{k,n} = plot3(NaN, NaN, NaN, 'o', 'MarkerSize', 10, 'MarkerEdgeColor', colorsPredicted(k,:));
+            end
         end
         
         
@@ -456,19 +465,26 @@ end
     end
 
     function displayTrackingResults()
-        colorsPredicted = distinguishable_colors(nObjects);
-        colorsTrue = (colorsPredicted + 2) ./ (max(colorsPredicted,[],2) +2);
+        Rot = quatToMat();
         for k = 1:nObjects
             if t < T && t > 1
                 if exist('trueTrajectory', 'var')
-                    plot3(trueTrajectory(k,t:t+1,1), trueTrajectory(k,t:t+1,2), ...
-                        trueTrajectory(k,t:t+1,3), 'Color', colorsTrue(k,:));
+                    newXTrue = [trueTrajectories{k}.XData trueTrajectory(k,t,1)];
+                    newYTrue = [trueTrajectories{k}.YData trueTrajectory(k,t,2)];
+                    newZTrue = [trueTrajectories{k}.ZData trueTrajectory(k,t,3)];
+                    trueTrajectories{k}.XData = newXTrue;
+                    trueTrajectories{k}.YData = newYTrue;
+                    trueTrajectories{k}.ZData = newZTrue;
                 end
                 
                 if tracks(k).age > 0
-                    newXData = [birdsTrajectories{k}.XData tracks(k).kalmanFilter.x(1)];
-                    newYData = [birdsTrajectories{k}.YData tracks(k).kalmanFilter.x(2)];
-                    newZData = [birdsTrajectories{k}.ZData tracks(k).kalmanFilter.x(3)];
+                    xPos = tracks(k).kalmanFilter.x(1);
+                    yPos = tracks(k).kalmanFilter.x(2);
+                    zPos = tracks(k).kalmanFilter.x(3);
+
+                    newXData = [birdsTrajectories{k}.XData xPos];
+                    newYData = [birdsTrajectories{k}.YData yPos];
+                    newZData = [birdsTrajectories{k}.ZData zPos];
                     % only plot the trajectory in the most recent 1000
                     % frames.
                     %vizLength = length(newXData);
@@ -481,9 +497,20 @@ end
                     birdsTrajectories{k}.YData = newYData;
                     birdsTrajectories{k}.ZData = newZData;
                 
-                    birdsPositions{k}.XData = tracks(k).kalmanFilter.x(1);
-                    birdsPositions{k}.YData = tracks(k).kalmanFilter.x(2);
-                    birdsPositions{k}.ZData = tracks(k).kalmanFilter.x(3);
+                    %birdsPositions{k}.XData = xPos;
+                    %birdsPositions{k}.YData = yPos;
+                    %birdsPositions{k}.ZData = zPos;
+                    
+                    pattern = tracks(k).kalmanFilter.pattern;
+                    quat = tracks(k).kalmanFilter.x(7:10);
+                    rotMat = Rot(quat);
+                    rotatedPattern = (rotMat * pattern')';
+                    
+                    for n = 1:nMarkers
+                        markerPositions{k,n}.XData = xPos + rotatedPattern(n,1);
+                        markerPositions{k,n}.YData = yPos + rotatedPattern(n,2);
+                        markerPositions{k,n}.ZData = zPos + rotatedPattern(n,3);
+                    end
 
                 end
             end
