@@ -53,7 +53,10 @@ markerPositions = cell(nObjects, nMarkers);
 
 colorsPredicted = distinguishable_colors(nObjects);
 colorsTrue = (colorsPredicted + 2) ./ (max(colorsPredicted,[],2) +2);
+keepOldTrajectory = 0;
+shouldShowTruth = 1;
 initializeFigure();
+
 
 estimatedPositions = zeros(nObjects, T, 3);
 estimatedQuats = zeros(nObjects, T, 4);
@@ -273,7 +276,7 @@ end
         nUnassignedTracks = length(allUnassignedTracksIdx);
         for i = 1:nUnassignedTracks
             unassignedTrackIdx = allUnassignedTracksIdx(i);
-            if tracks(unassignedTrackIdx).age > 0;
+            if tracks(unassignedTrackIdx).age > 0
                 tracks(unassignedTrackIdx).age = tracks(unassignedTrackIdx).age + 1;
                 tracks(unassignedTrackIdx).consecutiveInvisibleCount = tracks(unassignedTrackIdx).consecutiveInvisibleCount + 1;
             end
@@ -440,7 +443,7 @@ end
         figure;
         scatter3([minPos(1), maxPos(1)], [minPos(2), maxPos(2)], [minPos(3), maxPos(3)], '*')
         hold on;
-        if exist('trueTrajectory', 'var')
+        if shouldShowTruth && exist('trueTrajectory', 'var')
             for k = 1:nObjects
                 trueTrajectories{k} = plot3(trueTrajectory(k,1,1),trueTrajectory(k,1,2), trueTrajectory(k,1,3), 'Color', colorsTrue(k,:));
             end
@@ -468,13 +471,21 @@ end
         Rot = quatToMat();
         for k = 1:nObjects
             if t < T && t > 1
-                if exist('trueTrajectory', 'var')
+                if shouldShowTruth && exist('trueTrajectory', 'var')
                     newXTrue = [trueTrajectories{k}.XData trueTrajectory(k,t,1)];
                     newYTrue = [trueTrajectories{k}.YData trueTrajectory(k,t,2)];
                     newZTrue = [trueTrajectories{k}.ZData trueTrajectory(k,t,3)];
+                    
+                    vizLength = length(newXTrue);
+                    if ~keepOldTrajectory && vizLength > 1000
+                       newXTrue = newXTrue(1,vizLength-1000:vizLength);
+                       newYTrue = newYTrue(1,vizLength-1000:vizLength);
+                       newZTrue = newZTrue(1,vizLength-1000:vizLength);
+                    end
+                    
                     trueTrajectories{k}.XData = newXTrue;
                     trueTrajectories{k}.YData = newYTrue;
-                    trueTrajectories{k}.ZData = newZTrue;
+                    trueTrajectories{k}.ZData = newZTrue; 
                 end
                 
                 if tracks(k).age > 0
@@ -487,12 +498,12 @@ end
                     newZData = [birdsTrajectories{k}.ZData zPos];
                     % only plot the trajectory in the most recent 1000
                     % frames.
-                    %vizLength = length(newXData);
-                    %if vizLength > 1000
-                    %   newXData = newXData(1,vizLength-1000:vizLength);
-                    %   newYData = newYData(1,vizLength-1000:vizLength);
-                    %   newZData = newZData(1,vizLength-1000:vizLength);
-                    %end
+                    vizLength = length(newXData);
+                    if ~keepOldTrajectory && vizLength > 1000
+                       newXData = newXData(1,vizLength-1000:vizLength);
+                       newYData = newYData(1,vizLength-1000:vizLength);
+                       newZData = newZData(1,vizLength-1000:vizLength);
+                    end
                     birdsTrajectories{k}.XData = newXData;
                     birdsTrajectories{k}.YData = newYData;
                     birdsTrajectories{k}.ZData = newZData;
