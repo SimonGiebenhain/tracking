@@ -35,7 +35,8 @@ end
     
     
 %% test MOT
-[estimatedPositions, estimatedQuats] = ownMOT(formattedData(1:3000,:,:), patterns, initialStates, 10, viconTrajectories);
+quatMotionType = 'brownian';
+[estimatedPositions, estimatedQuats] = ownMOT(formattedData(1:3000,:,:), patterns, initialStates, 10, viconTrajectories, quatMotionType);
 
 %% Evaluate tracking performance 
 % Plot the estimation error of the positions and orientations

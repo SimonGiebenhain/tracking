@@ -1,4 +1,4 @@
-function [H, J] = getMeasurementFunction(pattern)
+function [H, J] = getMeasurementFunction(pattern, quatMotionType)
 %GETMEASUREMENTFUNCTION Construct the measurement function from a kalman
 %filter. 
 %
@@ -19,17 +19,31 @@ function [H, J] = getMeasurementFunction(pattern)
     % with a quaternion.
     Rot = quatToMat();
    
-    % Work woth symbolic variables in order to compute the jacobian
-    % automatically.
-    syms x y z vx vy vz q1 q2 q3 q4 vq1 vq2 vq3 vq4;
-    
-    % Mapping from state space to measurement space
-    H = reshape( (Rot([q1;q2;q3;q4]) * pattern')' + [x; y; z]', [], 1 );
-    
-    % Let the Symbolic Math Toolbox calculate the jacobian.
-    % The transform back to a regular matlab function.
-    J = matlabFunction( jacobian(H, [x; y; z; vx; vy; vz; q1; q2; q3; q4; vq1; vq2; vq3; vq4]) ) ;
-    H = @(x) reshape( (Rot(x(2*3+1:2*3+4)) * pattern')' + x(1:3)', [], 1 );
+    if strcmp(quatMotionType, 'brownian')
+        % Work woth symbolic variables in order to compute the jacobian
+        % automatically.
+        syms x y z vx vy vz q1 q2 q3 q4;
+
+        % Mapping from state space to measurement space
+        H = reshape( (Rot([q1;q2;q3;q4]) * pattern')' + [x; y; z]', [], 1 );
+
+        % Let the Symbolic Math Toolbox calculate the jacobian.
+        % The transform back to a regular matlab function.
+        J = matlabFunction( jacobian(H, [x; y; z; vx; vy; vz; q1; q2; q3; q4]) ) ;
+        H = @(x) reshape( (Rot(x(2*3+1:2*3+4)) * pattern')' + x(1:3)', [], 1 );
+    else
+                % Work woth symbolic variables in order to compute the jacobian
+        % automatically.
+        syms x y z vx vy vz q1 q2 q3 q4 vq1 vq2 vq3 vq4;
+
+        % Mapping from state space to measurement space
+        H = reshape( (Rot([q1;q2;q3;q4]) * pattern')' + [x; y; z]', [], 1 );
+
+        % Let the Symbolic Math Toolbox calculate the jacobian.
+        % The transform back to a regular matlab function.
+        J = matlabFunction( jacobian(H, [x; y; z; vx; vy; vz; q1; q2; q3; q4; vq1; vq2; vq3; vq4]) ) ;
+        H = @(x) reshape( (Rot(x(2*3+1:2*3+4)) * pattern')' + x(1:3)', [], 1 );
+    end
         
 end
 

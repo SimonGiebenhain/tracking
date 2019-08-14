@@ -6,7 +6,7 @@
 % TODO
 % Explanation goes here
 
-function [estimatedPositions, estimatedQuats] = ownMOT(D, patterns, initialStates, nObjects, trueTrajectory)
+function [estimatedPositions, estimatedQuats] = ownMOT(D, patterns, initialStates, nObjects, trueTrajectory, quatMotionType)
 % OWNMOT does multi object tracking
 %   @D all observations/detections in the format:
 %       T x maxDetectionsPerFrame x 3
@@ -134,10 +134,17 @@ end
 %}
 
     function tracks = initializeTracks()
+        
         for i = 1:nObjects
-            [s, kalmanParams] = setupKalman(squeeze(patterns(i,:,:)), -1, model, measurementNoise, processNoise, initialNoise);
-            s.x = initialStates(i,:)';
-            s.P = eye(2*dim+8) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initQuatVar; kalmanParams.initQuatMotionVar], [dim, dim, 4, 4]);
+            [s, kalmanParams] = setupKalman(squeeze(patterns(i,:,:)), -1, model, quatMotionType, measurementNoise, processNoise, initialNoise);
+            if strcmp(quatMotionType, 'brownian')
+                s.x = initialStates(i,1:end-4)';
+                s.P = eye(2*dim+4) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initQuatVar], [dim, dim, 4]);
+
+            else
+                s.x = initialStates(i,:)';
+                s.P = eye(2*dim+8) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initQuatVar; kalmanParams.initQuatMotionVar], [dim, dim, 4, 4]);
+            end
             s.pattern = squeeze(patterns(i,:,:));
             tracks(i) = struct(...
                 'id', nextId, ... %'center', , ...
@@ -375,10 +382,16 @@ end
                     %TODO adaptive initial Noise!!!!
                     patternIdx = unassignedPatternIdx(specificPatternIdx);
                     pattern = squeeze( patterns(patternIdx,:,:));
-                    [s, kalmanParams] = setupKalman(pattern, -1, model, measurementNoise, processNoise, initialNoise);
-                    s.x = [pos'; zeros(3,1); quat'; zeros(4,1)];
-                    % TODO also estimate uncertainty
-                    s.P = eye(2*dim+8) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initQuatVar; kalmanParams.initQuatMotionVar], [dim, dim, 4, 4]);
+                    [s, kalmanParams] = setupKalman(pattern, -1, model, quatMotionType, measurementNoise, processNoise, initialNoise);
+                    if strcmp(quatMotionType, 'brownian')
+                        s.x = [pos'; zeros(3,1); quat'];
+                        % TODO also estimate uncertainty
+                        s.P = eye(2*dim+4) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initQuatVar], [dim, dim, 4]);
+                    else
+                        s.x = [pos'; zeros(3,1); quat'; zeros(4,1)];
+                        % TODO also estimate uncertainty
+                        s.P = eye(2*dim+8) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initQuatVar; kalmanParams.initQuatMotionVar], [dim, dim, 4, 4]);
+                    end
                     s.pattern = pattern;
                     newTrack = struct(...
                         'id', patternIdx, ...
@@ -396,13 +409,22 @@ end
                     unassignedPatterns(patternIdx) = 0;
                     
                 end
+            %TODO WTF is this case distinction?
+            % TODO add method to initialize 3 clustered unassigned
+            % detections, i.e. with match_patterns()
             else
                     patternIdx = find(unassignedPatterns);
                     pattern = squeeze( patterns(patternIdx,:,:));
-                    [s, kalmanParams] = setupKalman(pattern, -1, model, measurementNoise, processNoise, initialNoise);
-                    s.x = [centers{1}'; zeros(3,1); [sqrt(2);0;0;0]; zeros(4,1)];
-                    % TODO also estimate uncertainty
-                    s.P = eye(2*dim+8) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initQuatVar; kalmanParams.initQuatMotionVar], [dim, dim, 4, 4]);
+                    [s, kalmanParams] = setupKalman(pattern, -1, model, quatMotionType, measurementNoise, processNoise, initialNoise);
+                    if strcmp(quatMotionType, 'brownian')
+                        s.x = [centers{1}'; zeros(3,1); [sqrt(2);0;0;0]];
+                        % TODO also estimate uncertainty
+                        s.P = eye(2*dim+4) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initQuatVar], [dim, dim, 4]);
+                    else
+                        s.x = [centers{1}'; zeros(3,1); [sqrt(2);0;0;0]; zeros(4,1)];
+                        % TODO also estimate uncertainty
+                    	s.P = eye(2*dim+8) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initQuatVar; kalmanParams.initQuatMotionVar], [dim, dim, 4, 4]);
+                    end
                     s.pattern = pattern;
                     newTrack = struct(...
                         'id', patternIdx, ...

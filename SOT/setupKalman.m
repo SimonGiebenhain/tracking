@@ -1,4 +1,4 @@
-function [s, globalParams] = setupKalman(pattern, T, model, obsNoise, processNoise, initialNoise)
+function [s, globalParams] = setupKalman(pattern, T, model, quatMotionType, obsNoise, processNoise, initialNoise)
 %SETUPKALMAN This function initializes all necessary parameters and
 %functions for performing tracking with the kalman filter.
 %
@@ -72,14 +72,18 @@ switch model
         % Altough the space for the single fileds is not pre-allocated, empirically it showed that this has
         % benefits for large T
         
-        stateDim = 2*dim+8;
+        if strcmp(quatMotionType, 'brownian')
+            stateDim = 2*dim + 4;
+        else
+            stateDim = 2*dim+8;
+        end
         obsDim = nMarkers*dim;
         
         s(T+2).A = zeros(stateDim);
         s(T+2).Q = zeros(stateDim);
-        s(T+2).H = zeros(obsDim,stateDim);
+        s(T+2).H = zeros(obsDim, stateDim);
         s(T+2).R = zeros(obsDim);
-        s(T+2).x = zeros(stateDim,1);
+        s(T+2).x = zeros(stateDim, 1);
         s(T+2).P = zeros(stateDim);
         
         % Set up dynamics of the system and model assumptions
@@ -90,18 +94,26 @@ switch model
         for i = 1:dim
             s(1).A(i,dim+i) = 1;
         end
-        for i =1:4
-            s(1).A(2*dim+i,2*dim+4+i) = 1;
+        
+        if ~strcmp(quatMotionType, 'brownian')
+            for i =1:4
+                s(1).A(2*dim+i,2*dim+4+i) = 1;
+            end
         end
         
         % The process covariance matrix
-        processNoiseScale = [ repmat(processNoise.position,dim,1); repmat(processNoise.motion,dim,1);...
-            repmat(processNoise.quat,4,1); repmat(processNoise.quatMotion,4,1) ];
+        if strcmp(quatMotionType, 'brownian')
+            processNoiseScale = [ repmat(processNoise.position,dim,1); repmat(processNoise.motion,dim,1);...
+                                    repmat(processNoise.quat,4,1)];
+        else
+            processNoiseScale = [ repmat(processNoise.position,dim,1); repmat(processNoise.motion,dim,1);...
+                                    repmat(processNoise.quat,4,1); repmat(processNoise.quatMotion,4,1) ];
+        end
         s(1).Q = processNoiseScale .* eye(stateDim);
         
         % get the measurement function and its jacobian, both are function
         % handles and need to be supplied with a quaternion
-        [H, J] = getMeasurementFunction(pattern);
+        [H, J] = getMeasurementFunction(pattern, quatMotionType);
         
         s(1).H = H;
         s(1).J = J;
