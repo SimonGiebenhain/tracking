@@ -1,7 +1,7 @@
-function assignment = match_patterns(whole_pattern, detected_pattern, method, Rot)
+function assignment = match_patterns(whole_pattern, detected_pattern, method, rotMat)
 %MATCH_PATTERNS Find corresponing points in two sets of points
 %
-%   assignment = MATCH_PATTERNS(whole_pattern, detected_pattern, 'ML', Rot)
+%   assignment = MATCH_PATTERNS(whole_pattern, detected_pattern, 'ML', rotMat)
 %
 %   When using the 'ML' method the function expects two roughly centered
 %   sets of points. Then whole_pattern is rotated by the rotation Matrix
@@ -63,10 +63,10 @@ switch method
         end
         [assignment, bi_cost] = munkers(cost_matrix);
     case 'ML'
-        cost_matrix = pdist2(detected_pattern, (Rot*whole_pattern')');
+        cost_matrix = pdist2(detected_pattern, (rotMat*whole_pattern')');
         [assignment, ~] = munkers(cost_matrix);
     case 'new'
-        lambda = 30;
+        lambda = 20;
         nMarkers = size(whole_pattern,1);
         allPerms = perms(1:nMarkers);
         cost = zeros(size(allPerms, 1),1);
@@ -86,9 +86,9 @@ switch method
            anglesPattern = getInternalAngles(whole_pattern);
            angleDiff = abs(anglesDetections - anglesPattern);
            cost(iii) = cost(iii) + lambda * sum(angleDiff(~isnan(angleDiff)), 'all');
-           eucDist = (dets - whole_pattern).^2;
+           eucDist = (dets - (rotMat*whole_pattern')').^2;
            eucDist = reshape( eucDist(~isnan(eucDist)), [], 3);
-           cost(iii) = cost(iii) + sum(sqrt(sum(eucDist,2)));
+           cost(iii) = cost(iii) + 1/3 * sum(sqrt(sum(eucDist,2)));
         end
         [c, minIdx] = min(cost);
         assignment = allPerms(minIdx,:);

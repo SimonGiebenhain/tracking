@@ -1,4 +1,4 @@
-function performanceVisualization(estimatedPositions, positions, estimatedQuats, quats)
+function performanceVisualization(estimatedPositions, positions, estimatedQuats, quats, patterns)
 %PERFORMANCEVISUALIZATION Visualize tracking errors of postion and
 %orientation for each object to track
 %   This function is not finished yet!
@@ -13,15 +13,30 @@ function performanceVisualization(estimatedPositions, positions, estimatedQuats,
     
     positionDistances = sqrt(sum((estimatedPositions - positions).^2,3));
     
-    % Normalize quaternions
-    quatsNormalized = quats./sqrt(sum(quats.^2, 3));
-    estimatedQuatsNormalized = estimatedQuats./sqrt(sum(estimatedQuats.^2, 3));
+    rotationError = zeros(nObjects, T);
     
-    % Since anti-podal unit quaternions represent the same rotation, I take
-    % the samaller distance of the estimated quaternion to the true
-    % quaternions or the anti-podal pair of the true quaternion.
-    quatsDistances = min( sqrt(sum((estimatedQuatsNormalized - quatsNormalized).^2,3)), ...
-                          sqrt(sum((estimatedQuatsNormalized + quatsNormalized).^2,3)));
+    for t = 1:T
+        for k = 1:nObjects
+            pattern = squeeze( patterns(k,:,:) );
+            rotatedPatternEstimation = (Rot(squeeze(estimatedQuats(k,t,:))) * pattern')';
+            %rotatedPatternVicon = (  (Rot(squeeze(quats(k,t,:)))) * pattern'  )';
+            rotatedPatternVicon = (  (Rot(squeeze(quats(k,t,:)))) * pattern'  )';
+
+            rotationError(k,t) = mean(sqrt(  sum((rotatedPatternEstimation - rotatedPatternVicon).^2,2)));
+        end
+    end
+    
+    
+    
+%     % Normalize quaternions
+%     quatsNormalized = quats./sqrt(sum(quats.^2, 3));
+%     estimatedQuatsNormalized = estimatedQuats./sqrt(sum(estimatedQuats.^2, 3));
+%     
+%     % Since anti-podal unit quaternions represent the same rotation, I take
+%     % the samaller distance of the estimated quaternion to the true
+%     % quaternions or the anti-podal pair of the true quaternion.
+%     quatsDistances = min( sqrt(sum((estimatedQuatsNormalized - quatsNormalized).^2,3)), ...
+%                           sqrt(sum((estimatedQuatsNormalized + quatsNormalized).^2,3)));
     
     figure;
     subplot(1,2,1)
@@ -38,9 +53,114 @@ function performanceVisualization(estimatedPositions, positions, estimatedQuats,
     hold on;
     for i = 1:nObjects
         name = sprintf('Object %d', i);
-        plot(1:T, quatsDistances(i,:), 'DisplayName', name, 'Color', colors(i,:))
+        %plot(1:T, quatsDistances(i,:), 'DisplayName', name, 'Color', colors(i,:))
+        plot(1:T, smoothdata(rotationError(i,:), 'movmedian', 100), 'DisplayName', name, 'Color', colors(i,:))
+
     end
     legend;
     title('Orientation estimaton error');
+    hold off;
+    
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    figure; 
+    subplot(1,2,1)
+    hold on;
+    for k=1:nObjects
+        plot(1:T, quats(k,:,1), 'Color', colors(k,:));
+    end
+    hold off;
+    subplot(1,2,2)
+    hold on;
+    for k=1:nObjects
+        plot(1:T, estimatedQuats(k,:,1), 'Color', colors(k,:));
+    end
+    hold off;
+    
+    
+    figure; 
+    subplot(1,2,1)
+    hold on;
+    for k=1:nObjects
+        plot(1:T, quats(k,:,2), 'Color', colors(k,:));
+    end
+    hold off;
+    subplot(1,2,2)
+    hold on;
+    for k=1:nObjects
+        plot(1:T, estimatedQuats(k,:,2), 'Color', colors(k,:));
+    end
+    hold off;
+    
+    figure; 
+    subplot(1,2,1)
+    hold on;
+    for k=1:nObjects
+        plot(1:T, quats(k,:,3), 'Color', colors(k,:));
+    end
+    hold off;
+    subplot(1,2,2)
+    hold on;
+    for k=1:nObjects
+        plot(1:T, estimatedQuats(k,:,3), 'Color', colors(k,:));
+    end
+    hold off;
+    
+    figure; 
+    subplot(1,2,1)
+    hold on;
+    for k=1:nObjects
+        plot(1:T, quats(k,:,4), 'Color', colors(k,:));
+    end
+    hold off;
+    subplot(1,2,2)
+    hold on;
+    for k=1:nObjects
+        plot(1:T, estimatedQuats(k,:,4), 'Color', colors(k,:));
+    end
+    hold off;
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    
+    
+    
+    figure; 
+    subplot(1,2,1)
+    hold on;
+    for k=1:nObjects
+        plot(1:T, positions(k,:,1), 'Color', colors(k,:));
+    end
+    hold off;
+    subplot(1,2,2)
+    hold on;
+    for k=1:nObjects
+        plot(1:T, estimatedPositions(k,:,1), 'Color', colors(k,:));
+    end
+    hold off;
+    
+    figure; 
+    subplot(1,2,1)
+    hold on;
+    for k=1:nObjects
+        plot(1:T, positions(k,:,2), 'Color', colors(k,:));
+    end
+    hold off;
+    subplot(1,2,2)
+    hold on;
+    for k=1:nObjects
+        plot(1:T, estimatedPositions(k,:,2), 'Color', colors(k,:));
+    end
+    hold off;
+    
+    figure; 
+    subplot(1,2,1)
+    hold on;
+    for k=1:nObjects
+        plot(1:T, positions(k,:,3), 'Color', colors(k,:));
+    end
+    hold off;
+    subplot(1,2,2)
+    hold on;
+    for k=1:nObjects
+        plot(1:T, estimatedPositions(k,:,3), 'Color', colors(k,:));
+    end
     hold off;
 end
