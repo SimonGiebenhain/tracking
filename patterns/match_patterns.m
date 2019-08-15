@@ -1,4 +1,4 @@
-function assignment = match_patterns(whole_pattern, detected_pattern, method, rotMat)
+function assignment = match_patterns(whole_pattern, detected_pattern, method, kalmanFilter)
 %MATCH_PATTERNS Find corresponing points in two sets of points
 %
 %   assignment = MATCH_PATTERNS(whole_pattern, detected_pattern, 'ML', rotMat)
@@ -26,7 +26,7 @@ function assignment = match_patterns(whole_pattern, detected_pattern, method, ro
 if ~exist('method', 'var')
     method = 'edges';
 end
-
+dim = size(whole_pattern,2);
 switch method
     case 'edges'
         edges1 = get_edges(whole_pattern);
@@ -63,9 +63,14 @@ switch method
         end
         [assignment, bi_cost] = munkers(cost_matrix);
     case 'ML'
+        rotMat = Rot(kalmanFilter.x(2*dim+1:2*dim+4));
         cost_matrix = pdist2(detected_pattern, (rotMat*whole_pattern')');
         [assignment, ~] = munkers(cost_matrix);
     case 'new'
+        rotMat = Rot(kalmanFilter.x(2*dim+1:2*dim+4));
+        x = kalmanFilter.x;
+        %HLin = kalmanFilter.J(x(7), x(8), x(9), x(10));   
+           
         lambda = 20;
         nMarkers = size(whole_pattern,1);
         allPerms = perms(1:nMarkers);
@@ -78,17 +83,29 @@ switch method
            else
                dets(p,:) = detected_pattern;
            end
-           distDetections = pdist(dets);
+           distDetections = pdist(dets - x(1:3)');
            distPattern = pdist(whole_pattern);
            diff = abs(distDetections - distPattern);
            cost(iii) = sum(diff(~isnan(diff)), 'all');
-           anglesDetections = getInternalAngles(dets);
+           anglesDetections = getInternalAngles(dets - x(1:3)');
            anglesPattern = getInternalAngles(whole_pattern);
            angleDiff = abs(anglesDetections - anglesPattern);
            cost(iii) = cost(iii) + lambda * sum(angleDiff(~isnan(angleDiff)), 'all');
+           %for in = 1:4
+           %    if all(~isnan(dets(in,:)))
+           %        x = kalmanFilter.x;
+           %        F = HLin(in:4:end,:);
+           %        covMat = F * kalmanFilter.P * F';
+           %        negLogL = -reallog(mvnpdf(dets(in,:), (F*x)', round(covMat,4)))';
+           %        %if negLogL < Inf
+           %        %    negLogL
+           %        %end
+           %        cost(iii) = cost(iii) + sum(negLogL);
+           %    end
+           %end
            eucDist = (dets - (rotMat*whole_pattern')').^2;
            eucDist = reshape( eucDist(~isnan(eucDist)), [], 3);
-           cost(iii) = cost(iii) + 1/3 * sum(sqrt(sum(eucDist,2)));
+           cost(iii) = cost(iii) + 1/3*sum(sqrt(sum(eucDist,2)));
         end
         [c, minIdx] = min(cost);
         assignment = allPerms(minIdx,:);
