@@ -67,27 +67,40 @@ switch method
         cost_matrix = pdist2(detected_pattern, (rotMat*whole_pattern')');
         [assignment, ~] = munkers(cost_matrix);
     case 'new'
-        rotMat = Rot(kalmanFilter.x(2*dim+1:2*dim+4));
-        x = kalmanFilter.x;
-        %HLin = kalmanFilter.J(x(7), x(8), x(9), x(10));   
+        costNonAssignment = 50;
+        
+        %rotMat = Rot(kalmanFilter.x(2*dim+1:2*dim+4));
+        %x = kalmanFilter.x;
            
         lambda = 20;
         nMarkers = size(whole_pattern,1);
-        allPerms = perms(1:nMarkers);
+        if size(detected_pattern, 1) == 3
+            allPerms = perms(1:nMarkers);
+        else
+            allPerms = perms(1:nMarkers+1);
+        end
         cost = zeros(size(allPerms, 1),1);
         for iii=1:size(allPerms,1)
            p = allPerms(iii,:);
            dets = NaN * zeros(nMarkers, 3);
            if size(detected_pattern,1) == 3
-                dets(p,:) = [detected_pattern; NaN*zeros(1,3)];
+               %TODO dets(p,:) = [detected_pattern; NaN*ones(1,3)];
            else
-               dets(p,:) = detected_pattern;
+               p_lost = p(end);
+               p = p(1:nMarkers);
+               det_pat = [detected_pattern; NaN*ones(1,3)];
+               dets = det_pat(p,:);
+               
+               %det_pat = detected_pattern;
+               %det_pat(p==5, :) = NaN;
+               %dets(p,:) = det_pat;
+               %dets(p_lost,:) = [];
            end
-           distDetections = pdist(dets - x(1:3)');
+           distDetections = pdist(dets);
            distPattern = pdist(whole_pattern);
            diff = abs(distDetections - distPattern);
            cost(iii) = sum(diff(~isnan(diff)), 'all');
-           anglesDetections = getInternalAngles(dets - x(1:3)');
+           anglesDetections = getInternalAngles(dets);
            anglesPattern = getInternalAngles(whole_pattern);
            angleDiff = abs(anglesDetections - anglesPattern);
            cost(iii) = cost(iii) + lambda * sum(angleDiff(~isnan(angleDiff)), 'all');
@@ -103,12 +116,23 @@ switch method
            %        cost(iii) = cost(iii) + sum(negLogL);
            %    end
            %end
-           eucDist = (dets - (rotMat*whole_pattern')').^2;
-           eucDist = reshape( eucDist(~isnan(eucDist)), [], 3);
-           cost(iii) = cost(iii) + 1/3*sum(sqrt(sum(eucDist,2)));
+           
+           %eucDist = (dets - (rotMat*whole_pattern')').^2;
+           %eucDist = reshape( eucDist(~isnan(eucDist)), [], 3);
+           %cost(iii) = cost(iii) + 1/3*sum(sqrt(sum(eucDist,2)));
+           if sum(any(isnan(dets),2)) == 1
+                cost(iii) = (cost(iii) + costNonAssignment)/sum(all(~isnan(dets),2));
+           elseif sum(any(isnan(dets),2)) == 0
+                cost(iii) = cost(iii)/sum(all(~isnan(dets),2));
+           else
+               fprintf('WTF')
+           end
+           
         end
         [c, minIdx] = min(cost);
         assignment = allPerms(minIdx,:);
+        %assignment = assignment(1:nMarkers);
+        %assignment = assignment(assignment ~= 5);
 end
 
 function leaving_edges = get_edges(marker)
