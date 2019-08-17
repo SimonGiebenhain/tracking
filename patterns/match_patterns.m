@@ -69,32 +69,24 @@ switch method
     case 'new'
         costNonAssignment = 50;
         
-        %rotMat = Rot(kalmanFilter.x(2*dim+1:2*dim+4));
-        %x = kalmanFilter.x;
+        rotMat = Rot(kalmanFilter.x(2*dim+1:2*dim+4));
+        x = kalmanFilter.x;
            
         lambda = 20;
         nMarkers = size(whole_pattern,1);
-        if size(detected_pattern, 1) == 3
-            allPerms = perms(1:nMarkers);
-        else
-            allPerms = perms(1:nMarkers+1);
-        end
+        allPerms = perms(1:nMarkers+1);
         cost = zeros(size(allPerms, 1),1);
         for iii=1:size(allPerms,1)
            p = allPerms(iii,:);
-           dets = NaN * zeros(nMarkers, 3);
+           %dets = NaN * zeros(nMarkers, 3);
            if size(detected_pattern,1) == 3
-               %TODO dets(p,:) = [detected_pattern; NaN*ones(1,3)];
+               p = p(1:nMarkers);
+               det_pat = [detected_pattern; NaN*ones(1,3); NaN*ones(1,3)];
+               dets = det_pat(p,:);
            else
-               p_lost = p(end);
                p = p(1:nMarkers);
                det_pat = [detected_pattern; NaN*ones(1,3)];
                dets = det_pat(p,:);
-               
-               %det_pat = detected_pattern;
-               %det_pat(p==5, :) = NaN;
-               %dets(p,:) = det_pat;
-               %dets(p_lost,:) = [];
            end
            distDetections = pdist(dets);
            distPattern = pdist(whole_pattern);
@@ -117,11 +109,11 @@ switch method
            %    end
            %end
            
-           %eucDist = (dets - (rotMat*whole_pattern')').^2;
-           %eucDist = reshape( eucDist(~isnan(eucDist)), [], 3);
-           %cost(iii) = cost(iii) + 1/3*sum(sqrt(sum(eucDist,2)));
-           if sum(any(isnan(dets),2)) == 1
-                cost(iii) = (cost(iii) + costNonAssignment)/sum(all(~isnan(dets),2));
+           eucDist = (dets - (rotMat*whole_pattern')').^2;
+           eucDist = reshape( eucDist(~isnan(eucDist)), [], 3);
+           cost(iii) = cost(iii) + 1/3*sum(sqrt(sum(eucDist,2)));
+           if sum(any(isnan(dets),2)) == 1 || sum(any(isnan(dets),2)) == 2
+                cost(iii) = (cost(iii) + sum(any(isnan(dets),2))* costNonAssignment)/sum(all(~isnan(dets),2));
            elseif sum(any(isnan(dets),2)) == 0
                 cost(iii) = cost(iii)/sum(all(~isnan(dets),2));
            else
