@@ -17,7 +17,6 @@ dim = size(pattern,2);
 % TODO better initial guess
 % TODO how to initially guess the velocity?
 detections = reshape(s.z, [], dim);
-Rot = quatToMat();
 assignment = match_patterns(pattern, detections, 'ML', Rot(0.25*ones(4,1)));
 positionEstimate = mean(detections - pattern(assignment,:),1);
 s.x = [positionEstimate'; zeros(dim,1); 0.25*ones(4,1); zeros(4,1)];

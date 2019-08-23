@@ -48,6 +48,7 @@ if nargin>2 && plotResult
     scatter3(X(1,:),X(2,:),X(3,:),'g*');
     hold on;
     scatter3(Y(1,:),Y(2,:),Y(3,:),'bo');
+    t = [0;0;0];
     X_prime = [R t; 0 0 0 1] * [X;ones(1,size(X,2))];
     scatter3(X_prime(1,:),X_prime(2,:),X_prime(3,:),'r*');
     axis equal tight;

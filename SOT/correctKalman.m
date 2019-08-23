@@ -16,10 +16,15 @@ if noKnowledge
     % Find an assignment between the individual markers and the detections
     
     if size(detections,1) > 2
-        assignment = match_patterns(pattern, detections, 'new', s);
-        assignment = assignment(1,1:size(detections,1));
+        p = match_patterns(pattern, detections - s.x(1:dim)', 'new', s);
+        %assignment = assignment(1,1:size(detections,1));
+        assignment(p) = 1:length(p);
+        assignment = assignment(1:size(detections,1));
+        lostDet = assignment == 5;
+        assignment = assignment(assignment ~= 5);
     else
         assignment = match_patterns(pattern, detections - s.x(1:dim)', 'ML', s);
+        lostDet = zeros(size(assignment));
     end
     
     % Print in case an error was made in the assignment
@@ -33,8 +38,10 @@ if noKnowledge
     % construct H and R from assignment vector, i.e. delete the
     % corresponding rows in H and R.
     detectionsIdx = zeros(dim*length(assignment),1);
+    lostIdx = zeros(dim*length(lostDet),1);
     for i = 1:dim
-        detectionsIdx( (i-1)*length(assignment) + 1: (i-1)*length(assignment) + length(assignment)) = assignment' + nMarkers*(i-1);
+        detectionsIdx( (i-1)*length(assignment) + 1: i*length(assignment)) = assignment' + nMarkers*(i-1);
+        lostIdx((i-1)*length(lostDet) + 1: i*length(lostDet)) = lostDet';
     end
     %s.H = @(x) s.H(x,assignment);
     s.R = R(detectionsIdx, detectionsIdx);
@@ -54,7 +61,7 @@ J = J(s.x);
 K = s.P*J'/(J*s.P*J'+s.R);
 
 z = s.H(s.x);
-s.x = s.x + K*(s.z-z(detectionsIdx));
+s.x = s.x + K*(s.z(~lostIdx)-z(detectionsIdx));
 
 % TODO immer machen? oder nur wenn detection?
 % Correct covariance matrix estimate

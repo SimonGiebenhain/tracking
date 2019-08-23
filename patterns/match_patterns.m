@@ -1,4 +1,4 @@
-function assignment = match_patterns(whole_pattern, detected_pattern, method, kalmanFilter)
+function [assignment, c] = match_patterns(whole_pattern, detected_pattern, method, kalmanFilter)
 %MATCH_PATTERNS Find corresponing points in two sets of points
 %
 %   assignment = MATCH_PATTERNS(whole_pattern, detected_pattern, 'ML', rotMat)
@@ -125,6 +125,45 @@ switch method
         assignment = allPerms(minIdx,:);
         %assignment = assignment(1:nMarkers);
         %assignment = assignment(assignment ~= 5);
+    case 'noKnowledge'
+        costNonAssignment = 50;
+                   
+        lambda = 20;
+        nMarkers = size(whole_pattern,1);
+        allPerms = perms(1:nMarkers);
+        cost = zeros(size(allPerms, 1),1);
+        for iii=1:size(allPerms,1)
+           p = allPerms(iii,:);
+           %dets = NaN * zeros(nMarkers, 3);
+           if size(detected_pattern,1) == 3
+               p = p(1:nMarkers);
+               det_pat = [detected_pattern; NaN*ones(1,3)];
+               dets = det_pat(p,:);
+           else
+               p = p(1:nMarkers);
+               det_pat = detected_pattern;
+               dets = det_pat(p,:);
+           end
+           distDetections = pdist(dets);
+           distPattern = pdist(whole_pattern);
+           diff = abs(distDetections - distPattern);
+           cost(iii) = sum(diff(~isnan(diff)), 'all');
+           anglesDetections = getInternalAngles(dets);
+           anglesPattern = getInternalAngles(whole_pattern);
+           angleDiff = abs(anglesDetections - anglesPattern);
+           cost(iii) = cost(iii) + lambda * sum(angleDiff(~isnan(angleDiff)), 'all');
+
+           if sum(any(isnan(dets),2)) == 1 || sum(any(isnan(dets),2)) == 2
+                cost(iii) = (cost(iii) + sum(any(isnan(dets),2))* costNonAssignment)/sum(all(~isnan(dets),2));
+           elseif sum(any(isnan(dets),2)) == 0
+                cost(iii) = cost(iii)/sum(all(~isnan(dets),2));
+           else
+               fprintf('WTF')
+           end
+           
+        end
+        [c, minIdx] = min(cost);
+        assignment = allPerms(minIdx,:);
 end
 
 function leaving_edges = get_edges(marker)

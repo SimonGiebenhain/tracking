@@ -16,9 +16,7 @@ function [H, J] = getMeasurementFunction(pattern, quatMotionType)
 %   kalman filter.
 
     % Get a function handle which produces the corresponding rotation matrix when supplied
-    % with a quaternion.
-    Rot = quatToMat();
-   
+    % with a quaternion.   
     if strcmp(quatMotionType, 'brownian')
         % Work woth symbolic variables in order to compute the jacobian
         % automatically.
@@ -29,8 +27,10 @@ function [H, J] = getMeasurementFunction(pattern, quatMotionType)
 
         % Let the Symbolic Math Toolbox calculate the jacobian.
         % The transform back to a regular matlab function.
-        J = matlabFunction( jacobian(H, [x; y; z; vx; vy; vz; q1; q2; q3; q4]) ) ;
-        H = @(x) reshape( (Rot(x(2*3+1:2*3+4)) * pattern')' + x(1:3)', [], 1 );
+        J = matlabFunction( jacobian(H, [x; y; z; vx; vy; vz; q1; q2; q3; q4])) ;
+
+        %J = matlabFunction( jacobian(H, [x; y; z; vx; vy; vz; q1; q2; q3; q4]), 'File', 'tracking/jacMeasureFun' ) ;
+        H = @(xvec) reshape( (Rot(xvec(2*3+1:2*3+4)) * pattern')' + xvec(1:3)', [], 1 );
     else
                 % Work woth symbolic variables in order to compute the jacobian
         % automatically.

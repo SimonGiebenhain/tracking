@@ -6,7 +6,7 @@
 % TODO
 % Explanation goes here
 
-function [estimatedPositions, estimatedQuats] = ownMOT(D, patterns, initialStates, nObjects, trueTrajectory, quatMotionType)
+function [estimatedPositions, estimatedQuats] = ownMOT(D, patterns, initialStates, nObjects, trueTrajectory, trueOrientation, quatMotionType)
 % OWNMOT does multi object tracking
 %   @D all observations/detections in the format:
 %       T x maxDetectionsPerFrame x 3
@@ -22,6 +22,10 @@ function [estimatedPositions, estimatedQuats] = ownMOT(D, patterns, initialState
 %   @trueTrajectory array of dimensions nObjects x T x 3
 %       Holds ground truth trajectory. When supplied this is used for the
 %       visualization.
+%
+%   @trueOrientation array of dimensions nObjects x T x 4
+%       Holds ground truth quaternions representing the orientation of each
+%       object at each timeframe
 
 nMarkers = 4;
 
@@ -32,14 +36,14 @@ minPos = squeeze(min(D,[],[1 2]));
 
 processNoise.position = 20;
 processNoise.motion = 20;
-processNoise.quat = 40;
-processNoise.quatMotion = 10;
-measurementNoise = 1000;
+processNoise.quat = 0.02;
+processNoise.quatMotion = 0.02;
+measurementNoise = 150;
 model = 'extended';
 initialNoise.initPositionVar = 5;
 initialNoise.initMotionVar = 5;
-initialNoise.initQuatVar = 100;
-initialNoise.initQuatMotionVar = 20;
+initialNoise.initQuatVar = 0.2;
+initialNoise.initQuatMotionVar = 0.2;
 
 nextId = 1;
 tracks = initializeTracks();
@@ -50,11 +54,13 @@ birdsTrajectories = cell(nObjects,1);
 trueTrajectories = cell(nObjects,1);
 birdsPositions = cell(nObjects,1);
 markerPositions = cell(nObjects, nMarkers);
+viconMarkerPositions = cell(nObjects, nMarkers);
 
 colorsPredicted = distinguishable_colors(nObjects);
 colorsTrue = (colorsPredicted + 2) ./ (max(colorsPredicted,[],2) +2);
 keepOldTrajectory = 0;
 shouldShowTruth = 1;
+vizHistoryLength = 200;
 initializeFigure();
 
 
@@ -74,7 +80,7 @@ for t = 1:T
     deleteLostTracks();
 
     createNewTracks();
-    if t == 221
+    if t == 1020
        t 
     end
     t
@@ -251,7 +257,16 @@ end
             currentTrackIdx = allAssignedTracksIdx(i);
             assignmentsIdx = floor((assignments(:,1)-1)/nMarkers) + 1 == currentTrackIdx;
             detectionIdx = assignments(assignmentsIdx,2);
+            
             detectedMarkersForCurrentTrack = detections(detectionIdx, :);
+            
+            %if size(detectedMarkersForCurrentTrack, 1) > 2 && t > 10
+            %   dist = distanceKalman(tracks(currentTrackIdx).kalmanFilter, detectedMarkersForCurrentTrack);
+            %   minDist = min(dist, [], 1);
+            %   %distToCenter =  sqrt(sum((detectedMarkersForCurrentTrack - tracks(currentTrackIdx).kalmanFilter.x(1:dim)').^2,2));
+            %   isValidDetections = minDist < 30;
+            %   detectedMarkersForCurrentTrack = detectedMarkersForCurrentTrack(isValidDetections', :);
+            %end
             
             % Correct the estimate of the object's location
             % using the new detection.
@@ -463,7 +478,7 @@ end
     %
     function initializeFigure()
         figure;
-        scatter3([minPos(1), maxPos(1)], [minPos(2), maxPos(2)], [minPos(3), maxPos(3)], '*')
+        %scatter3([minPos(1), maxPos(1)], [minPos(2), maxPos(2)], [minPos(3), maxPos(3)], '*')
         hold on;
         if shouldShowTruth && exist('trueTrajectory', 'var')
             for k = 1:nObjects
@@ -481,16 +496,17 @@ end
             %birdsPositions{k} = plot3(NaN, NaN, NaN, 'o', 'MarkerSize', 10, 'MarkerEdgeColor', colors(k,:));
             for n = 1:nMarkers
                markerPositions{k,n} = plot3(NaN, NaN, NaN, 'o', 'MarkerSize', 10, 'MarkerEdgeColor', colorsPredicted(k,:));
+               viconMarkerPositions{k,n} = plot3(NaN, NaN, NaN, 'square', 'MarkerSize', 12, 'MarkerEdgeColor', colorsTrue(k,:));
             end
         end
         
         
         grid on;
-        axis manual
+        axis equal;
+        axis manual;
     end
 
     function displayTrackingResults()
-        Rot = quatToMat();
         for k = 1:nObjects
             if t < T && t > 1
                 if shouldShowTruth && exist('trueTrajectory', 'var') && size(trueTrajectory,2) > t
@@ -499,15 +515,25 @@ end
                     newZTrue = [trueTrajectories{k}.ZData trueTrajectory(k,t,3)];
                     
                     vizLength = length(newXTrue);
-                    if ~keepOldTrajectory && vizLength > 1000
-                       newXTrue = newXTrue(1,vizLength-1000:vizLength);
-                       newYTrue = newYTrue(1,vizLength-1000:vizLength);
-                       newZTrue = newZTrue(1,vizLength-1000:vizLength);
+                    if ~keepOldTrajectory && vizLength > vizHistoryLength
+                       newXTrue = newXTrue(1,vizLength-vizHistoryLength:vizLength);
+                       newYTrue = newYTrue(1,vizLength-vizHistoryLength:vizLength);
+                       newZTrue = newZTrue(1,vizLength-vizHistoryLength:vizLength);
                     end
                     
                     trueTrajectories{k}.XData = newXTrue;
                     trueTrajectories{k}.YData = newYTrue;
                     trueTrajectories{k}.ZData = newZTrue; 
+                    
+                    pattern = tracks(k).kalmanFilter.pattern;
+                    trueRotMat = Rot(trueOrientation(k, t, :));
+                    trueRotatedPattern = (trueRotMat * pattern')';
+                    
+                    for n = 1:nMarkers
+                        viconMarkerPositions{k,n}.XData = trueTrajectory(k, t, 1) + trueRotatedPattern(n,1);
+                        viconMarkerPositions{k,n}.YData = trueTrajectory(k, t, 2) + trueRotatedPattern(n,2);
+                        viconMarkerPositions{k,n}.ZData = trueTrajectory(k, t, 3) + trueRotatedPattern(n,3);
+                    end
                 end
                 
                 if tracks(k).age > 0
@@ -521,10 +547,10 @@ end
                     % only plot the trajectory in the most recent 1000
                     % frames.
                     vizLength = length(newXData);
-                    if ~keepOldTrajectory && vizLength > 1000
-                       newXData = newXData(1,vizLength-1000:vizLength);
-                       newYData = newYData(1,vizLength-1000:vizLength);
-                       newZData = newZData(1,vizLength-1000:vizLength);
+                    if ~keepOldTrajectory && vizLength > vizHistoryLength
+                       newXData = newXData(1,vizLength-vizHistoryLength:vizLength);
+                       newYData = newYData(1,vizLength-vizHistoryLength:vizLength);
+                       newZData = newZData(1,vizLength-vizHistoryLength:vizLength);
                     end
                     birdsTrajectories{k}.XData = newXData;
                     birdsTrajectories{k}.YData = newYData;
@@ -544,7 +570,6 @@ end
                         markerPositions{k,n}.YData = yPos + rotatedPattern(n,2);
                         markerPositions{k,n}.ZData = zPos + rotatedPattern(n,3);
                     end
-
                 end
             end
             dets = squeeze(D(t,(k-1)*nMarkers+1:k*nMarkers,:));
