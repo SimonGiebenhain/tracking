@@ -1,4 +1,4 @@
-function [H, J] = getMeasurementFunction(pattern, quatMotionType)
+function [H, J] = getMeasurementFunction(pattern, quatMotionType, name)
 %GETMEASUREMENTFUNCTION Construct the measurement function from a kalman
 %filter. 
 %
@@ -20,7 +20,7 @@ function [H, J] = getMeasurementFunction(pattern, quatMotionType)
     if strcmp(quatMotionType, 'brownian')
         % Work woth symbolic variables in order to compute the jacobian
         % automatically.
-        syms x y z vx vy vz q1 q2 q3 q4;
+        syms x y z vx vy vz q1 q2 q3 q4 real;
 
         % Mapping from state space to measurement space
         H = reshape( (Rot([q1;q2;q3;q4]) * pattern')' + [x; y; z]', [], 1 );
@@ -28,13 +28,13 @@ function [H, J] = getMeasurementFunction(pattern, quatMotionType)
         % Let the Symbolic Math Toolbox calculate the jacobian.
         % The transform back to a regular matlab function.
         J = matlabFunction( jacobian(H, [x; y; z; vx; vy; vz; q1; q2; q3; q4])) ;
-
-        %J = matlabFunction( jacobian(H, [x; y; z; vx; vy; vz; q1; q2; q3; q4]), 'File', 'tracking/jacMeasureFun' ) ;
+        %J = matlabFunction( jacobian(H, [x; y; z; vx; vy; vz; q1; q2; q3; q4]), 'File', ['tracking/jacobian/' name] ) ;
+        
         H = @(xvec) reshape( (Rot(xvec(2*3+1:2*3+4)) * pattern')' + xvec(1:3)', [], 1 );
     else
                 % Work woth symbolic variables in order to compute the jacobian
         % automatically.
-        syms x y z vx vy vz q1 q2 q3 q4 vq1 vq2 vq3 vq4;
+        syms x y z vx vy vz q1 q2 q3 q4 vq1 vq2 vq3 vq4 real;
 
         % Mapping from state space to measurement space
         H = reshape( (Rot([q1;q2;q3;q4]) * pattern')' + [x; y; z]', [], 1 );
@@ -42,6 +42,8 @@ function [H, J] = getMeasurementFunction(pattern, quatMotionType)
         % Let the Symbolic Math Toolbox calculate the jacobian.
         % The transform back to a regular matlab function.
         J = matlabFunction( jacobian(H, [x; y; z; vx; vy; vz; q1; q2; q3; q4; vq1; vq2; vq3; vq4]) ) ;
+        %J = matlabFunction( jacobian(H, [x; y; z; vx; vy; vz; q1; q2; q3; q4; vq1; vq2; vq3; vq4]), 'File', ['tracking/jacobian/' name] ) ;
+
         H = @(x) reshape( (Rot(x(2*3+1:2*3+4)) * pattern')' + x(1:3)', [], 1 );
     end
         
