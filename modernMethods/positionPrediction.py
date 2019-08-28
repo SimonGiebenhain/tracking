@@ -3,13 +3,15 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
+from viz import visualize
+
 
 N = 200
 T = 50
 hidden_dim = 20
 input_dim = 3
 
-NUM_EPOCHS = 2000
+NUM_EPOCHS = 500
 
 
 #TODO 1  : visualize trajectories
@@ -18,31 +20,46 @@ NUM_EPOCHS = 2000
 #TODO 3  : generate data which is similar to birds trajectories?
 
 
+def Gen_RandLine(length, dims=2):
+    theta_range = np.random.randint(1,5)
+    theta = np.linspace(-theta_range * np.pi, theta_range * np.pi, length)
+    z_range = np.random.randint(1,5)
+    z = np.linspace(-z_range, z_range, length)
+    r = z ** 2*np.abs(np.random.rand()) + 1
+    x = r * np.sin(theta)
+    y = r * np.cos(theta)
+
+    return np.stack([x,y,z], axis=1) + 5*np.random.uniform(low=-5, high=5, size=[1,dims])
+
+
 def gen_training_data():
-    slopes = range(N)
-    xaxis = np.arange(T)
+    #slopes = range(N)
+    #xaxis = np.arange(T)
 
     X = np.zeros([T, N, 3], dtype=np.float32)
-    for n,a in enumerate(slopes):
-        X[:, n ,0] = xaxis
-        X[:, n ,1] = a/10 * xaxis
-        X[:, n, 2] = np.sin(a/10 * xaxis/10)
+    #for n,a in enumerate(slopes):
+    #    X[:, n ,0] = xaxis
+    #    X[:, n ,1] = a/10 * xaxis
+    #    X[:, n, 2] = np.sin(a/10 * xaxis/10)
+
+    for n in range(N):
+        X[:, n, :] = Gen_RandLine(T, input_dim)
 
     maxi1 = np.max(X[:,:,0])
     maxi2 = np.max(X[:,:,1])
+    maxi3 = np.max(X[:,:,2])
     X[:,:,0] = X[:,:,0] / maxi1
     X[:,:,1] = X[:,:,1] / maxi2
-    return X, maxi1, maxi2
+    X[:,:,2] = X[:,:,2] / maxi3
+    return X, maxi1, maxi2, maxi3
+
 
 lstm = nn.LSTM(input_dim, hidden_dim)  # Input dim is 3, output dim is 3
-[X_train, maxi1, maxi2] = gen_training_data()
+[X_train, maxi1, maxi2, maxi3] = gen_training_data()
 print(np.squeeze(X_train[:,2,:]))
 inputs = torch.from_numpy(X_train)
 hidden = (torch.randn(1, N, hidden_dim), torch.randn(1, N, hidden_dim))
 out, hidden = lstm(inputs, hidden)
-
-#print(out)
-#print(hidden)
 
 
 class LSTMTracker(nn.Module):
@@ -67,49 +84,57 @@ class LSTMTracker(nn.Module):
 
 model = LSTMTracker(hidden_dim, input_dim)
 loss_function = nn.MSELoss()
-optimizer = optim.Adam(model.parameters(), lr=0.001)
+optimizer = optim.Adam(model.parameters(), lr=0.01)
 
-#with torch.no_grad():
-#    next_pos = model(inputs)
-#    print(next_pos)
+def train():
+    model.train()
+    for epoch in range(NUM_EPOCHS):
+        batches = torch.split(inputs, 50, 1)
+        for batch in batches:
+            model.zero_grad()
 
+            pred_pos = model(batch[:-1,:,:])
 
-for epoch in range(NUM_EPOCHS):  # again, normally you would NOT do 300 epochs, it is toy data
-    #for sentence, tags in training_data:
-    batches = torch.split(inputs, 50, 1)
-    for batch in batches:
-        model.zero_grad()
+            loss = loss_function(pred_pos, batch[1:,:,:])
+            loss.backward()
+            optimizer.step()
+            print(loss)
 
-        pred_pos = model(batch[:-1,:,:])
-
-        loss = loss_function(pred_pos, batch[1:,:,:])
-        loss.backward()
-        optimizer.step()
-        print(loss)
-
-with torch.no_grad():
-    tag_scores = model(inputs)
-    print(tag_scores.shape)
-    print(torch.squeeze(tag_scores[:,2,:]))
-    #print(tag_scores)
+    torch.save(model.state_dict(), 'weights/lstm')
 
 
-with torch.no_grad():
-    X = np.zeros([T, 1, input_dim], dtype=np.float32)
-    X[:, 0 ,0] = np.arange(T)
-    X[:, 0 ,1] = 2 * np.arange(T)
-    X[:, 0, 2] = np.sin(2 * np.arange(T)/10)
 
-    X[:, :, 0] = X[:, :, 0] / maxi1
-    X[:, :, 1] = X[:, :, 1] / maxi2
-    X = torch.from_numpy(X)
-    pred_pos = model(X[:-1, : ,:])
-    print(X[1:, :, :])
-    print(pred_pos)
-    print(X[1:, : ,:] - pred_pos)
-    scale = torch.tensor([maxi1, maxi2, 1]).view(1,1,input_dim)
-    X = X * scale
-    pred_pos = pred_pos * scale
-    print(X)
-    print(pred_pos)
-    print(X[1:, : ,:] - pred_pos)
+def eval():
+    model.load_state_dict(torch.load('weights/lstm'))
+    model.eval()
+    with torch.no_grad():
+        tag_scores = model(inputs[:-1, :, :])
+        print(tag_scores.shape)
+        print(torch.squeeze(tag_scores[:,2,:]))
+        data = torch.stack((tag_scores[:,2,:], inputs[1:,2,:]),1)
+        print(data.shape)
+        visualize(data)
+
+
+    with torch.no_grad():
+        X = np.zeros([T, 1, input_dim], dtype=np.float32)
+        X[:, 0 ,0] = np.arange(T)
+        X[:, 0 ,1] = 2 * np.arange(T)
+        X[:, 0, 2] = np.sin(2 * np.arange(T)/10)
+
+        X[:, :, 0] = X[:, :, 0] / maxi1
+        X[:, :, 1] = X[:, :, 1] / maxi2
+        X = torch.from_numpy(X)
+        pred_pos = model(X[:-1, : ,:])
+        print(X[1:, :, :])
+        print(pred_pos)
+        print(X[1:, : ,:] - pred_pos)
+        scale = torch.tensor([maxi1, maxi2, 1]).view(1,1,input_dim)
+        X = X * scale
+        pred_pos = pred_pos * scale
+        print(X)
+        print(pred_pos)
+        print(X[1:, : ,:] - pred_pos)
+
+#train()
+eval()
