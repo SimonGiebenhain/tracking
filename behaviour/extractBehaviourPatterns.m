@@ -51,16 +51,21 @@ isWalking = cleanData(isWalking, nObjects, minLength, maxGapLength);
 
 %% identify sitting
 % inverse of isMoving
-isSitting = ~isMoving;
-isSitting = cleanData(isSitting, nObjects, minLength, maxGapLength);
+isSitting = ~logical(isMoving);
+isSitting = uint8(cleanData(isSitting, nObjects, minLength, maxGapLength));
 
 %% save as numpy
 path = 'tracking/behaviour/';
-mat2np(uint8(isFlying), [path 'isFlying.pkl'], 'uint8');
-mat2np(uint8(isLanding), [path 'isLanding.pkl'], 'uint8');
-mat2np(uint8(isStarting), [path 'isStarting.pkl'], 'uint8');
-mat2np(uint8(isWalking), [path 'isWalking.pkl'], 'uint8');
-mat2np(uint8(isSitting), [path 'isSitting.pkl'], 'uint8');
+mat2np(double(isFlying), [path 'isFlying.pkl'], 'float64');
+mat2np(double(isLanding), [path 'isLanding.pkl'], 'float64');
+mat2np(double(isStarting), [path 'isStarting.pkl'], 'float64');
+mat2np(double(isWalking), [path 'isWalking.pkl'], 'float64');
+mat2np(double(isSitting), [path 'isSitting.pkl'], 'float64');
+
+mat2np(double(estimatedPositions(:,:,1)), [path 'positionsX.pkl'], 'float64');
+mat2np(double(estimatedPositions(:,:,2)), [path 'positionsY.pkl'], 'float64');
+mat2np(double(estimatedPositions(:,:,3)), [path 'positionsZ.pkl'], 'float64');
+
 
 
 
