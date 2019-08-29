@@ -2,6 +2,7 @@ import numpy as np
 import pickle
 from random import choice
 from math import floor
+from viz import visualize
 
 path = '../behaviour/'
 filenames = ['isFlying', 'isStarting', 'isLanding', 'isWalking', 'isSitting']
@@ -41,7 +42,11 @@ def get_behaviour_snippets(pos, behaviour_mask, n_objects, min_length):
                     actionLength += 1
                 elif actionLength > min_length:
                     #save action snippet
-                    snippets.append(np.squeeze(pos[k,t-actionLength:t, :]))
+                    snip = np.squeeze(pos[k,t-actionLength:t, :])
+                    if np.sum(np.isnan(snip)) > 0:
+                        print(snip)
+                        print('HHHHHHAAAAAAALLLLLLLLLLLLLLOOOOOO')
+                    snippets.append(snip)
                     inAction = False
                     actionLength = 0
                 else:
@@ -73,6 +78,7 @@ landing_behaviour = split_snippets(get_behaviour_snippets(pos, files['isLanding'
 walking_behaviour = split_snippets(get_behaviour_snippets(pos, files['isWalking'], 10, 10), 10)
 sitting_behaviour = split_snippets(get_behaviour_snippets(pos, files['isSitting'], 10, 30), 10)
 
+
 #print(len(flying_behaviour))
 #print(len(starting_behaviour))
 #print(len(landing_behaviour))
@@ -81,11 +87,13 @@ sitting_behaviour = split_snippets(get_behaviour_snippets(pos, files['isSitting'
 
 
 # offset_noise basically has no effect
-def center_snippet(snippet):
+def center_snippet(snippet, offset):
     #offset_std =
     mean_pos = np.mean(snippet, axis=0)
     #rnd_offset = np.random.normal(loc=0, scale=offset_st, size=[1,3])
-    return snippet - mean_pos #+ rnd_offset
+    snippet = snippet - mean_pos
+    pos0 = snippet[0, :]
+    return snippet - pos0 + offset #+ rnd_offset
 
 # rotate snippet inorder to get more variety
 # maybe don't change direction of z-axis in order to keep gravity in tact
@@ -101,11 +109,57 @@ def scale_snippet(snippet):
     scale = np.random.normal(loc=1, scale=scale_std, size=[1,3])
     scale = np.maximum(0.5 * np.ones([1,3]), scale)
     scale = np.minimum(1.5 * np.ones([1,3]), scale)
+    #TODO remove this line
+    scale = np.ones([1,3])
     return snippet * scale
 
 # counterclockwise angle from v to u
 def get_counter_clockwise_anlge(v, u):
-    return np.arcsin(v[0]*u[1] - v[1]*u[0]/(np.linalg.norm(v)*np.linalg.norm(u)))
+    return np.arcsin((v[0]*u[1] - v[1]*u[0])/(np.linalg.norm(v)*np.linalg.norm(u)))
+
+
+# TODO figure out what is wrong!!!
+for i in range(1000):
+    u = np.random.normal(0,1,[3])
+    u[2] = 0
+    v = np.random.normal(0, 1, [3])
+    v[2] = 0
+    theta = get_counter_clockwise_anlge(v/np.linalg.norm(v), u/np.linalg.norm(u))
+    c, s = np.cos(theta), np.sin(theta)
+    R = np.array(((c, -s), (s, c)))
+    rot_v = np.matmul(R, v[:2])
+    rot_v3 = np.zeros(3)
+    rot_v3[:2] = rot_v
+    rot_v3[2] = 0
+    new_angle = get_counter_clockwise_anlge(rot_v, u)
+
+    theta = get_counter_clockwise_anlge(v/np.linalg.norm(v), u/np.linalg.norm(u))
+    c, s = np.cos(theta), np.sin(theta)
+    R = np.array(((c, -s), (s, c)))
+    rot_v = np.matmul(R, v[:2])
+    rot_v3 = np.zeros(3)
+    rot_v3[:2] = rot_v
+    rot_v3[2] = 0
+    new_angle2 = get_counter_clockwise_anlge(rot_v, u)
+
+    if min(new_angle, new_angle2) > 0.01:
+        print(new_angle)
+        print(u)
+        print(v)
+
+u = np.array([0.4, 0.06, 0])
+v = np.array([0.136, 1.05, 0])
+
+theta = -get_counter_clockwise_anlge(v, u)
+c, s = np.cos(theta), np.sin(theta)
+R = np.array(((c, -s), (s, c)))
+rot_v = np.matmul(R, v[:2])
+print(rot_v/np.linalg.norm(rot_v))
+print(u/np.linalg.norm(u))
+
+
+print('DDDOOOONNNNEEEEE')
+
 
 # Walk through markov chain specified by transitions_probs for n_steps
 # Generates trajectory in 2d numpy array of shape (n_steps * snippet_length) x (3)
@@ -116,27 +170,38 @@ def simulate_trajectory(snippets, transition_probs, n_steps):
     snippet_length = np.shape(snippets[0][0])[0]
     state = np.random.randint(1, n_states)
     trajectory = np.zeros([n_steps * snippet_length, 3])
-    trajectory[0:snippet_length, :] = center_snippet(choice(snippets[state]))
+    trajectory[0:snippet_length, :] = center_snippet(choice(snippets[state]), 0)
     for t in range(1, n_steps):
+        snippet = choice(snippets[state])
         probs = transition_probs[state, :]
         state = np.argmax(np.random.multinomial(1, probs))
-        print(state)
+        offset = trajectory[t*snippet_length-1, :]
         if state != 0:
             # TODO enforce some kind of smoothness
-            past_direction = trajectory[t*snippet_length-1,:] - trajectory[t+snippet_length-2,:]
+            past_direction = trajectory[t*snippet_length-1, :] - trajectory[t*snippet_length-2, :]
             past_direction[2] = 0
-            snippet = choice(snippets[state])
-            new_direction = snippet[1,:] - snippet[0,:]
+            new_direction = snippet[1, :] - snippet[0, :]
             new_direction[2] = 0
             if np.linalg.norm(past_direction) < 0.1 or np.linalg.norm(new_direction) < 0.1:
-                trajectory[t * snippet_length:(t + 1) * snippet_length] = scale_snippet(center_snippet(snippet))
+                trajectory[t * snippet_length:(t + 1) * snippet_length, :] = scale_snippet(center_snippet(snippet, offset))
             else:
                 rnd_rot_theta = get_counter_clockwise_anlge(new_direction, past_direction)
-                rnd_rot_theta = np.random.normal(rnd_rot_theta, scale=0.1)
-                trajectory[t*snippet_length:(t+1)*snippet_length] = scale_snippet(rotate_snippet(center_snippet(snippet), rnd_rot_theta))
+                #rnd_rot_theta = np.random.normal(rnd_rot_theta, scale=0.02)
+                old_snippet = snippet
+                snippet = rotate_snippet(center_snippet(snippet, np.zeros([1, 3])), rnd_rot_theta)
+                past_direction = trajectory[t * snippet_length - 1, :] - trajectory[t * snippet_length - 2, :]
+                new_direction = snippet[1, :] - snippet[0, :]
+                past_direction[2] = 0
+                new_direction[2] = 0
+                if get_counter_clockwise_anlge(new_direction, past_direction) > 0.001:
+                    snippet = rotate_snippet(center_snippet(old_snippet, np.zeros([1, 3])), rnd_rot_theta)
+                past_direction = trajectory[t * snippet_length - 1, :] - trajectory[t * snippet_length - 2, :]
+                new_direction = snippet[1, :] - snippet[0, :]
+                if get_counter_clockwise_anlge(new_direction, past_direction) > 0.0000001:
+                    print(get_counter_clockwise_anlge(new_direction, past_direction))
+                trajectory[t*snippet_length:(t+1)*snippet_length, :] = scale_snippet(center_snippet(snippet, offset))
         else:
-            snippet = choice(snippets[state])
-            trajectory[t*snippet_length:(t+1)*snippet_length] = scale_snippet(center_snippet(snippet))
+            trajectory[t*snippet_length:(t+1)*snippet_length, :] = scale_snippet(center_snippet(snippet, offset))
 
     return trajectory
 
@@ -158,9 +223,15 @@ assert np.array_equal(np.sum(transition_matrix, axis=1), np.ones([np.shape(trans
 
 snippets = [sitting_behaviour, walking_behaviour, starting_behaviour, flying_behaviour, landing_behaviour]
 
-traj = simulate_trajectory(snippets, transition_matrix, 10)
+traj = simulate_trajectory(snippets, transition_matrix, 100)
 print(np.shape(traj))
 print(traj)
+
+traj = traj / np.max(np.abs(traj), axis=0)
+
+visualize(np.expand_dims(traj,axis=1), isNumpy=True)
+
+
 
 
 # TODO 3: define markov chain to generate new behaviour
