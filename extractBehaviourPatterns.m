@@ -26,18 +26,29 @@ end
 isMoving = cleanData(isMoving, nObjects, minLength, maxGapLength);
 
 %% identify flying
-% TODO movementSpeed higher than 200-300 or smth. and than clean
-isFlying = movementSpeed > 250;
+isFlying = movementSpeed > 350;
 
 minLength = 20;
 maxGapLength = 5;
 isFlying = cleanData(isFlying, nObjects, minLength, maxGapLength);
 
-%% starting and ladnding
-% moving with elevation changes
-
+%% identify starting and ladnding
+% rule: moving with elevation changes, but not flying
+altitudeChange = zeros(nObjects, length(estimatedPositions) - 1);
+for k=1:nObjects
+   altitudeChange(k,:) = estimatedPositions(k,2:end,3) - estimatedPositions(k,1:end-1,3); 
+end
+minLength = 5;
+maxGapLength = 3;
+isLanding = ~isFlying & isMoving & cleanData(-altitudeChange > 5, nObjects, minLength, maxGapLength);
+isStarting = ~isFlying & isMoving & cleanData(altitudeChange > 5, nObjects, minLength, maxGapLength);
 %% identify walking
 % moving but not flying landing or starting
+isWalking = isMoving & ~isFlying & ~isLanding & ~isStarting;
+
+%% identify sitting
+% inverse of isMoving
+isSitting = ~isMoving;
 
 %% utility functions
 
