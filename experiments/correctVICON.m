@@ -5,16 +5,17 @@ load('D_labeled.mat')
 
 offset = 130;
 
-formattedData = formattedData(1011+offset-1:end, :,:);
+formattedData = formattedData(1011+offset:end, :,:);
 
-D_offset = D_labeled(offset-1:end,:);
+D_offset = D_labeled(offset:end,:);
 VICONX = D_offset(:,5:7:end);
 VICONY = D_offset(:,6:7:end);
 VICONZ = D_offset(:,7:7:end);
-VICONq2 = D_offset(:,1:7:end);
-VICONq3 = D_offset(:,2:7:end);
-VICONq4 = D_offset(:,3:7:end);
-VICONq1 = D_offset(:,4:7:end);
+%DO you want to reorder or not?
+%VICONq1 = D_offset(:,1:7:end);
+%VICONq2 = D_offset(:,2:7:end);
+%VICONq3 = D_offset(:,3:7:end);
+%VICONq4 = D_offset(:,4:7:end);
 
 VICONpos = cat(3, VICONX, VICONY, VICONZ);
 VICONpos = permute(VICONpos, [2 1 3]);
