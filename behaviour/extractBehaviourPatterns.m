@@ -62,10 +62,23 @@ mat2np(double(isStarting), [path 'isStarting.pkl'], 'float64');
 mat2np(double(isWalking), [path 'isWalking.pkl'], 'float64');
 mat2np(double(isSitting), [path 'isSitting.pkl'], 'float64');
 
+%% save estimated Position and Orientation as numpy
 mat2np(double(estimatedPositions(:,:,1)), [path 'positionsX.pkl'], 'float64');
 mat2np(double(estimatedPositions(:,:,2)), [path 'positionsY.pkl'], 'float64');
 mat2np(double(estimatedPositions(:,:,3)), [path 'positionsZ.pkl'], 'float64');
 
+mat2np(double(estimatedQuats(:,:,1)), [path, 'quats1.pkl'], 'float64');
+mat2np(double(estimatedQuats(:,:,2)), [path, 'quats2.pkl'], 'float64');
+mat2np(double(estimatedQuats(:,:,3)), [path, 'quats3.pkl'], 'float64');
+mat2np(double(estimatedQuats(:,:,4)), [path, 'quats4.pkl'], 'float64');
+
+%% save VICON positions and orientations as numpy
+mat2np(double(D_offset), [path, 'vicon.pkl'], 'float64');
+
+%% save detections as numpy
+mat2np(double(formattedData(1:size(D_offset,1),:,1)), [path, 'detectionsX.pkl'], 'float64');
+mat2np(double(formattedData(1:size(D_offset,1),:,2)), [path, 'detectionsY.pkl'], 'float64');
+mat2np(double(formattedData(1:size(D_offset,1),:,3)), [path, 'detectionsZ.pkl'], 'float64');
 
 
 
