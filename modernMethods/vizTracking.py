@@ -5,8 +5,13 @@ import matplotlib.pyplot as plt
 import mpl_toolkits.mplot3d.axes3d as p3
 import matplotlib.animation as animation
 
-from scipy.spatial.transform import Rotation as R
+#from scipy.spatial.transform import Rotation as R
+from pyquaternion import Quaternion as Q
 
+import os, os.path
+
+
+patterns = np.load('data/patterns.npy')
 
 class BirdData:
     def __init__(self, kalmanPos, kalmanQuat, viconPos, viconQuat, detections, poseLine, viconPosLine, scatter, kalman_preds, vicon_preds):
@@ -24,6 +29,7 @@ class BirdData:
 
 
 def update_lines(t, dataLines, birdId, trajectory_length):
+    global patterns
     #TODO test whether trajLength=0 works
 
     #meanPos = dataLines[0][num,:]
@@ -33,7 +39,7 @@ def update_lines(t, dataLines, birdId, trajectory_length):
     #return lines
     lines = []
     center = dataLines[birdId].kalmanPos[t, :]
-    for bird in dataLines:
+    for id, bird in enumerate(dataLines):
         if trajectory_length > 0:
             if t > trajectory_length:
                 t0 = t - trajectory_length - 1
@@ -54,17 +60,26 @@ def update_lines(t, dataLines, birdId, trajectory_length):
         # calculate the expected marker locations
         # first with the kalman predictions
         #TODO pattern = bird.pattern
-        pattern = 15 * np.array([[0, 0, 0],
-                            [1, 1, 1],
-                            [-1, -1, -1],
-                            [1, 0, -1]])
-        rot = R.from_quat(bird.kalmanQuat[t, :], normalized=False)
-        rotated_pattern = rot.apply(pattern)
+        pattern = patterns[id, :, :]
+        qu = bird.kalmanQuat[t,:].tolist()
+        qu = [qu[1], qu[2], qu[3], qu[0]]
+        q = Q(qu)
+        rot_mat = q.rotation_matrix
+        #rot = R.from_quat(bird.kalmanQuat[t, :], normalized=False)
+        #rotated_pattern = rot.apply(pattern)
+        rotated_pattern = np.dot(rot_mat, pattern.T).T
         expected_markers_kalman = rotated_pattern + bird.kalmanPos[t, :]
 
         # now with VICON predictions
-        rot = R.from_quat(bird.viconQuat[t, :], normalized=True)
-        rotated_pattern = rot.apply(pattern)
+        qu = bird.viconQuat[t,:].tolist()
+        #q = Q(bird.viconQuat[t, :])
+        qu = [qu[1], qu[2], qu[3], qu[0]]
+        #TODO fix bug in rotation?!
+        q = Q(qu)
+        rot_mat = q.rotation_matrix
+        rotated_pattern = np.dot(rot_mat, pattern.T).T
+        #rot = R.from_quat(bird.viconQuat[t, :], normalized=True)
+        #rotated_pattern = rot.apply(pattern)
         expected_markers_vicon = rotated_pattern + bird.viconPos[t,:]
 
         # display expected marker locations
@@ -124,6 +139,18 @@ def loadColors():
     with open(path + 'colors.pkl', 'rb') as fin:
         colors = pickle.load(fin)
     np.save('data/colors.npy', colors)
+
+def load_pattern():
+    patterns = []
+    path = '../behaviour/'
+    for f in os.listdir(path):
+        ext = os.path.splitext(f)[0]
+        if not '.vsk' in ext:
+            continue
+        with open(os.path.join(path, f), 'rb') as fin:
+            patterns.append(pickle.load(fin))
+
+    np.save('data/patterns.npy', np.stack(patterns, axis=0))
 
 def importAndStoreMATLABData():
 
@@ -262,5 +289,4 @@ trajectory_length = 100
 
 
 # at the end bird 0 has no detections anymore, i.e. it cannot be tracked
-
 old(birdId, firstFrame, lastFrame, trajectory_length)
