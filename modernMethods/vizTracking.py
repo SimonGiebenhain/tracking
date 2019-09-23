@@ -138,17 +138,22 @@ def importAndStoreMATLABData():
     np.save('data/detections.npy', dets)
 
 
-def old(birdId):
+def old(birdId, firstFrame, lastFrame):
     # Attaching 3D axis to the figure
     fig = plt.figure()
     ax = p3.Axes3D(fig)
 
     # load data
     pos = np.load('data/pos.npy')
+    pos = pos[:, firstFrame:lastFrame+1, :]
     quats = np.load('data/quats.npy')
+    quats = quats[:, firstFrame:lastFrame+1, :]
     viconPos = np.load('data/viconPos.npy')
+    viconPos = viconPos[:, firstFrame:lastFrame+1, :]
     viconQuats = np.load('data/viconQuats.npy')
+    viconQuats = viconQuats[:, firstFrame:lastFrame+1, :]
     detections = np.load('data/detections.npy')
+    detections = detections[firstFrame:lastFrame+1, :, :]
 
     colors = np.load('data/colors.npy')
 
@@ -171,36 +176,43 @@ def old(birdId):
     #lines = [ax.plot(dat[0:1, 0], dat[0:1, 1], dat[0:1, 2])[0] for dat in data]
 
     # Setting the axes properties
-    ax.set_xlim3d([-2000, 2000])
+    ax.set_xlim3d([-500, 500])
     ax.set_xlabel('X')
 
-    ax.set_ylim3d([-2000, 2000])
+    ax.set_ylim3d([-500, 500])
     ax.set_ylabel('Y')
 
-    ax.set_zlim3d([-2000, 2000])
+    ax.set_zlim3d([-500, 500])
     ax.set_zlabel('Z')
 
     ax.set_title('3D Test')
 
     # Creating the Animation object
     line_ani = animation.FuncAnimation(fig, update_lines, np.shape(quats)[1]-1, fargs=(dataAndLines,birdId),
-                                       interval=20, blit=False)
+                                       interval=2, blit=False)
 
     plt.show()
 
-birdId = 0
+birdId = 2
+firstFrame = 1500
+lastFrame = 2000
 
-#TODO specify starting frame
 #TODO specify whether to use VICON or correctedVICON
+#TODO remove old track and give paramter
+#TODO expected marker locations, with param to turn viz of expected markers off
+#TODO implement pause feature
 #TODO init azimuth
+#TODO save clips
+#TODO smoothen camera motion
 #TODO write instructions:
-# choose bird
+# choose bird (from 0 to 9)
 # zoom
 # rotate
 # which vicon to use
 # starting frame
+# animation speed
 
 
-# at the end bird 1 has no detections anymore, i.e. it cannot be tracked
+# at the end bird 0 has no detections anymore, i.e. it cannot be tracked
 
-old(birdId)
+old(birdId, firstFrame, lastFrame)
