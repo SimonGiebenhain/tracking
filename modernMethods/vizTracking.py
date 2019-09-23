@@ -5,15 +5,38 @@ import matplotlib.animation as animation
 import pickle
 
 
-def update_lines(num, dataLines, lines):
-    #meanPos = 0
-    #for data in dataLines:
-    #    meanPos += data[num,:]
-    #meanPos /= 10
-    meanPos = dataLines[0][num,:]
-    for line, data in zip(lines, dataLines):
-        line.set_data((data[:num+1, 0:2]-meanPos[0:2]).T)
-        line.set_3d_properties(data[:num+1, 2]-meanPos[2])
+class BirdData:
+    def __init__(self, kalmanPos, kalmanQuat, viconPos, viconQuat, detections, poseLine, viconPosLine, scatter):
+        self.kalmanPos = kalmanPos
+        self.kalmanQuat = kalmanQuat
+        self.viconPos = viconPos
+        self.viconQuat = viconQuat
+        self.detections = detections
+        self.posLine = poseLine
+        self.viconPosLine = viconPosLine
+        self.scatter = scatter
+
+
+def update_lines(num, dataLines, nothing):
+
+    #meanPos = dataLines[0][num,:]
+    #for line, data in zip(lines, dataLines):
+    #    line.set_data((data[:num+1, 0:2]-meanPos[0:2]).T)
+    #    line.set_3d_properties(data[:num+1, 2]-meanPos[2])
+    #return lines
+    lines = []
+    for bird in dataLines:
+        bird.posLine.set_data(bird.kalmanPos[:num+1, 0:2].T)
+        bird.posLine.set_3d_properties(bird.kalmanPos[:num+1, 2])
+        bird.viconPosLine.set_data(bird.viconPos[:num+1, 0:2].T)
+        bird.viconPosLine.set_3d_properties(bird.viconPos[:num+1, 2])
+        lines.append(bird.posLine)
+        lines.append(bird.viconPosLine)
+    bird = dataLines[0]
+    #bird.scatter.remove()
+    #bird.scatter.set_offsets(bird.detections[num, :,:])
+    bird.scatter._offsets3d = (bird.detections[num, :, 0], bird.detections[num, :, 1], bird.detections[num, :, 2])
+    lines.append(bird.scatter)
     return lines
 
 def visualize(data, isNumpy=False):
@@ -113,16 +136,27 @@ def old():
     fig = plt.figure()
     ax = p3.Axes3D(fig)
 
-    # Fifty lines of random 3-D lines
+    # load data
     pos = np.load('data/pos.npy')
     quats = np.load('data/quats.npy')
-    data = []
+    viconPos = np.load('data/viconPos.npy')
+    viconQuats = np.load('data/viconQuats.npy')
+    detections = np.load('data/detections.npy')
+    print(np.shape(detections))
+    dataAndLines = []
     for k in range(10):
-        data.append(pos[k,:,:])
+        bird = BirdData(pos[k,:,:], quats[k,:,:], viconPos[k,:,:], viconQuats[k,:,:], detections,
+                        ax.plot(pos[k, 0:1, 0], pos[k, 0:1, 1], pos[k, 0:1, 2])[0],
+                        ax.plot(viconPos[k, 0:1, 0], viconPos[k, 0:1, 1], viconPos[k, 0:1, 2])[0],
+                        ax.scatter([],[],[])
+                        )
+        dataAndLines.append(bird)
+        #data.append(pos[k,:,:])
+
 
     # Creating fifty line objects.
     # NOTE: Can't pass empty arrays into 3d version of plot()
-    lines = [ax.plot(dat[0, 0:1], dat[1, 0:1], dat[2, 0:1])[0] for dat in data]
+    #lines = [ax.plot(dat[0:1, 0], dat[0:1, 1], dat[0:1, 2])[0] for dat in data]
 
     # Setting the axes properties
     ax.set_xlim3d([-2000, 2000])
@@ -137,7 +171,7 @@ def old():
     ax.set_title('3D Test')
 
     # Creating the Animation object
-    line_ani = animation.FuncAnimation(fig, update_lines, np.shape(dataArray)[1]-1, fargs=(data, lines),
+    line_ani = animation.FuncAnimation(fig, update_lines, np.shape(quats)[1]-1, fargs=(dataAndLines,[]),
                                        interval=2, blit=False)
 
     plt.show()
