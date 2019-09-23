@@ -17,7 +17,7 @@ class BirdData:
         self.scatter = scatter
 
 
-def update_lines(num, dataLines, nothing):
+def update_lines(num, dataLines, birdId):
 
     #meanPos = dataLines[0][num,:]
     #for line, data in zip(lines, dataLines):
@@ -25,17 +25,19 @@ def update_lines(num, dataLines, nothing):
     #    line.set_3d_properties(data[:num+1, 2]-meanPos[2])
     #return lines
     lines = []
+    center = dataLines[birdId].kalmanPos[num,:]
     for bird in dataLines:
-        bird.posLine.set_data(bird.kalmanPos[:num+1, 0:2].T)
-        bird.posLine.set_3d_properties(bird.kalmanPos[:num+1, 2])
-        bird.viconPosLine.set_data(bird.viconPos[:num+1, 0:2].T)
-        bird.viconPosLine.set_3d_properties(bird.viconPos[:num+1, 2])
+        bird.posLine.set_data((bird.kalmanPos[:num+1, 0:2] - center[:2]).T)
+        bird.posLine.set_3d_properties(bird.kalmanPos[:num+1, 2] - center[2])
+        bird.viconPosLine.set_data((bird.viconPos[:num+1, 0:2] - center[:2]).T)
+        bird.viconPosLine.set_3d_properties(bird.viconPos[:num+1, 2] - center[2])
         lines.append(bird.posLine)
         lines.append(bird.viconPosLine)
     bird = dataLines[0]
-    #bird.scatter.remove()
-    #bird.scatter.set_offsets(bird.detections[num, :,:])
-    bird.scatter._offsets3d = (bird.detections[num, :, 0], bird.detections[num, :, 1], bird.detections[num, :, 2])
+
+    bird.scatter._offsets3d = (bird.detections[num, :, 0] - center[0],
+                               bird.detections[num, :, 1] - center[1],
+                               bird.detections[num, :, 2] - center[2])
     lines.append(bird.scatter)
     return lines
 
@@ -71,6 +73,11 @@ def visualize(data, isNumpy=False):
 
     plt.show()
 
+def loadColors():
+    path = 'data/'
+    with open(path + 'colors.pkl', 'rb') as fin:
+        colors = pickle.load(fin)
+    np.save('data/colors.npy', colors)
 
 def importAndStoreMATLABData():
 
@@ -131,7 +138,7 @@ def importAndStoreMATLABData():
     np.save('data/detections.npy', dets)
 
 
-def old():
+def old(birdId):
     # Attaching 3D axis to the figure
     fig = plt.figure()
     ax = p3.Axes3D(fig)
@@ -142,16 +149,21 @@ def old():
     viconPos = np.load('data/viconPos.npy')
     viconQuats = np.load('data/viconQuats.npy')
     detections = np.load('data/detections.npy')
+
+    colors = np.load('data/colors.npy')
+
     print(np.shape(detections))
     dataAndLines = []
+    center = pos[birdId, 0, :]
     for k in range(10):
+        kalmanColor = colors[k,:]
+        viconColor =(kalmanColor+3)/(np.max(kalmanColor)+3)
         bird = BirdData(pos[k,:,:], quats[k,:,:], viconPos[k,:,:], viconQuats[k,:,:], detections,
-                        ax.plot(pos[k, 0:1, 0], pos[k, 0:1, 1], pos[k, 0:1, 2])[0],
-                        ax.plot(viconPos[k, 0:1, 0], viconPos[k, 0:1, 1], viconPos[k, 0:1, 2])[0],
-                        ax.scatter([],[],[])
+                        ax.plot(pos[k, 0:1, 0]-center, pos[k, 0:1, 1]-center, pos[k, 0:1, 2]-center, color=kalmanColor)[0],
+                        ax.plot(viconPos[k, 0:1, 0]-center, viconPos[k, 0:1, 1]-center, viconPos[k, 0:1, 2]-center, color=viconColor)[0],
+                        ax.scatter([],[],[], marker='x')
                         )
         dataAndLines.append(bird)
-        #data.append(pos[k,:,:])
 
 
     # Creating fifty line objects.
@@ -171,9 +183,24 @@ def old():
     ax.set_title('3D Test')
 
     # Creating the Animation object
-    line_ani = animation.FuncAnimation(fig, update_lines, np.shape(quats)[1]-1, fargs=(dataAndLines,[]),
-                                       interval=2, blit=False)
+    line_ani = animation.FuncAnimation(fig, update_lines, np.shape(quats)[1]-1, fargs=(dataAndLines,birdId),
+                                       interval=20, blit=False)
 
     plt.show()
 
-old()
+birdId = 0
+
+#TODO specify starting frame
+#TODO specify whether to use VICON or correctedVICON
+#TODO init azimuth
+#TODO write instructions:
+# choose bird
+# zoom
+# rotate
+# which vicon to use
+# starting frame
+
+
+# at the end bird 1 has no detections anymore, i.e. it cannot be tracked
+
+old(birdId)
