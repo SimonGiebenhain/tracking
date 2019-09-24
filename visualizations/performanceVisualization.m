@@ -26,6 +26,16 @@ function performanceVisualization(estimatedPositions, positions, estimatedQuats,
         end
     end
     
+    totalError = zeros(nObjects, T);
+    for t = 1:T
+        for k = 1:nObjects
+            pattern = squeeze( patterns(k,:,:) );
+            rotatedPatternEstimation = (Rot(squeeze(estimatedQuats(k,t,:))) * pattern')' + squeeze(estimatedPositions(k,t,:))';
+            rotatedPatternVicon = (  (Rot(squeeze(quats(k,t,:)))) * pattern'  )' + squeeze(positions(k,t,:))';
+
+            totalError(k,t) = mean(sqrt(  sum((rotatedPatternEstimation - rotatedPatternVicon).^2,2)));
+        end
+    end
     
     
 %     % Normalize quaternions
@@ -37,6 +47,18 @@ function performanceVisualization(estimatedPositions, positions, estimatedQuats,
 %     % quaternions or the anti-podal pair of the true quaternion.
 %     quatsDistances = min( sqrt(sum((estimatedQuatsNormalized - quatsNormalized).^2,3)), ...
 %                           sqrt(sum((estimatedQuatsNormalized + quatsNormalized).^2,3)));
+    
+    figure; hold on;
+    for i=1:nObjects
+        name = sprintf('Object %d', i);
+        plot(1:t, totalError(i,:), 'DisplayName', name, 'Color', colors(i,:))
+    end
+    title('RMSE(Rooted Mean Squared Error)');
+    legend;
+    xlabel('time')
+    ylabel('RMSE between Kalman Filter predictions and corrected VICON predictions')
+    hold off;
+    
     
     figure;
     subplot(1,2,1)
