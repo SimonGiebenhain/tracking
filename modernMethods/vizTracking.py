@@ -1,3 +1,25 @@
+######################################
+########### INSTRUCTIONS #############
+# This file visualizes the tracking results from VICON and a Kalman Filter in a 3d animation.
+# It is possible to zoom(press right mouse button and move mouse up and down) and rotate(press left mouse button and move mouse around)
+# But the user cannot move inside the animation. Therefore the animation follows a specific bird.
+#
+# color code: My algorithm has brighter colors. VICON has a similar color but a little more dull.
+#
+# In the following I explain how to use this file:
+# 1) Choose the bird to follow by setting birdId to a value from 0 o 9
+# 2) You can pause the animation by pressing the space bar and unpause by pressing it again.
+#     Attetion: When you switch to another bird (as explained in (1)) while the animation is paused, you will only see the switch after you unpause. I don't want to waste too much time on this.
+# 3) Specify the first and last frame of the animation. somewhere between 0 and 2960, lastFrame = -1 will use the actual last frame as last frame
+# 4) shown_trajectory_length tells how long the past trajectory is shown. i.e. 100 will show the trajectory of every bird for the last 100 frames, -1 will show the complete trajectory
+# 5) Since VICON and my algorithm are both predicting the location and rotation of a bird, we can apply this knowledge to the pattern of a bird.
+#     This way we can see where the algorithm expects the 4 markers of the bird to be. When these expected marker locations correspond with the detections (big blue circles), the algorithm seems correct.
+#     The expected markers have the form of an 'x' for my algorithm and '+' for VICON.
+#     You can hide these by setting: hide_expected_marker_locations = True
+# 6) When setting use_corrected_vicon = True, the animation will show the VICON predictions I corrected with my algorithm. Corrected means that I undid the ID-switches. But there are sof course still holes in the VICON data.
+#    Set this to False if you want to show the unaltered VICON data
+# 7) show_ledgend = True will show a ledgend, but the ledgend is annoying
+
 import numpy as np
 import pickle
 
@@ -9,17 +31,30 @@ from pyquaternion import Quaternion as Q
 
 import os, os.path
 
+birdId = 0
+firstFrame = 1
+lastFrame = -1
+shown_trajectory_length = 100
+hide_expected_marker_locations = False
+use_corrected_vicon = True
+show_legend = False
+save_animation = False
+
+
 # Attaching 3D axis to the figure
 fig = plt.figure()
 ax = p3.Axes3D(fig)
 
 patterns = np.load('data/patterns.npy')
 
+
+
 class MetaParams:
     def __init__(self, first_frame, last_frame, use_corrected_vicon):
-        self.first_frame = firstFrame
-        self.last_frame = lastFrame
+        self.first_frame = first_frame
+        self.last_frame = last_frame
         self.use_corrected_vicon = use_corrected_vicon
+
 
 class AnimationParams:
     def __init__(self, shown_trajectory_length, hide_expected_marker_locations, show_legend, save_animation):
@@ -27,6 +62,7 @@ class AnimationParams:
         self.hide_expected_marker_locations = hide_expected_marker_locations
         self.show_legend = show_legend
         self.save_animation = save_animation
+
 
 class BirdData:
     def __init__(self, kalmanPos, kalmanQuat, viconPos, viconQuat, detections, poseLine, viconPosLine, scatter, kalman_preds, vicon_preds):
@@ -41,10 +77,11 @@ class BirdData:
         self.kalman_preds = kalman_preds
         self.vicon_preds = vicon_preds
 
+
 def run_animation(dataAndLines, length, animation_params):
     # Set up formatting for the movie files
     Writer = animation.writers['ffmpeg']
-    writer = Writer(fps=15, metadata=dict(artist='Me'), bitrate=1800)
+    writer = Writer(fps=15, metadata=dict(artist='Me'))
 
     anim_running = True
 
@@ -141,9 +178,11 @@ def run_animation(dataAndLines, length, animation_params):
     if animation_params.show_legend:
         ax.legend()
     if animation_params.save_animation:
-        anim.save('lines.mp4', writer=writer)
-    plt.show()
-
+        birdnames = load_pattern()
+        filename = 'clips/bird_{}.mp4'.format(birdnames[birdId])
+        anim.save(filename, writer=writer)
+    else:
+        plt.show()
 
 
 def loadColors():
@@ -152,17 +191,23 @@ def loadColors():
         colors = pickle.load(fin)
     np.save('data/colors.npy', colors)
 
+
 def load_pattern():
     patterns = []
+    birdnames = []
     path = '../behaviour/'
     for f in sorted(os.listdir(path)):
         ext = os.path.splitext(f)[0]
         if not '.vsk' in ext:
             continue
+        birdname = ext.split('.')[0]
+        birdnames.append(birdname)
         with open(os.path.join(path, f), 'rb') as fin:
             patterns.append(pickle.load(fin))
 
     np.save('data/patterns.npy', np.stack(patterns, axis=0))
+    return birdnames
+
 
 def load_corrected_vicon():
     import pandas as pd
@@ -178,6 +223,7 @@ def load_corrected_vicon():
             viconQuats[k, t, 1:] = corrected_vicon[t, k * 7:k * 7 + 3]
     np.save('data/corrected_vicon_pos.npy', viconPos)
     np.save('data/corrected_vicon_quats.npy', viconQuats)
+
 
 def importAndStoreMATLABData():
 
@@ -239,28 +285,28 @@ def importAndStoreMATLABData():
 
 
 def old(meta_params, animation_params):
-
     global birdId
     # load data
     pos = np.load('data/pos.npy')
-    pos = pos[:, meta_params.first_frame:meta_params.last_frame+1, :]
+    pos = pos[:, meta_params.first_frame:meta_params.last_frame, :]
     quats = np.load('data/quats.npy')
-    quats = quats[:, meta_params.first_frame:meta_params.last_frame+1, :]
+    quats = quats[:, meta_params.first_frame:meta_params.last_frame, :]
     if meta_params.use_corrected_vicon:
         viconPos = np.load('data/corrected_vicon_pos.npy')
-        viconPos = viconPos[:, meta_params.first_frame:meta_params.last_frame + 1, :]
+        viconPos = viconPos[:, meta_params.first_frame:meta_params.last_frame, :]
         viconQuats = np.load('data/corrected_vicon_quats.npy')
-        viconQuats = viconQuats[:, meta_params.first_frame:meta_params.last_frame + 1, :]
+        viconQuats = viconQuats[:, meta_params.first_frame:meta_params.last_frame, :]
     else:
         viconPos = np.load('data/viconPos.npy')
-        viconPos = viconPos[:, meta_params.first_frame:meta_params.last_frame+1, :]
+        viconPos = viconPos[:, meta_params.first_frame:meta_params.last_frame, :]
         viconQuats = np.load('data/viconQuats.npy')
-        viconQuats = viconQuats[:, meta_params.first_frame:meta_params.last_frame+1, :]
+        viconQuats = viconQuats[:, meta_params.first_frame:meta_params.last_frame, :]
     detections = np.load('data/detections.npy')
-    detections = detections[meta_params.first_frame:meta_params.last_frame+1, :, :]
+    detections = detections[meta_params.first_frame:meta_params.last_frame, :, :]
 
     colors = np.load('data/colors.npy')
 
+    birdnames = load_pattern()
     dataAndLines = []
     center = pos[birdId, 0, :]
     for k in range(10):
@@ -271,7 +317,7 @@ def old(meta_params, animation_params):
         if k == 0:
             bird = BirdData(pos[k,:,:], quats[k,:,:], viconPos[k,:,:], viconQuats[k,:,:], detections,
                             ax.plot(pos[k, 0:1, 0]-center, pos[k, 0:1, 1]-center, pos[k, 0:1, 2]-center, color=kalmanColor,
-                                    linewidth=1, label='bird {}'.format(k))[0],
+                                    linewidth=1, label='bird {}'.format(birdnames[k]))[0],
                             ax.plot(viconPos[k, 0:1, 0]-center, viconPos[k, 0:1, 1]-center, viconPos[k, 0:1, 2]-center, color=viconColor,
                                     linewidth=1)[0],
                             ax.scatter([], [], [], alpha=1, s=40, marker='o', label='unlabeled detections'),
@@ -282,7 +328,7 @@ def old(meta_params, animation_params):
             bird = BirdData(pos[k, :, :], quats[k, :, :], viconPos[k, :, :], viconQuats[k, :, :], detections,
                             ax.plot(pos[k, 0:1, 0] - center, pos[k, 0:1, 1] - center, pos[k, 0:1, 2] - center,
                                     color=kalmanColor,
-                                    linewidth=1, label='bird {}'.format(k))[0],
+                                    linewidth=1, label='bird {}'.format(birdnames[k]))[0],
                             ax.plot(viconPos[k, 0:1, 0] - center, viconPos[k, 0:1, 1] - center,
                                     viconPos[k, 0:1, 2] - center, color=viconColor,
                                     linewidth=1)[0],
@@ -309,37 +355,35 @@ def old(meta_params, animation_params):
     ax.set_zlabel('Z')
 
     ax.set_title('3D Test')
-    ax.view_init(elev=70.)
+    ax.view_init(elev=50.)
 
     # Creating the Animation object
     run_animation(dataAndLines, np.shape(quats)[1] - 1, animation_params)
 
 
-birdId = 5
-firstFrame = 1500
-lastFrame = 2000
-shown_trajectory_length = 100
-hide_expected_marker_locations = False
-use_corrected_vicon = True
-show_legend = False
-save_animation = False
+def save_clips():
+    global birdId
+    for k in range(10):
+        birdId = k
+        firstFrame = 0
+        lastFrame = -1
+        shown_trajectory_length = 100
+        hide_expected_marker_locations = False
+        use_corrected_vicon = True
+        show_legend = False
+        save_animation = True
+
+        meta_params = MetaParams(firstFrame, lastFrame, use_corrected_vicon)
+        animation_params = AnimationParams(shown_trajectory_length, hide_expected_marker_locations, show_legend,
+                                           save_animation)
+        old(meta_params, animation_params)
+
 
 meta_params = MetaParams(firstFrame, lastFrame, use_corrected_vicon)
 animation_params = AnimationParams(shown_trajectory_length, hide_expected_marker_locations, show_legend, save_animation)
 
 
-#TODO encapsulate arguments
 #TODO plot some graphs to compare vicon, corrected_vicon and kalman
-
-#TODO write instructions:
-# choose bird (from 0 to 9)
-# zoom
-# rotate
-# which vicon to use
-# starting frame
-# animation speed
-# pause
-# switching birds, switch only visible after unpause
 
 
 # at the end bird 0 has no detections anymore, i.e. it cannot be tracked
