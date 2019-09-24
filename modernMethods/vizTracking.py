@@ -61,9 +61,10 @@ def update_lines(t, dataLines, birdId, trajectory_length):
         # first with the kalman predictions
         #TODO pattern = bird.pattern
         pattern = patterns[id, :, :]
-        qu = bird.kalmanQuat[t,:].tolist()
-        qu = [qu[1], qu[2], qu[3], qu[0]]
-        q = Q(qu)
+        #qu = bird.kalmanQuat[t,:].tolist()
+        #qu = [qu[1], qu[2], qu[3], qu[0]]
+        #q = Q(qu)
+        q = Q(bird.kalmanQuat[t, :])
         rot_mat = q.rotation_matrix
         #rot = R.from_quat(bird.kalmanQuat[t, :], normalized=False)
         #rotated_pattern = rot.apply(pattern)
@@ -72,10 +73,10 @@ def update_lines(t, dataLines, birdId, trajectory_length):
 
         # now with VICON predictions
         qu = bird.viconQuat[t,:].tolist()
-        #q = Q(bird.viconQuat[t, :])
-        qu = [qu[1], qu[2], qu[3], qu[0]]
+        q = Q(bird.viconQuat[t, :])
+        #qu = [qu[1], qu[2], qu[3], qu[0]]
         #TODO fix bug in rotation?!
-        q = Q(qu)
+        #q = Q(qu)
         rot_mat = q.rotation_matrix
         rotated_pattern = np.dot(rot_mat, pattern.T).T
         #rot = R.from_quat(bird.viconQuat[t, :], normalized=True)
@@ -143,8 +144,9 @@ def loadColors():
 def load_pattern():
     patterns = []
     path = '../behaviour/'
-    for f in os.listdir(path):
+    for f in sorted(os.listdir(path)):
         ext = os.path.splitext(f)[0]
+        print(ext)
         if not '.vsk' in ext:
             continue
         with open(os.path.join(path, f), 'rb') as fin:
@@ -235,13 +237,13 @@ def old(birdId, firstFrame, lastFrame, trajectory_length=-1):
     center = pos[birdId, 0, :]
     for k in range(10):
         kalmanColor = colors[k,:]
-        viconColor =(kalmanColor+3)/(np.max(kalmanColor)+3)
+        viconColor =(kalmanColor+2)/(np.max(kalmanColor)+2)
         bird = BirdData(pos[k,:,:], quats[k,:,:], viconPos[k,:,:], viconQuats[k,:,:], detections,
                         ax.plot(pos[k, 0:1, 0]-center, pos[k, 0:1, 1]-center, pos[k, 0:1, 2]-center, color=kalmanColor)[0],
                         ax.plot(viconPos[k, 0:1, 0]-center, viconPos[k, 0:1, 1]-center, viconPos[k, 0:1, 2]-center, color=viconColor)[0],
-                        ax.scatter([], [], [], marker='x'),
-                        ax.scatter([], [], [], marker='o', facecolor=(0, 0, 0, 0), edgecolor=kalmanColor),
-                        ax.scatter([], [], [], marker='s', facecolor=(0, 0, 0, 0), edgecolor=viconColor)
+                        ax.scatter([], [], [], alpha=1, marker='x'),
+                        ax.scatter([], [], [], alpha=1,  s=40, marker='o', facecolor=None, edgecolor=kalmanColor),
+                        ax.scatter([], [], [], alpha=1, s=45, marker='s', facecolor=None, edgecolor=viconColor)
                         )
         dataAndLines.append(bird)
 
@@ -264,11 +266,11 @@ def old(birdId, firstFrame, lastFrame, trajectory_length=-1):
 
     # Creating the Animation object
     line_ani = animation.FuncAnimation(fig, update_lines, np.shape(quats)[1]-1, fargs=(dataAndLines, birdId, trajectory_length),
-                                       interval=2, blit=False)
+                                       interval=20, blit=False)
 
     plt.show()
 
-birdId = 2
+birdId = 1
 firstFrame = 1300
 lastFrame = 2500
 trajectory_length = 100
@@ -290,3 +292,4 @@ trajectory_length = 100
 
 # at the end bird 0 has no detections anymore, i.e. it cannot be tracked
 old(birdId, firstFrame, lastFrame, trajectory_length)
+
