@@ -10,6 +10,9 @@ from pyquaternion import Quaternion as Q
 
 import os, os.path
 
+# Attaching 3D axis to the figure
+fig = plt.figure()
+ax = p3.Axes3D(fig)
 
 patterns = np.load('data/patterns.npy')
 
@@ -26,82 +29,100 @@ class BirdData:
         self.kalman_preds = kalman_preds
         self.vicon_preds = vicon_preds
 
+def run_animation(dataAndLines, length):
+    anim_running = True
 
-
-def update_lines(t, dataLines, birdId, trajectory_length):
-    global patterns
-    #TODO test whether trajLength=0 works
-
-    #meanPos = dataLines[0][num,:]
-    #for line, data in zip(lines, dataLines):
-    #    line.set_data((data[:num+1, 0:2]-meanPos[0:2]).T)
-    #    line.set_3d_properties(data[:num+1, 2]-meanPos[2])
-    #return lines
-    lines = []
-    center = dataLines[birdId].kalmanPos[t, :]
-    for id, bird in enumerate(dataLines):
-        if trajectory_length > 0:
-            if t > trajectory_length:
-                t0 = t - trajectory_length - 1
+    def on_press(event):
+        if event.key == " ":
+            nonlocal anim_running
+            if anim_running:
+                anim.event_source.stop()
+                anim_running = False
             else:
+                anim.event_source.start()
+                anim_running = True
+
+    def update_lines(t, dataLines, birdId, trajectory_length, hide_expected_marker_locations):
+        global patterns
+        # TODO test whether trajLength=0 works
+
+        # meanPos = dataLines[0][num,:]
+        # for line, data in zip(lines, dataLines):
+        #    line.set_data((data[:num+1, 0:2]-meanPos[0:2]).T)
+        #    line.set_3d_properties(data[:num+1, 2]-meanPos[2])
+        # return lines
+        lines = []
+        center = dataLines[birdId].kalmanPos[t, :]
+        for id, bird in enumerate(dataLines):
+            if trajectory_length > 0:
+                if t > trajectory_length:
+                    t0 = t - trajectory_length - 1
+                else:
+                    t0 = 0
+            elif trajectory_length == -1:
                 t0 = 0
-        elif trajectory_length == -1:
-            t0 = 0
-        else:
-            raise ValueError("""The value for trajectory_length is illegal. Use a positive integer or -1 for unlimited trajectories. \n 
-                                The following value for trajectory_length was supplied: {}""".format(trajectory_length))
-        bird.posLine.set_data((bird.kalmanPos[t0:t + 1, 0:2] - center[:2]).T)
-        bird.posLine.set_3d_properties(bird.kalmanPos[t0:t + 1, 2] - center[2])
-        bird.viconPosLine.set_data((bird.viconPos[t0:t + 1, 0:2] - center[:2]).T)
-        bird.viconPosLine.set_3d_properties(bird.viconPos[t0:t + 1, 2] - center[2])
-        lines.append(bird.posLine)
-        lines.append(bird.viconPosLine)
+            else:
+                raise ValueError("""The value for trajectory_length is illegal. Use a positive integer or -1 for unlimited trajectories. \n 
+                                    The following value for trajectory_length was supplied: {}""".format(
+                    trajectory_length))
+            bird.posLine.set_data((bird.kalmanPos[t0:t + 1, 0:2] - center[:2]).T)
+            bird.posLine.set_3d_properties(bird.kalmanPos[t0:t + 1, 2] - center[2])
+            bird.viconPosLine.set_data((bird.viconPos[t0:t + 1, 0:2] - center[:2]).T)
+            bird.viconPosLine.set_3d_properties(bird.viconPos[t0:t + 1, 2] - center[2])
+            lines.append(bird.posLine)
+            lines.append(bird.viconPosLine)
 
-        # calculate the expected marker locations
-        # first with the kalman predictions
-        #TODO pattern = bird.pattern
-        pattern = patterns[id, :, :]
-        #qu = bird.kalmanQuat[t,:].tolist()
-        #qu = [qu[1], qu[2], qu[3], qu[0]]
-        #q = Q(qu)
-        q = Q(bird.kalmanQuat[t, :])
-        rot_mat = q.rotation_matrix
-        #rot = R.from_quat(bird.kalmanQuat[t, :], normalized=False)
-        #rotated_pattern = rot.apply(pattern)
-        rotated_pattern = np.dot(rot_mat, pattern.T).T
-        expected_markers_kalman = rotated_pattern + bird.kalmanPos[t, :]
+            if not hide_expected_marker_locations:
+                # calculate the expected marker locations
+                # first with the kalman predictions
+                # TODO pattern = bird.pattern
+                pattern = patterns[id, :, :]
+                # qu = bird.kalmanQuat[t,:].tolist()
+                # qu = [qu[1], qu[2], qu[3], qu[0]]
+                # q = Q(qu)
+                q = Q(bird.kalmanQuat[t, :])
+                rot_mat = q.rotation_matrix
+                # rot = R.from_quat(bird.kalmanQuat[t, :], normalized=False)
+                # rotated_pattern = rot.apply(pattern)
+                rotated_pattern = np.dot(rot_mat, pattern.T).T
+                expected_markers_kalman = rotated_pattern + bird.kalmanPos[t, :]
 
-        # now with VICON predictions
-        qu = bird.viconQuat[t,:].tolist()
-        q = Q(bird.viconQuat[t, :])
-        #qu = [qu[1], qu[2], qu[3], qu[0]]
-        #TODO fix bug in rotation?!
-        #q = Q(qu)
-        rot_mat = q.rotation_matrix
-        rotated_pattern = np.dot(rot_mat, pattern.T).T
-        #rot = R.from_quat(bird.viconQuat[t, :], normalized=True)
-        #rotated_pattern = rot.apply(pattern)
-        expected_markers_vicon = rotated_pattern + bird.viconPos[t,:]
+                # now with VICON predictions
+                qu = bird.viconQuat[t, :].tolist()
+                q = Q(bird.viconQuat[t, :])
+                # qu = [qu[1], qu[2], qu[3], qu[0]]
+                # TODO fix bug in rotation?!
+                # q = Q(qu)
+                rot_mat = q.rotation_matrix
+                rotated_pattern = np.dot(rot_mat, pattern.T).T
+                # rot = R.from_quat(bird.viconQuat[t, :], normalized=True)
+                # rotated_pattern = rot.apply(pattern)
+                expected_markers_vicon = rotated_pattern + bird.viconPos[t, :]
 
-        # display expected marker locations
-        bird.kalman_preds._offsets3d = (expected_markers_kalman[:, 0] - center[0],
-                                       expected_markers_kalman[:, 1] - center[1],
-                                       expected_markers_kalman[:, 2] - center[2])
-        bird.vicon_preds._offsets3d = (expected_markers_vicon[:, 0] - center[0],
-                                      expected_markers_vicon[:, 1] - center[1],
-                                      expected_markers_vicon[:, 2] - center[2])
-        lines.append(bird.kalman_preds)
-        lines.append(bird.vicon_preds)
+                # display expected marker locations
+                bird.kalman_preds._offsets3d = (expected_markers_kalman[:, 0] - center[0],
+                                                expected_markers_kalman[:, 1] - center[1],
+                                                expected_markers_kalman[:, 2] - center[2])
+                bird.vicon_preds._offsets3d = (expected_markers_vicon[:, 0] - center[0],
+                                               expected_markers_vicon[:, 1] - center[1],
+                                               expected_markers_vicon[:, 2] - center[2])
+                lines.append(bird.kalman_preds)
+                lines.append(bird.vicon_preds)
 
+        bird = dataLines[0]
 
+        bird.scatter._offsets3d = (bird.detections[t, :, 0] - center[0],
+                                   bird.detections[t, :, 1] - center[1],
+                                   bird.detections[t, :, 2] - center[2])
+        lines.append(bird.scatter)
+        return lines
 
-    bird = dataLines[0]
+    fig.canvas.mpl_connect('key_press_event', on_press)
 
-    bird.scatter._offsets3d = (bird.detections[t, :, 0] - center[0],
-                               bird.detections[t, :, 1] - center[1],
-                               bird.detections[t, :, 2] - center[2])
-    lines.append(bird.scatter)
-    return lines
+    anim = animation.FuncAnimation(fig, update_lines, length,
+                                       fargs=(dataAndLines, birdId, trajectory_length, hide_expected_marker_locations),
+                                       interval=20, blit=False)
+
 
 def visualize(data, isNumpy=False):
     fig = plt.figure()
@@ -213,11 +234,7 @@ def importAndStoreMATLABData():
     np.save('data/detections.npy', dets)
 
 
-def old(birdId, firstFrame, lastFrame, trajectory_length=-1):
-    # Attaching 3D axis to the figure
-    fig = plt.figure()
-    ax = p3.Axes3D(fig)
-
+def old(birdId, firstFrame, lastFrame, trajectory_length=-1, hide_expected_marker_locations=False):
     # load data
     pos = np.load('data/pos.npy')
     pos = pos[:, firstFrame:lastFrame+1, :]
@@ -239,11 +256,13 @@ def old(birdId, firstFrame, lastFrame, trajectory_length=-1):
         kalmanColor = colors[k,:]
         viconColor =(kalmanColor+2)/(np.max(kalmanColor)+2)
         bird = BirdData(pos[k,:,:], quats[k,:,:], viconPos[k,:,:], viconQuats[k,:,:], detections,
-                        ax.plot(pos[k, 0:1, 0]-center, pos[k, 0:1, 1]-center, pos[k, 0:1, 2]-center, color=kalmanColor)[0],
-                        ax.plot(viconPos[k, 0:1, 0]-center, viconPos[k, 0:1, 1]-center, viconPos[k, 0:1, 2]-center, color=viconColor)[0],
-                        ax.scatter([], [], [], alpha=1, marker='x'),
-                        ax.scatter([], [], [], alpha=1,  s=40, marker='o', facecolor=None, edgecolor=kalmanColor),
-                        ax.scatter([], [], [], alpha=1, s=45, marker='s', facecolor=None, edgecolor=viconColor)
+                        ax.plot(pos[k, 0:1, 0]-center, pos[k, 0:1, 1]-center, pos[k, 0:1, 2]-center, color=kalmanColor,
+                                linewidth=1)[0],
+                        ax.plot(viconPos[k, 0:1, 0]-center, viconPos[k, 0:1, 1]-center, viconPos[k, 0:1, 2]-center, color=viconColor,
+                                linewidth=1)[0],
+                        ax.scatter([], [], [], alpha=1, marker='o'),
+                        ax.scatter([], [], [], alpha=1,  s=20, marker='x', color=kalmanColor, linewidth=1),
+                        ax.scatter([], [], [], alpha=1, s=20, marker='+', color=viconColor, linewidth=1)
                         )
         dataAndLines.append(bird)
 
@@ -265,8 +284,7 @@ def old(birdId, firstFrame, lastFrame, trajectory_length=-1):
     ax.set_title('3D Test')
 
     # Creating the Animation object
-    line_ani = animation.FuncAnimation(fig, update_lines, np.shape(quats)[1]-1, fargs=(dataAndLines, birdId, trajectory_length),
-                                       interval=20, blit=False)
+    run_animation(dataAndLines, np.shape(quats)[1] - 1)
 
     plt.show()
 
@@ -274,13 +292,12 @@ birdId = 1
 firstFrame = 1300
 lastFrame = 2500
 trajectory_length = 100
+hide_expected_marker_locations = False
 
 #TODO specify whether to use VICON or correctedVICON
-#TODO expected marker locations, with param to turn viz of expected markers off
-#TODO implement pause feature
-#TODO init azimuth
 #TODO save clips
-#TODO smoothen camera motion
+#TODO smoothen camera motion, i.e. with median
+#TODO can I add a legend? with color codes etc.?
 #TODO write instructions:
 # choose bird (from 0 to 9)
 # zoom
@@ -288,8 +305,9 @@ trajectory_length = 100
 # which vicon to use
 # starting frame
 # animation speed
+# pause
 
 
 # at the end bird 0 has no detections anymore, i.e. it cannot be tracked
-old(birdId, firstFrame, lastFrame, trajectory_length)
+old(birdId, firstFrame, lastFrame, trajectory_length, hide_expected_marker_locations)
 
