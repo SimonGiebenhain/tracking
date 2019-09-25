@@ -13,35 +13,35 @@ from vizTracking import visualize_tracking
 
 # DONE: 1) visualize noisy detections as well
 # DONE: 2) incorporate quaternion loss as well
-# TODO: 2.5) Then also visualize the predicted marker locations
+# DONE2.5) Then also visualize the predicted marker locations
 # TODO: 3) deal with different markers
-# TODO: 4) handle missing detections
+# TODO: 4) handle missing detections and false positives
 # TODO: 5) multimodal predictions?
 
 
 TRAIN_SIZE = 10000
 TEST_SIZE = int(TRAIN_SIZE / 10)
 T = 200
-NUM_EPOCHS = 15m
+NUM_EPOCHS = 20
 BATCH_SIZE = 64
 
-NOISE_STD = 0.01
+NOISE_STD = 0.001
 
 dim = 3
 input_dim = 12
-fc1_dim = 30
-embedding_dim = 35
+fc1_dim = 50
+embedding_dim = 70
 hidden_dim = 40
-fc2_dim = 20
+fc2_dim = 50
 output_pos_dim = 3
 output_quat_dim = 4
 
 
 
 #TODO, check what would be the right scale of the pattern
-pattern = 0.1 * np.array([[0,1,0], [0,0,1], [-1,-1,0], [1, -1, 1]])
+pattern = 0.1 * np.array([[0,0,0], [0,0,0.5], [-0.7,-1,0], [1.1, -1, 0.8]])
 
-
+# OLD!!!
 #TODO 1  : generate data which is similar to birds trajectories?
 #TODO 2  : add noise
 #TODO 3  : add marker
@@ -110,8 +110,10 @@ def add_markers_to_trajectories(trajectory, quats, pattern):
             rot_mat = quat.rotation_matrix
             rotated_pattern = np.dot(rot_mat, pattern.T).T
             det = np.reshape(rotated_pattern + trajectory[t, n], -1)
-            det = det + np.random.normal(0, NOISE_STD, np.shape(det))
             detections[t, n, :] = det
+
+    det_no_noise = detections
+    detections = detections + np.random.normal(0, NOISE_STD, np.shape(detections))
 
     #marker0 = trajectory + pattern[0, :] + np.random.normal(0, 0.02, np.shape(trajectory))
     #marker1 = trajectory + pattern[1, :] + np.random.normal(0, 0.02, np.shape(trajectory))
@@ -120,30 +122,90 @@ def add_markers_to_trajectories(trajectory, quats, pattern):
 
     #detections = np.concatenate([marker0, marker1, marker2, marker3], axis=2)
     #print(np.shape(detections))
-    return detections
+    return detections, det_no_noise
 
 
 def complete_gen(pattern, train_size, test_size, both):
     if both:
         train_pos = gen_data(train_size)
         train_quats = gen_quats(train_size)
-        train_dets = add_markers_to_trajectories(train_pos, train_quats, pattern)
+        train_dets, Y_marker_train = add_markers_to_trajectories(train_pos, train_quats, pattern)
         X_train = torch.from_numpy(train_dets).float()
         Y_pos_train = torch.from_numpy(train_pos).float()
         Y_quat_train = torch.from_numpy(train_quats).float()
+        Y_marker_train = torch.from_numpy(Y_marker_train).float()
 
     test_pos = gen_data(test_size)
     test_quats = gen_quats(test_size)
-    test_dets = add_markers_to_trajectories(test_pos, test_quats, pattern)
+    test_dets, Y_marker_test = add_markers_to_trajectories(test_pos, test_quats, pattern)
     X_test = torch.from_numpy(test_dets).float()
     Y_pos_test = torch.from_numpy(test_pos).float()
     Y_quat_test = torch.from_numpy(test_quats).float()
+    Y_marker_test = torch.from_numpy(Y_marker_test).float()
 
     if both:
-        return X_train, Y_pos_train, Y_quat_train, X_test, Y_pos_test, Y_quat_test
+        return X_train, Y_pos_train, Y_quat_train, Y_marker_train, X_test, Y_pos_test, Y_quat_test, Y_marker_test
     else:
-        return X_test, Y_pos_test, Y_quat_test
+        return X_test, Y_pos_test, Y_quat_test, Y_marker_test
 
+
+#TODO compare speed of qrot and stack, with rotation matrix
+# qrot is probably better
+def qrot(q, v):
+    #TODO can I change this function to also work with constant v and changing quaternions?
+    # if not just tile/stack v accordingly
+    """
+    Rotate vector(s) v about the rotation described by quaternion(s) q.
+    Expects a tensor of shape (*, 4) for q and a tensor of shape (*, 3) for v,
+    where * denotes any number of dimensions.
+    Returns a tensor of shape (*, 3).+
+
+    source: https://github.com/facebookresearch/QuaterNet/blob/master/common/quaternion.py
+    """
+    assert q.shape[-1] == 4
+    assert v.shape[-1] == 3
+    assert q.shape[:-1] == v.shape[:-1]
+
+    original_shape = list(v.shape)
+    q = q.view(-1, 4)
+    v = v.view(-1, 3)
+
+    qvec = q[:, 1:]
+    uv = torch.cross(qvec, v, dim=1)
+    uuv = torch.cross(qvec, uv, dim=1)
+    return (v + 2 * (q[:, :1] * uv + uuv)).view(original_shape)
+
+
+def quat2mat(q):
+    """
+    Takes tensors with quaternions in last dimension, i.e. q has shape (*,4),
+        where * can be any positive number of dimensions.
+
+    Original code from: https://github.com/ClementPinard/SfmLearner-Pytorch/blob/master/inverse_warp.py
+    """
+
+    original_shape = list(q.shape)
+    q = q.view(-1, 4)
+
+    w = q[:, 0]
+    x = q[:, 1]
+    y = q[:, 2]
+    z = q[:, 3]
+
+    w2, x2, y2, z2 = w.pow(2), x.pow(2), y.pow(2), z.pow(2)
+    wx, wy, wz = w*x, w*y, w*z
+    xy, xz, yz = x*y, x*z, y*z
+
+    rotMats = torch.stack([w2 + x2 - y2 - z2, 2*xy - 2*wz, 2*wy + 2*xz,
+                          2*wz + 2*xy, w2 - x2 + y2 - z2, 2*yz - 2*wx,
+                          2*xz - 2*wy, 2*wx + 2*yz, w2 - x2 - y2 + z2], dim=1)
+    rotMats = rotMats.view(original_shape[:-1]+ [9])
+    rotMats = rotMats.view(original_shape[:-1]+ [3, 3])
+    return rotMats
+
+
+def quat_rot(q, v):
+    return torch.matmul(quat2mat(q), torch.from_numpy(v.T).float()).permute([0, 1, 3, 2])
 
 class LSTMTracker(nn.Module):
 
@@ -180,7 +242,11 @@ class LSTMTracker(nn.Module):
         pos_space = self.map2pos(x)
         quat_space = F.softmax(self.map2quat(x), dim=2)
         #next_pos = F.tanh(pos_space)
-        return pos_space, quat_space
+        predicted_markers = quat_rot(quat_space, pattern)
+        predicted_markers = predicted_markers + pos_space.unsqueeze(2)
+        predicted_markers = predicted_markers.contiguous().view(len(marker_detections), -1, 12)
+
+        return predicted_markers, pos_space, quat_space
 
 
 model = LSTMTracker(embedding_dim, hidden_dim)
@@ -192,25 +258,27 @@ optimizer = optim.Adam(model.parameters(), lr=0.001)
 
 def train():
 
-    [X_train, Y_pos_train, Y_quat_train, X_test, Y_pos_test, Y_quat_test] = complete_gen(pattern, TRAIN_SIZE, TEST_SIZE, both=True)
+    [X_train, Y_pos_train, Y_quat_train, Y_marker_train, X_test, Y_pos_test, Y_quat_test, Y_marker_test] = complete_gen(pattern, TRAIN_SIZE, TEST_SIZE, both=True)
 
     model.train()
     for epoch in range(NUM_EPOCHS):
         X_batches = torch.split(X_train, BATCH_SIZE, 1)
         Y_pos_batches = torch.split(Y_pos_train, BATCH_SIZE, 1)
         Y_quat_batches = torch.split(Y_quat_train, BATCH_SIZE, 1)
+        Y_marker_batches = torch.split(Y_marker_train, BATCH_SIZE, 1)
         avg_loss = 0
-        for X_batch, Y_pos_batch, Y_quat_batch in zip(X_batches, Y_pos_batches, Y_quat_batches):
+        for X_batch, Y_pos_batch, Y_quat_batch, Y_marker_batch in zip(X_batches, Y_pos_batches, Y_quat_batches, Y_marker_batches):
             model.zero_grad()
 
-            pred_pos, pred_quat = model(X_batch[:-1,:,:])
+            pred_marker, pred_pos, pred_quat = model(X_batch[:-1,:,:])
 
-            #TODO scale loss properly! when position number are big then quat loss basically does nothing!
-            # maybe scale by average norm of positions then maybe weight constantly e.g. 1/2 since the focus is on position,
-            # but that should make a difference anyways
-            loss_pos = loss_function(pred_pos, Y_pos_batch[1:,:,:])
-            loss_quat = loss_function(pred_quat, Y_quat_batch[1:, :, :])
-            loss = loss_pos + loss_quat
+            #OLD!!! TODO scale loss properly! when position number are big then quat loss basically does nothing!
+            #        maybe scale by average norm of positions then maybe weight constantly e.g. 1/2 since the focus is on position,
+            #        but that should make a difference anyways
+            #loss_pos = loss_function(pred_pos, Y_pos_batch[1:,:,:])
+            #loss_quat = loss_function(pred_quat, Y_quat_batch[1:, :, :])
+            #loss = loss_pos + loss_quat
+            loss = loss_function(pred_marker, Y_marker_batch[1:, :, :])
             loss.backward()
             optimizer.step()
             avg_loss += loss
@@ -218,10 +286,11 @@ def train():
 
         model.eval()
         with torch.no_grad():
-            pred_pos, pred_quat = model(X_test[:-1,:,:])
-            loss_pos = loss_function(pred_pos, Y_pos_test[1:, :, :])
-            loss_quat = loss_function(pred_quat, Y_quat_test[1:, :, :])
-            loss = loss_pos + loss_quat
+            pred_marker, pred_pos, pred_quat = model(X_test[:-1,:,:])
+            #loss_pos = loss_function(pred_pos, Y_pos_test[1:, :, :])
+            #loss_quat = loss_function(pred_quat, Y_quat_test[1:, :, :])
+            #loss = loss_pos + loss_quat
+            loss = loss_function(pred_marker, Y_marker_test[1:, :, :])
             print("training loss: {ltrain:2.4f}, test loss: {ltest:2.4f}".format(ltrain=avg_loss.data, ltest=loss.data))
     torch.save(model.state_dict(), 'weights/lstm_4marker_to_pos')
 
@@ -229,18 +298,23 @@ def train():
 
 def eval():
     test_size = 100
-    [X_test, Y_pos_test, Y_quat_test] = complete_gen(pattern, 0, test_size, both=False)
+    [X_test, Y_pos_test, Y_quat_test, Y_marker_test] = complete_gen(pattern, 0, test_size, both=False)
 
     model.load_state_dict(torch.load('weights/lstm_4marker_to_pos'))
     model.eval()
 
-    predicted_pos, _ = model(X_test[:-1, :, :])
+    marker_preds, predicted_pos, predicted_quats = model(X_test[:-1, :, :])
 
     for n in range(10):
         with torch.no_grad():
             data = torch.stack((predicted_pos[:,n,:], Y_pos_test[1:,n,:]),1)
             center = torch.mean(data, dim=(0,1)).numpy()
-            visualize_tracking(predicted_pos[:, n, :].detach().numpy() - center, None, Y_pos_test[1:, n, :].numpy() - center, None, X_test[:-1, n, :].numpy(), pattern)
+            visualize_tracking(predicted_pos[:, n, :].detach().numpy() - center,
+                               predicted_quats[:, n, :].detach().numpy(),
+                               Y_pos_test[1:, n, :].detach().numpy() - center,
+                               Y_quat_test[1:, n, :].detach().numpy(),
+                               X_test[:-1, n, :].numpy() - np.tile(center, 4),
+                               pattern)
 
 def eval_diff():
     model.load_state_dict(torch.load('weights/lstm'))

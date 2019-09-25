@@ -108,11 +108,14 @@ print(np.shape(rot_p))
 print(rotated_pattern - rot_p)
 
 
-stacked_quat = np.stack([quat, quat], axis=0)
+stacked_quat = np.stack([quat, quat, quat], axis=0)
+stacked_quat = np.stack([stacked_quat, stacked_quat], axis=0)
+print('3-D quat, as in [time x batch_size x 4]')
+print(np.shape(stacked_quat))
 R = quat2matbad(torch.from_numpy(stacked_quat))
 print(R)
 
-rotated = torch.matmul(R, torch.from_numpy(pattern.T)).permute([0,2,1])
+rotated = torch.matmul(R, torch.from_numpy(pattern.T)).permute([0,1,3,2])
 #rotated = np.tensordot(R, pattern, (2,1))
 print(rotated)
 
