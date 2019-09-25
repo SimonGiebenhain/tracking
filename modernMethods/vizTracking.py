@@ -31,7 +31,7 @@ from pyquaternion import Quaternion as Q
 
 import os, os.path
 
-birdId = 0
+birdId = 9
 firstFrame = 1
 lastFrame = -1
 shown_trajectory_length = 100
@@ -42,9 +42,9 @@ save_animation = False
 
 
 # Attaching 3D axis to the figure
+#TODO move to old()!!!
 fig = plt.figure()
 ax = p3.Axes3D(fig)
-
 patterns = np.load('data/patterns.npy')
 
 
@@ -64,6 +64,77 @@ class AnimationParams:
         self.save_animation = save_animation
 
 
+class TrackedObject:
+    def __init__(self, predicted_pos, predicted_quats, true_pos, true_quat, pattern, detections, predicted_line, true_line, scatter):
+        self.predicted_pos = predicted_pos
+        self.predicted_quats = predicted_quats
+        self.true_pos = true_pos
+        self.true_quat = true_quat
+        self.pattern = pattern
+        self.detections = detections
+        self.predicted_line = predicted_line
+        self.true_line = true_line
+        self.scatter = scatter
+
+
+def run_tracking_animation(tracked_objects, length, animation_params, fig, ax):
+    if animation_params.save_animation:
+        Writer = animation.writers['ffmpeg']
+        writer = Writer(fps=15, metadata=dict(artist='Simon Giebenhain'))
+
+    anim_running = True
+
+    def on_press(event):
+        if event.key == " ":
+            nonlocal anim_running
+            if anim_running:
+                anim.event_source.stop()
+                anim_running = False
+            else:
+                anim.event_source.start()
+                anim_running = True
+
+    def update_tracks(t, tracked_objects, shown_trajectory_length, hide_markers):
+        #if t == 0:
+        #    return []
+        lines = []
+        for object in tracked_objects:
+            object.predicted_line.set_data(object.predicted_pos[:t+1, 0:2].T)
+            object.predicted_line.set_3d_properties(object.predicted_pos[:t+1, 2])
+            lines.append(object.predicted_line)
+
+            object.true_line.set_data(object.true_pos[:t+1, 0:2].T)
+            object.true_line.set_3d_properties(object.true_pos[:t+1, 2])
+            lines.append(object.true_line)
+
+        object = tracked_objects[0]
+        object.scatter._offsets3d = (object.detections[t, 0::3],
+                                     object.detections[t, 1::3],
+                                     object.detections[t, 2::3])
+        lines.append(object.scatter)
+
+        return lines
+
+    fig.canvas.mpl_connect('key_press_event', on_press)
+
+    anim = animation.FuncAnimation(fig, update_tracks, length,
+                                   fargs=(tracked_objects, animation_params.shown_trajectory_length,
+                                          animation_params.hide_expected_marker_locations),
+                                   interval=50, blit=False, repeat=True)
+
+    if animation_params.show_legend:
+        ax.legend()
+    if animation_params.save_animation:
+        print('SAVING')
+        birdnames = load_pattern()
+        filename = 'tracking.mp4'#.format(birdnames[birdId])
+        anim.save(filename, writer=writer)
+    else:
+        print('SHOWING')
+        plt.show()
+
+
+
 class BirdData:
     def __init__(self, kalmanPos, kalmanQuat, viconPos, viconQuat, detections, poseLine, viconPosLine, scatter, kalman_preds, vicon_preds):
         self.kalmanPos = kalmanPos
@@ -79,9 +150,11 @@ class BirdData:
 
 
 def run_animation(dataAndLines, length, animation_params):
+    global ax
+
     # Set up formatting for the movie files
     Writer = animation.writers['ffmpeg']
-    writer = Writer(fps=15, metadata=dict(artist='Me'))
+    writer = Writer(fps=15, metadata=dict(artist='Simon Giebenhain'))
 
     anim_running = True
 
@@ -285,6 +358,7 @@ def importAndStoreMATLABData():
 
 
 def old(meta_params, animation_params):
+    global ax
     global birdId
     # load data
     pos = np.load('data/pos.npy')
@@ -362,29 +436,55 @@ def old(meta_params, animation_params):
 
 
 def save_clips():
-    global birdId
-    for k in range(10):
-        birdId = k
-        firstFrame = 0
-        lastFrame = -1
-        shown_trajectory_length = 100
-        hide_expected_marker_locations = False
-        use_corrected_vicon = True
-        show_legend = False
-        save_animation = True
+    firstFrame = 0
+    lastFrame = -1
+    shown_trajectory_length = 100
+    hide_expected_marker_locations = False
+    use_corrected_vicon = True
+    show_legend = False
+    save_animation = True
+    meta_params = MetaParams(firstFrame, lastFrame, use_corrected_vicon)
+    animation_params = AnimationParams(shown_trajectory_length, hide_expected_marker_locations, show_legend,
+                                       save_animation)
+    old(meta_params, animation_params)
 
-        meta_params = MetaParams(firstFrame, lastFrame, use_corrected_vicon)
-        animation_params = AnimationParams(shown_trajectory_length, hide_expected_marker_locations, show_legend,
-                                           save_animation)
-        old(meta_params, animation_params)
+
+def visualize_tracking(predicted_pos, predicted_quat, true_pos, true_quats, detections, pattern):
+    animation_params = AnimationParams(-1, True, False, False)
+
+
+    fig = plt.figure()
+    ax = p3.Axes3D(fig)
+
+    track_viz = TrackedObject(predicted_pos, predicted_quat, true_pos, true_quats, pattern, detections,
+                              ax.plot(predicted_pos[0:1, 0], predicted_pos[0:1, 1], predicted_pos[0:1, 2])[0],
+                              ax.plot(true_pos[0:1, 0], true_pos[0:1, 1], true_pos[0:1, 2])[0],
+                              ax.scatter([], [], [])
+                              )
+
+    # TODO: set inital view params, etc.
+    field_of_view = 5
+    ax.set_xlim3d([-field_of_view, field_of_view])
+    ax.set_xlabel('X')
+
+    ax.set_ylim3d([-field_of_view, field_of_view])
+    ax.set_ylabel('Y')
+
+    ax.set_zlim3d([-field_of_view, field_of_view])
+    ax.set_zlabel('Z')
+
+    ax.set_title('3D Test')
+    ax.view_init(elev=50.)
+
+    run_tracking_animation([track_viz], np.shape(predicted_pos)[0] - 1, animation_params, fig, ax)
+
 
 
 meta_params = MetaParams(firstFrame, lastFrame, use_corrected_vicon)
 animation_params = AnimationParams(shown_trajectory_length, hide_expected_marker_locations, show_legend, save_animation)
 
 
-#TODO plot some graphs to compare vicon, corrected_vicon and kalman
-
 
 # at the end bird 0 has no detections anymore, i.e. it cannot be tracked
-old(meta_params, animation_params)
+#old(meta_params, animation_params)
+#save_clips()

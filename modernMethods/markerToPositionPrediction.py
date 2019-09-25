@@ -8,23 +8,34 @@ from pyquaternion import Quaternion as Quaternion
 #from torchsummary import summary
 import numpy as np
 from viz import visualize
+from vizTracking import visualize_tracking
 
 
+# TODO: 1) visualize noisy detections as well
+# TODO: 2) incorporate quaternion loss as well
+# TODO: 2.5) Then also visualize the predicted marker locations
+# TODO: 3) deal with different markers
+# TODO: 4) handle missing detections
+# TODO: 5) multimodal predictions?
 
-train_size = 5000
-test_size = 1000
+
+TRAIN_SIZE = 10000
+TEST_SIZE = 1000
 T = 200
 
 dim = 3
 input_dim = 12
-fc1_dim = 20
-embedding_dim = 25
-hidden_dim = 30
+fc1_dim = 30
+embedding_dim = 35
+hidden_dim = 40
 fc2_dim = 20
 output_dim = 3
 
-NUM_EPOCHS = 20
+NUM_EPOCHS = 30
 BATCH_SIZE = 64
+
+#TODO, check what would be the right scale of the pattern
+pattern = 0.1 * np.array([[0,1,0], [0,0,1], [-1,-1,0], [1, -1, 1]])
 
 
 #TODO 1  : generate data which is similar to birds trajectories?
@@ -47,37 +58,24 @@ def Gen_Spirals(length, dims=2):
     return np.stack([x,y,z], axis=1) + 5*np.random.uniform(low=-5, high=5, size=[1,dims])
 
 
-def gen_training_data():
-    #slopes = range(N)
-    #xaxis = np.arange(T)
+def gen_data(size):
+    X= np.zeros([T, size, 3], dtype=np.float32)
 
-    X_train = np.zeros([T, train_size, 3], dtype=np.float32)
-    X_test = np.zeros([T, test_size, 3], dtype=np.float32)
-    #for n,a in enumerate(slopes):
-    #    X[:, n ,0] = xaxis
-    #    X[:, n ,1] = a/10 * xaxis
-    #    X[:, n, 2] = np.sin(a/10 * xaxis/10)
+    for n in range(size):
+        X[:, n, :] = Gen_Spirals(T, dim)
 
-    for n in range(train_size):
-        X_train[:, n, :] = Gen_Spirals(T, dim)
-    for n in range(test_size):
-        X_test[:, n, :] = Gen_Spirals(T, dim)
+    maxi1 = np.max(X[:,:,0])/5
+    maxi2 = np.max(X[:,:,1])/5
+    maxi3 = np.max(X[:,:,2])/5
+    X[:,:,0] = X[:,:,0] / maxi1
+    X[:,:,1] = X[:,:,1] / maxi2
+    X[:,:,2] = X[:,:,2] / maxi3
 
-    maxi1 = max(np.max(X_train[:,:,0]), np.max(X_test[:,:,0]))/5
-    maxi2 = max(np.max(X_train[:,:,1]), np.max(X_test[:,:,1]))/5
-    maxi3 = max(np.max(X_train[:,:,2]), np.max(X_test[:,:,2]))/5
-    X_train[:,:,0] = X_train[:,:,0] / maxi1
-    X_train[:,:,1] = X_train[:,:,1] / maxi2
-    X_train[:,:,2] = X_train[:,:,2] / maxi3
-    X_test[:, :, 0] = X_test[:, :, 0] / maxi1
-    X_test[:, :, 1] = X_test[:, :, 1] / maxi2
-    X_test[:, :, 2] = X_test[:, :, 2] / maxi3
-    return X_train, X_test, maxi1, maxi2, maxi3
+    return X
 
 
-def gen_quats():
-    quats_train = np.zeros([T, train_size, 4])
-    quats_test = np.zeros([T, test_size, 4])
+def gen_quats(size):
+    quats = np.zeros([T, size, 4])
 
 
     def gen_quat():
@@ -91,12 +89,10 @@ def gen_quats():
         return quat / np.sqrt(np.sum(np.square(quat), axis=0))
 
 
-    for n in range(train_size):
-        quats_train[:, n, :] = gen_quat()
-    for n in range(test_size):
-        quats_test[:, n, :] = gen_quat()
+    for n in range(size):
+        quats[:, n, :] = gen_quat()
 
-    return quats_train, quats_test
+    return quats
 
 
 def add_markers_to_trajectories(trajectory, quats, pattern):
@@ -121,22 +117,24 @@ def add_markers_to_trajectories(trajectory, quats, pattern):
     return detections
 
 
+def complete_gen(pattern, train_size, test_size, both):
+    if both:
+        train = gen_data(train_size)
+        train_quats = gen_quats(train_size)
+        train_dets = add_markers_to_trajectories(train, train_quats, pattern)
+        X_train = torch.from_numpy(train_dets).float()
+        Y_train = torch.from_numpy(train).float()
 
-[train, test, maxi1, maxi2, maxi3] = gen_training_data()
-[train_quats, test_quats] = gen_quats()
+    test = gen_data(test_size)
+    test_quats = gen_quats(test_size)
+    test_dets = add_markers_to_trajectories(test, test_quats, pattern)
+    X_test = torch.from_numpy(test_dets).float()
+    Y_test = torch.from_numpy(test).float()
 
-#TODO, check what would be the right scale of the pattern
-pattern = 0.1 * np.array([[0,1,0], [0,0,1], [-1,-1,0], [1, -1, 1]])
-train_dets = add_markers_to_trajectories(train, train_quats, pattern)
-test_dets = add_markers_to_trajectories(test, test_quats, pattern)
-
-#print(np.squeeze(X_train[:,2,:]))
-X_train = torch.from_numpy(train_dets).float()
-Y_train = torch.from_numpy(train).float()
-##visualize(train_data, T)
-X_test = torch.from_numpy(test_dets).float()
-Y_test = torch.from_numpy(test).float()
-#hidden = (torch.randn(1, N, hidden_dim), torch.randn(1, N, hidden_dim))
+    if both:
+        return X_train, Y_train, X_test, Y_test
+    else:
+        return X_test, Y_test
 
 
 class LSTMTracker(nn.Module):
@@ -175,11 +173,14 @@ class LSTMTracker(nn.Module):
 model = LSTMTracker(embedding_dim, hidden_dim)
 model = model.float()
 loss_function = nn.MSELoss()
-optimizer = optim.Adam(model.parameters(), lr=0.01)
+optimizer = optim.Adam(model.parameters(), lr=0.001)
 
 #summary(model, input_size=())
 
 def train():
+
+    [X_train, Y_train, X_test, Y_test] = complete_gen(pattern, TRAIN_SIZE, TEST_SIZE, both=True)
+
     model.train()
     for epoch in range(NUM_EPOCHS):
         X_batches = torch.split(X_train, BATCH_SIZE, 1)
@@ -206,18 +207,19 @@ def train():
 
 
 def eval():
+    test_size = 100
+    [X_test, Y_test] = complete_gen(pattern, 0, test_size, both=False)
+
     model.load_state_dict(torch.load('weights/lstm_4marker_to_pos'))
     model.eval()
-    for n in range(N):
+
+    predicted_pos = model(X_test[:-1, :, :])
+
+    for n in range(10):
         with torch.no_grad():
-            tag_scores = model(X_test[:-1, :, :])
-            #print(tag_scores.shape)
-            #print(torch.squeeze(tag_scores[:,n,:]))
-            data = torch.stack((tag_scores[:,n,:], Y_test[1:,n,:]),1)
-            center = torch.mean(data, dim=(0,1))
-            data = data - center
-            print(data.shape)
-            visualize(data)
+            data = torch.stack((predicted_pos[:,n,:], Y_test[1:,n,:]),1)
+            center = torch.mean(data, dim=(0,1)).numpy()
+            visualize_tracking(predicted_pos[:, n, :].detach().numpy() - center, None, Y_test[1:, n, :].numpy() - center, None, X_test[:-1, n, :].numpy(), pattern)
 
 def eval_diff():
     model.load_state_dict(torch.load('weights/lstm'))
