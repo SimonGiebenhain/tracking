@@ -27,7 +27,7 @@ import matplotlib.pyplot as plt
 import mpl_toolkits.mplot3d.axes3d as p3
 import matplotlib.animation as animation
 
-from pyquaternion import Quaternion as Q
+from pyquaternion import Quaternion as Quaternion
 
 import os, os.path
 
@@ -65,7 +65,8 @@ class AnimationParams:
 
 
 class TrackedObject:
-    def __init__(self, predicted_pos, predicted_quats, true_pos, true_quat, pattern, detections, predicted_line, true_line, scatter):
+    def __init__(self, predicted_pos, predicted_quats, true_pos, true_quat, pattern, detections,
+                 predicted_line, true_line, scatter, predicted_markers, true_markers):
         self.predicted_pos = predicted_pos
         self.predicted_quats = predicted_quats
         self.true_pos = true_pos
@@ -75,6 +76,8 @@ class TrackedObject:
         self.predicted_line = predicted_line
         self.true_line = true_line
         self.scatter = scatter
+        self.predicted_markers = predicted_markers
+        self.true_markers = true_markers
 
 
 def run_tracking_animation(tracked_objects, length, animation_params, fig, ax):
@@ -106,6 +109,27 @@ def run_tracking_animation(tracked_objects, length, animation_params, fig, ax):
             object.true_line.set_data(object.true_pos[:t+1, 0:2].T)
             object.true_line.set_3d_properties(object.true_pos[:t+1, 2])
             lines.append(object.true_line)
+
+            q_predicted = Quaternion(object.predicted_quat[t, :])
+            rot_mat_predicted = q_predicted.rotation_matrix
+            rotated_pattern_predicted = np.dot(rot_mat_predicted, object.pattern.T).T
+            predicted_markers = rotated_pattern_predicted + object.predicted_pos[t, :]
+
+            # now with VICON predictions
+            q_true = Quaternion(object.true_quat[t, :])
+            rot_mat_true = q_true.rotation_matrix
+            rotated_pattern_true = np.dot(rot_mat_true, object.pattern.T).T
+            true_markers = rotated_pattern_true + object.true_pos[t, :]
+
+            # display expected marker locations
+            object.predicted_markers._offsets3d = (predicted_markers[:, 0],
+                                                   predicted_markers[:, 1],
+                                                   predicted_markers[:, 2])
+            object.true_markers._offsets3d = (true_markers[:, 0],
+                                              true_markers[:, 1],
+                                              true_markers[:, 2])
+            lines.append(object.predicted_markers)
+            lines.append(object.true_markers)
 
         object = tracked_objects[0]
         object.scatter._offsets3d = (object.detections[t, 0::3],
@@ -212,13 +236,13 @@ def run_animation(dataAndLines, length, animation_params):
 
                 # calculate the expected marker locations
                 # first with the kalman predictions
-                q = Q(bird.kalmanQuat[t, :])
+                q = Quaternion(bird.kalmanQuat[t, :])
                 rot_mat = q.rotation_matrix
                 rotated_pattern = np.dot(rot_mat, pattern.T).T
                 expected_markers_kalman = rotated_pattern + bird.kalmanPos[t, :]
 
                 # now with VICON predictions
-                q_vicon = Q(bird.viconQuat[t, :])
+                q_vicon = Quaternion(bird.viconQuat[t, :])
                 rot_mat_vicon = q_vicon.rotation_matrix
                 rotated_pattern_vicon = np.dot(rot_mat_vicon, pattern.T).T
                 expected_markers_vicon = rotated_pattern_vicon + bird.viconPos[t, :]
@@ -459,7 +483,9 @@ def visualize_tracking(predicted_pos, predicted_quat, true_pos, true_quats, dete
     track_viz = TrackedObject(predicted_pos, predicted_quat, true_pos, true_quats, pattern, detections,
                               ax.plot(predicted_pos[0:1, 0], predicted_pos[0:1, 1], predicted_pos[0:1, 2])[0],
                               ax.plot(true_pos[0:1, 0], true_pos[0:1, 1], true_pos[0:1, 2])[0],
-                              ax.scatter([], [], [])
+                              ax.scatter([], [], []),
+                              ax.scatter([], [], []),
+                              ax.scatter([], [], []) #TODO: add colors
                               )
 
     # TODO: set inital view params, etc.
