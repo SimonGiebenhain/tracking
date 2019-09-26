@@ -6,12 +6,12 @@ import numpy as np
 from viz import visualize
 
 
-N = 7500
+N = 20000
 T = 200
-emb_dim1 = 100
-emb_dim2 = 150
-emb_dim3 = 100
-hidden_dim = 25
+emb_dim1 = 150
+emb_dim2 = 200
+emb_dim3 = 150
+hidden_dim = 30
 input_dim = 3
 
 NUM_EPOCHS = 30
@@ -117,10 +117,12 @@ class LSTMTracker(nn.Module):
         # The linear layer that maps from hidden state space to tag space
         self.hidden2pos = nn.Linear(hidden_dim, 3)
 
+        self.dropout = nn.Dropout(p=0.3)
+
     def forward(self, trajectory):
-        x = F.relu(self.emb1(trajectory))
-        x = F.relu(self.emb2(x))
-        x = F.relu(self.emb3(x))
+        x = self.dropout(F.relu(self.emb1(trajectory)))
+        x = self.dropout(F.relu(self.emb2(x)))
+        x = self.dropout(F.relu(self.emb3(x)))
         lstm_out, _ = self.lstm(x)
         pos_space = self.hidden2pos(lstm_out)
         #next_pos = F.tanh(pos_space)
@@ -128,8 +130,8 @@ class LSTMTracker(nn.Module):
 
 
 model = LSTMTracker(hidden_dim, input_dim)
-loss_function = nn.MSELoss()
-optimizer = optim.Adam(model.parameters(), lr=0.01)
+loss_function = nn.L1Loss() #nn.MSELoss()
+optimizer = optim.Adam(model.parameters(), lr=0.0005)
 
 def train():
     model.train()
