@@ -65,10 +65,10 @@ class AnimationParams:
 
 
 class TrackedObject:
-    def __init__(self, predicted_pos, predicted_quats, true_pos, true_quat, pattern, detections,
+    def __init__(self, predicted_pos, predicted_quat, true_pos, true_quat, pattern, detections,
                  predicted_line, true_line, scatter, predicted_markers, true_markers):
         self.predicted_pos = predicted_pos
-        self.predicted_quats = predicted_quats
+        self.predicted_quat = predicted_quat
         self.true_pos = true_pos
         self.true_quat = true_quat
         self.pattern = pattern
@@ -102,24 +102,31 @@ def run_tracking_animation(tracked_objects, length, animation_params, fig, ax):
         #    return []
         lines = []
         for object in tracked_objects:
-            object.predicted_line.set_data(object.predicted_pos[:t+1, 0:2].T)
-            object.predicted_line.set_3d_properties(object.predicted_pos[:t+1, 2])
-            lines.append(object.predicted_line)
+            if object.predicted_pos is not None:
+                object.predicted_line.set_data(object.predicted_pos[:t+1, 0:2].T)
+                object.predicted_line.set_3d_properties(object.predicted_pos[:t+1, 2])
+                lines.append(object.predicted_line)
 
-            object.true_line.set_data(object.true_pos[:t+1, 0:2].T)
-            object.true_line.set_3d_properties(object.true_pos[:t+1, 2])
-            lines.append(object.true_line)
+                object.true_line.set_data(object.true_pos[:t+1, 0:2].T)
+                object.true_line.set_3d_properties(object.true_pos[:t+1, 2])
+                lines.append(object.true_line)
 
             q_predicted = Quaternion(object.predicted_quat[t, :])
             rot_mat_predicted = q_predicted.rotation_matrix
             rotated_pattern_predicted = np.dot(rot_mat_predicted, object.pattern.T).T
-            predicted_markers = rotated_pattern_predicted + object.predicted_pos[t, :]
+            if object.predicted_pos is not None:
+                predicted_markers = rotated_pattern_predicted + object.predicted_pos[t, :]
+            else:
+                predicted_markers = rotated_pattern_predicted
 
             # now with VICON predictions
             q_true = Quaternion(object.true_quat[t, :])
             rot_mat_true = q_true.rotation_matrix
             rotated_pattern_true = np.dot(rot_mat_true, object.pattern.T).T
-            true_markers = rotated_pattern_true + object.true_pos[t, :]
+            if object.predicted_pos is not None:
+                true_markers = rotated_pattern_true + object.true_pos[t, :]
+            else:
+                true_markers = rotated_pattern_true
 
             # display expected marker locations
             object.predicted_markers._offsets3d = (predicted_markers[:, 0],
@@ -479,14 +486,22 @@ def visualize_tracking(predicted_pos, predicted_quat, true_pos, true_quats, dete
 
     fig = plt.figure()
     ax = p3.Axes3D(fig)
-
-    track_viz = TrackedObject(predicted_pos, predicted_quat, true_pos, true_quats, pattern, detections,
-                              ax.plot(predicted_pos[0:1, 0], predicted_pos[0:1, 1], predicted_pos[0:1, 2])[0],
-                              ax.plot(true_pos[0:1, 0], true_pos[0:1, 1], true_pos[0:1, 2])[0],
-                              ax.scatter([], [], []),
-                              ax.scatter([], [], []),
-                              ax.scatter([], [], []) #TODO: add colors
-                              )
+    if predicted_pos is None:
+        track_viz = TrackedObject(None, predicted_quat, None, true_quats, pattern, detections,
+                                  None,
+                                  None,
+                                  ax.scatter([], [], [], c='r'),
+                                  ax.scatter([], [], [], c='g'),
+                                  ax.scatter([], [], [], c='b')  # TODO: add colors
+                                  )
+    else:
+        track_viz = TrackedObject(predicted_pos, predicted_quat, true_pos, true_quats, pattern, detections,
+                                  ax.plot(predicted_pos[0:1, 0], predicted_pos[0:1, 1], predicted_pos[0:1, 2])[0],
+                                  ax.plot(true_pos[0:1, 0], true_pos[0:1, 1], true_pos[0:1, 2])[0],
+                                  ax.scatter([], [], []),
+                                  ax.scatter([], [], []),
+                                  ax.scatter([], [], []) #TODO: add colors
+                                  )
 
     # TODO: set inital view params, etc.
     field_of_view = 5
@@ -502,7 +517,11 @@ def visualize_tracking(predicted_pos, predicted_quat, true_pos, true_quats, dete
     ax.set_title('3D Test')
     ax.view_init(elev=50.)
 
-    run_tracking_animation([track_viz], np.shape(predicted_pos)[0] - 1, animation_params, fig, ax)
+    if predicted_pos is not None:
+        run_tracking_animation([track_viz], np.shape(predicted_pos)[0] - 1, animation_params, fig, ax)
+    else:
+        run_tracking_animation([track_viz], np.shape(predicted_quat)[0] - 1, animation_params, fig, ax)
+
 
 
 
