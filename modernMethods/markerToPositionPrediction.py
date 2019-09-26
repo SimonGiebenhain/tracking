@@ -19,21 +19,27 @@ from vizTracking import visualize_tracking
 # TODO: 5) multimodal predictions?
 
 
-TRAIN_SIZE = 10000
-TEST_SIZE = int(TRAIN_SIZE / 10)
+TRAIN_SIZE = 7500
+TEST_SIZE = int(TRAIN_SIZE / 5)
 T = 200
 NUM_EPOCHS = 20
 BATCH_SIZE = 64
 
-NOISE_STD = 0.001
+NOISE_STD = 0
 
 dim = 3
 input_dim = 12
-fc1_dim = 50
-embedding_dim = 70
-hidden_dim = 40
-fc2_dim = 50
+fc0_dim = 20
+fc1_dim =  40
+embedding_dim = 60
+hidden_dim = 60
+fc2_dim = 60
+fc3_dim = 40
+
 output_pos_dim = 3
+
+fc_quat1_dim = 40
+fc_quat2_dim = 30
 output_quat_dim = 4
 
 
@@ -50,9 +56,9 @@ pattern = 0.1 * np.array([[0,0,0], [0,0,0.5], [-0.7,-1,0], [1.1, -1, 0.8]])
 
 
 def Gen_Spirals(length, dims=2):
-    theta_range = np.random.randint(1,10)
+    theta_range = np.random.uniform(1,2)
     theta = np.linspace(-theta_range * np.pi, theta_range * np.pi, length)
-    z_range = np.random.randint(15,45)
+    z_range = np.random.randint(1,10)
     z = np.random.uniform(1,3)*np.sin(np.linspace(0, z_range, length))
     rx = np.abs(z) ** np.random.uniform(1.5,3)*np.abs(np.random.rand())  + 1
     ry = np.abs(z) ** np.random.uniform(1.5,3)*np.abs(np.random.rand())  + 1
@@ -84,11 +90,15 @@ def gen_quats(size):
 
     def gen_quat():
         quat = np.zeros([T,4])
-        xaxis = np.linspace(np.random.uniform(-1,1), np.random.uniform(2, 4), T)
-        quat[:, 0] = np.random.uniform(0.5,4) * np.sin(xaxis/np.random.uniform(0.3,3))*np.random.uniform(1,10)
-        quat[:, 1] = np.random.uniform(0.5,4) * xaxis / T * np.random.uniform(-3,3)
-        quat[:, 2] = np.random.uniform(0.5,4) * np.sin(xaxis/np.random.uniform(0.3,3))**(np.random.randint(1,4))
-        quat[:, 3] = np.random.uniform(0.5,4) * np.arctan(xaxis/np.random.uniform(0.3,3))*np.random.uniform(0,5)
+        left_end = np.random.uniform(-5,-3)
+        xaxis = np.linspace(left_end, -left_end, T)
+
+        quat[:, 0] = np.random.uniform(0.5,4) * np.sin(np.random.uniform(0,2*np.pi)+xaxis)
+        quat[:, 1] = np.random.uniform(0,2)
+        quat[:, 2] = np.random.uniform(0.5,4) * np.cos(np.random.uniform(0,2*np.pi)+xaxis)
+        quat[:, 3] = np.random.uniform(-4,4) * np.arctan((-T/2+xaxis)/np.random.uniform(0.2,1.5))
+
+        quat = quat + np.random.uniform(-2,2,np.shape(quat))
 
         return quat / np.sqrt(np.sum(np.square(quat), axis=0))
 
@@ -108,12 +118,16 @@ def add_markers_to_trajectories(trajectory, quats, pattern):
         for n in range(N):
             quat = Quaternion(quats[t,n,:])
             rot_mat = quat.rotation_matrix
+            np.random.shuffle(pattern)
             rotated_pattern = np.dot(rot_mat, pattern.T).T
             det = np.reshape(rotated_pattern + trajectory[t, n], -1)
             detections[t, n, :] = det
 
     det_no_noise = detections
-    detections = detections + np.random.normal(0, NOISE_STD, np.shape(detections))
+    if NOISE_STD > 0:
+        detections = detections + np.random.normal(0, NOISE_STD, np.shape(detections))
+    else:
+        detections = det_no_noise
 
     #marker0 = trajectory + pattern[0, :] + np.random.normal(0, 0.02, np.shape(trajectory))
     #marker1 = trajectory + pattern[1, :] + np.random.normal(0, 0.02, np.shape(trajectory))
@@ -214,8 +228,8 @@ class LSTMTracker(nn.Module):
 
         self.embedding_dim = embedding_dim
         self.hidden_dim = hidden_dim
-
-        self.fc1 = nn.Linear(input_dim, fc1_dim)
+        self.fc0 = nn.Linear(input_dim, fc0_dim)
+        self.fc1 = nn.Linear(fc0_dim, fc1_dim)
 
         self.marker_embedding = nn.Linear(fc1_dim, embedding_dim)
 
@@ -224,24 +238,35 @@ class LSTMTracker(nn.Module):
         self.lstm = nn.LSTM(embedding_dim, hidden_dim)
 
         self.fc2 = nn.Linear(hidden_dim, fc2_dim)
+        self.fc3 = nn.Linear(fc2_dim, fc3_dim)
 
         # The linear layer that maps from hidden state space to tag space
 
-        self.map2pos = nn.Linear(fc2_dim, output_pos_dim)
-        self.map2quat = nn.Linear(fc2_dim, output_quat_dim)
+        self.map2pos = nn.Linear(fc3_dim, output_pos_dim)
+        self.fc_quat1 = nn.Linear(fc3_dim, fc_quat1_dim)
+        self.fc_quat2 = nn.Linear(fc_quat1_dim, fc_quat2_dim)
+        self.map2quat = nn.Linear(fc_quat2_dim, output_quat_dim)
 
-        self.dropout = nn.Dropout(p=0.2)
+        self.dropout = nn.Dropout(p=0.1)
 
 
     def forward(self, marker_detections):
-        x = self.dropout(F.relu(self.fc1(marker_detections)))
+        x = F.relu(self.fc0(marker_detections))
+        x = self.dropout(F.relu(self.fc1(x)))
         embeddings = self.dropout(F.relu(self.marker_embedding(x)))
         lstm_out, _ = self.lstm(embeddings.view(len(marker_detections), -1, self.embedding_dim))
 
         x = self.dropout(F.relu(self.fc2(self.dropout(lstm_out))))
+        x = self.dropout(F.relu(self.fc3(x)))
+
         pos_space = self.map2pos(x)
-        quat_space = F.softmax(self.map2quat(x), dim=2)
-        #next_pos = F.tanh(pos_space)
+
+        x = self.dropout(F.relu(self.fc_quat1(x)))
+        x = self.dropout(F.relu(self.fc_quat2(x)))
+        quat_space = self.map2quat(x)
+        quat_norm = torch.sqrt(torch.sum(torch.pow(quat_space, 2,), dim=2))
+        quat_space = quat_space / torch.unsqueeze(quat_norm, dim=2)
+
         predicted_markers = quat_rot(quat_space, pattern)
         predicted_markers = predicted_markers + pos_space.unsqueeze(2)
         predicted_markers = predicted_markers.contiguous().view(len(marker_detections), -1, 12)
@@ -252,6 +277,7 @@ class LSTMTracker(nn.Module):
 model = LSTMTracker(embedding_dim, hidden_dim)
 model = model.float()
 loss_function = nn.MSELoss()
+loss_l1 = nn.L1Loss()
 optimizer = optim.Adam(model.parameters(), lr=0.001)
 
 #summary(model, input_size=())
@@ -267,6 +293,7 @@ def train():
         Y_quat_batches = torch.split(Y_quat_train, BATCH_SIZE, 1)
         Y_marker_batches = torch.split(Y_marker_train, BATCH_SIZE, 1)
         avg_loss = 0
+        avg_quat_loss = 0
         for X_batch, Y_pos_batch, Y_quat_batch, Y_marker_batch in zip(X_batches, Y_pos_batches, Y_quat_batches, Y_marker_batches):
             model.zero_grad()
 
@@ -276,22 +303,31 @@ def train():
             #        maybe scale by average norm of positions then maybe weight constantly e.g. 1/2 since the focus is on position,
             #        but that should make a difference anyways
             #loss_pos = loss_function(pred_pos, Y_pos_batch[1:,:,:])
-            #loss_quat = loss_function(pred_quat, Y_quat_batch[1:, :, :])
+            #TODO respect antipodal in loss !!
+            loss_q = loss_l1(pred_quat, Y_quat_batch[1:, :, :])
+            loss_antipodal_q = loss_l1(pred_quat, -Y_quat_batch[1:, :, :])
+            loss_quat, _ = torch.max(torch.stack([loss_q, loss_antipodal_q], dim=0), dim=0)
+            #TODO feed distance to last pos, instead of abolute value
+            #TODO is l2 loss the right choice
             #loss = loss_pos + loss_quat
-            loss = loss_function(pred_marker, Y_marker_batch[1:, :, :])
+            loss_marker = loss_function(pred_marker, Y_marker_batch[1:, :, :])
+            loss = loss_marker + loss_quat
             loss.backward()
             optimizer.step()
             avg_loss += loss
+            avg_quat_loss += loss_quat
         avg_loss /= len(Y_pos_batches)
+        avg_quat_loss /= len(Y_pos_batches)
 
         model.eval()
         with torch.no_grad():
             pred_marker, pred_pos, pred_quat = model(X_test[:-1,:,:])
             #loss_pos = loss_function(pred_pos, Y_pos_test[1:, :, :])
-            #loss_quat = loss_function(pred_quat, Y_quat_test[1:, :, :])
-            #loss = loss_pos + loss_quat
-            loss = loss_function(pred_marker, Y_marker_test[1:, :, :])
-            print("training loss: {ltrain:2.4f}, test loss: {ltest:2.4f}".format(ltrain=avg_loss.data, ltest=loss.data))
+            loss_q = loss_l1(pred_quat, Y_quat_test[1:, :, :])
+            loss_antipodal_q = loss_l1(pred_quat, -Y_quat_test[1:, :, :])
+            loss_quat, _ = torch.max(torch.stack([loss_q, loss_antipodal_q], dim=0), dim=0)
+            loss_marker = loss_function(pred_marker, Y_marker_test[1:, :, :])
+            print("training loss marker: {ltrain:2.4f}, training loss quat: {ltrain_quat:2.4f}, test loss marker: {ltest:2.4f}, test loss quat: {ltest_quat:2.4f}".format(ltrain=avg_loss.data, ltest=loss_marker.data, ltrain_quat=avg_quat_loss, ltest_quat=loss_quat))
     torch.save(model.state_dict(), 'weights/lstm_4marker_to_pos')
 
 
@@ -304,6 +340,7 @@ def eval():
     model.eval()
 
     marker_preds, predicted_pos, predicted_quats = model(X_test[:-1, :, :])
+    print(predicted_quats[:10, 0, :])
 
     for n in range(10):
         with torch.no_grad():
