@@ -13,23 +13,25 @@ from vizTracking import visualize_tracking
 
 BATCH_SIZE = 50
 
-N_train = 10*BATCH_SIZE
-N_eval = 10*BATCH_SIZE
+N_train = 200*BATCH_SIZE
+N_eval = 20*BATCH_SIZE
 T = 200
 fc1_dim = 150
 fc2_dim = 200
 fc3_dim = 100
-hidden_dim = 25
-fc_out_1_size = 35
+hidden_dim = 35
+fc_out_1_size = 50
 input_dim = 4
 
-NUM_EPOCHS = 10
+NUM_EPOCHS = 20
 
 weight_file = 'weights/pos_quat_lstm.npy'
 
 
 # TODO: pattern as additional input! in order to learn with arbitrary patterns
-# TODO: missing dtections andf false positives
+# TODO: try with bird behaviour and simulated pattern
+# TODO: missing dtections and false positives
+# TODO: easier data or more powerful net? It cannot even really overfit...
 
 ####################################################################################
 ######### REPORT #########
@@ -309,6 +311,7 @@ def train():
         batches_not_shuffled = torch.split(X_train, BATCH_SIZE, 1)
         avg_loss_pose = 0
         avg_loss_quat = 0
+        avg_loss_pos = 0
         for batch, quat_truth_batch, pos_truth_batch, batch_not_shuffled in zip(batches, quat_truth_batches, pos_truth_batches, batches_not_shuffled):
             model.zero_grad()
 
@@ -323,8 +326,10 @@ def train():
             optimizer.step()
             avg_loss_pose += loss_pose
             avg_loss_quat += loss_quat
+            avg_loss_pos += loss_pos
         avg_loss_pose /= len(batches)
         avg_loss_quat /= len(batches)
+        avg_loss_pos /= len(batches)
 
         model.eval()
         with torch.no_grad():
@@ -332,8 +337,8 @@ def train():
             loss_pose = loss_function_pose(preds, X_test[1:,:,:])
             loss_quat = loss_function_quat(pred_quat, Y_quat_test[1:, :, :])
             loss_pos = loss_function_pose(pred_pos, Y_pos_test[1:, :, :])
-            print("TrainPoseLoss: {train_pose:2.4f}, TrainQuatLoss: {train_quat:2.4f} \t TestPoseLoss: {test_pose:2.4f}, TestQuatLoss: {test_quat:2.4f}".format(
-                train_pose=avg_loss_pose.data, train_quat=avg_loss_quat.data, test_pose=loss_pose, test_quat=loss_quat))
+            print("TrainPoseLoss: {train_pose:2.4f}, TrainQuatLoss: {train_quat:2.4f}  TrainPosLoss: {train_pos:2.4f}\t TestPoseLoss: {test_pose:2.4f}, TestQuatLoss: {test_quat:2.4f}, TestPosLoss: {test_pos:2.4f}".format(
+                train_pose=avg_loss_pose.data, train_quat=avg_loss_quat.data, train_pos=avg_loss_pos.data, test_pose=loss_pose, test_quat=loss_quat, test_pos=avg_loss_pos.data))
     torch.save(model.state_dict(), weight_file)
 
 
