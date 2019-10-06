@@ -13,22 +13,20 @@ from vizTracking import visualize_tracking
 
 BATCH_SIZE = 50
 
-N_train = 10*BATCH_SIZE
-N_eval = 10*BATCH_SIZE
+N_train = 200*BATCH_SIZE
+N_eval = 20*BATCH_SIZE
 T = 200
-fc1_dim = 150
-fc2_dim = 200
+fc1_dim = 200
+fc2_dim = 250
 fc3_dim = 100
 hidden_dim = 35
 fc_out_1_size = 50
 input_dim = 4
 
-NUM_EPOCHS = 10
+NUM_EPOCHS = 20
 
 weight_file = 'weights/pos_quat_lstm.npy'
 
-
-# TODO: WIESO IST POS PRED SO NOISY? TESTE EINFACH MAL OHNE QUAT VORHERSAGE (const quat)
 
 # TODO: pattern as additional input! in order to learn with arbitrary patterns
 # TODO: try with bird behaviour and simulated pattern
@@ -43,22 +41,43 @@ weight_file = 'weights/pos_quat_lstm.npy'
 
 
 
-marker1 = np.array([0, 0, 0])
-marker2 = np.array([0, 0, 0.5])
-marker3 = np.array([-0.7, -1, 0])
-marker4 = np.array([1.1, -1, 0.8])
+#marker1 = np.array([0, 0, 0])
+#marker2 = np.array([0, 0, 0.5])
+#marker3 = np.array([-0.7, -1, 0])
+#marker4 = np.array([1.1, -1, 0.8])
+#
+#pattern = np.stack([marker1, marker2, marker3, marker4], axis=0)
+#
+#stacked_marker1 = np.tile(marker1, reps=(T-1, BATCH_SIZE, 1))
+#stacked_marker2 = np.tile(marker2, reps=(T-1, BATCH_SIZE, 1))
+#stacked_marker3 = np.tile(marker3, reps=(T-1, BATCH_SIZE, 1))
+#stacked_marker4 = np.tile(marker4, reps=(T-1, BATCH_SIZE, 1))
+#
+#stacked_marker1 = torch.from_numpy(stacked_marker1).float()
+#stacked_marker2 = torch.from_numpy(stacked_marker2).float()
+#stacked_marker3 = torch.from_numpy(stacked_marker3).float()
+#stacked_marker4 = torch.from_numpy(stacked_marker4).float()
 
-pattern = np.stack([marker1, marker2, marker3, marker4], axis=0)
+def gen_pattern(N):
+    # one marker is always the origin
+    marker1 = np.zeros([T, N, 3])
 
-stacked_marker1 = np.tile(marker1, reps=(T-1, BATCH_SIZE, 1))
-stacked_marker2 = np.tile(marker2, reps=(T-1, BATCH_SIZE, 1))
-stacked_marker3 = np.tile(marker3, reps=(T-1, BATCH_SIZE, 1))
-stacked_marker4 = np.tile(marker4, reps=(T-1, BATCH_SIZE, 1))
+    # The others have to be generated such that they span a 3-dim space
+    marker2 = np.random.uniform(-1, 1, [T, N, 3])
 
-stacked_marker1 = torch.from_numpy(stacked_marker1).float()
-stacked_marker2 = torch.from_numpy(stacked_marker2).float()
-stacked_marker3 = torch.from_numpy(stacked_marker3).float()
-stacked_marker4 = torch.from_numpy(stacked_marker4).float()
+    marker3 = np.random.uniform(-1, 1, [T, N, 3])
+    ortho_marker2 = np.stack([marker2[:,:,1] + marker2[:, :, 2], -marker2[:, :, 0], -marker2[:, :, 0]], axis=2)
+    marker3 = (marker3 + ortho_marker2) / 2
+
+    ortho_marker23 = np.cross(marker2, marker3)
+    scale_marker2 = np.random.uniform(-1, 1, [T, N, 1])
+    scale_marker3 = np.random.uniform(-1, 1, [T, N, 1])
+    scale_ortho = np.random.uniform(0.1, 1, [T, N, 1]) * np.random.choice([-1, 1], size=[T, N, 1], replace=True)
+    marker4 = scale_marker2 * marker2 + scale_marker3 + marker3 + scale_ortho * ortho_marker23
+
+    pattern = np.stack([marker1, marker2, marker3, marker4], axis=2)
+
+    return pattern, marker1, marker2, marker3, marker4
 
 
 def gen_quats(length, dims):
@@ -73,7 +92,7 @@ def gen_quats(length, dims):
     w = 1 + np.random.uniform(0.5, 4)*np.sin(theta)*np.cos(theta)**2
     quats = np.stack([w, x, y, z], axis=1)
     quats = quats / np.expand_dims(np.sqrt(np.sum(np.square(quats), axis=1)), axis=1)
-    quats = np.tile(np.array([1, 0, 0, 0]), [length, 1])
+    #quats = np.tile(np.array([1, 0, 0, 0]), [length, 1])
     return quats
 
 
@@ -95,6 +114,7 @@ def scale_trajectory(trajectory):
     min_pos = np.min(trajectory, axis=0)
     movement_range = max_pos - min_pos
     return  5 * (trajectory / movement_range)
+
 
 def center_trajectory(trajectory):
     center = np.mean(trajectory, axis=0)
@@ -149,6 +169,7 @@ def qrot(q, v):
     return (v + 2 * (q[:, :1] * uv + uuv)).view(original_shape)
 
 
+# TODO: vecotrize with qrot() and by shuffling markers while generating them
 def gen_training_data(N):
 
     quat_train = np.zeros([T, N, 4], dtype=np.float32)
@@ -162,30 +183,38 @@ def gen_training_data(N):
     pos_train_stacked = np.tile(pos_train, [1, 1, 4])
     pos_test_stacked = np.tile(pos_test, [1, 1, 4])
 
+    pattern_train, _, _, _, _ = gen_pattern(N)
+    pattern_test, _, _, _, _ = gen_pattern(N)
+
+
     X_train = np.zeros([T, N, 12])
     X_train_shuffled = np.zeros([T, N, 12])
     X_test = np.zeros([T, N, 12])
     X_test_shuffled = np.zeros([T, N, 12])
 
 
-    p = np.copy(pattern)
-
     for t in range(T):
         for n in range(N):
+            p_train = pattern_train[t, n, :, :]
+            p_train_copy = np.copy(p_train)
+
             q = Quaternion(quat_train[t, n, :])
-            np.random.shuffle(p)
-            rotated_pattern = (q.rotation_matrix @ p.T).T
+            np.random.shuffle(p_train_copy)
+            rotated_pattern = (q.rotation_matrix @ p_train_copy.T).T
             X_train_shuffled[t, n, :] = np.reshape(rotated_pattern, -1)
 
-            rotated_pattern = (q.rotation_matrix @ pattern.T).T
+            rotated_pattern = (q.rotation_matrix @ p_train.T).T
             X_train[t, n, :] = np.reshape(rotated_pattern, -1)
 
+            p_test = pattern_test[t, n, :, :]
+            p_test_copy = pattern_test[t, n, :, :]
+
             q = Quaternion(quat_test[t, n, :])
-            np.random.shuffle(p)
-            rotated_pattern = (q.rotation_matrix @ p.T).T
+            np.random.shuffle(p_test_copy)
+            rotated_pattern = (q.rotation_matrix @ p_test_copy.T).T
             X_test_shuffled[t, n, :] = np.reshape(rotated_pattern, -1)
 
-            rotated_pattern = (q.rotation_matrix @ pattern.T).T
+            rotated_pattern = (q.rotation_matrix @ p_test.T).T
             X_test[t, n, :] = np.reshape(rotated_pattern, -1)
 
     X_train = X_train + pos_train_stacked
@@ -256,7 +285,8 @@ def gen_training_data(N):
            torch.from_numpy(quat_test).float(), \
            torch.from_numpy(X_test).float() , \
            torch.from_numpy(pos_test).float(), \
-           pattern
+           torch.from_numpy(pattern_train).float(), \
+           torch.from_numpy(pattern_test).float()
 
 
 class LSTMTracker(nn.Module):
@@ -265,7 +295,7 @@ class LSTMTracker(nn.Module):
         super(LSTMTracker, self).__init__()
         self.hidden_dim = hidden_dim
 
-        self.fc1 = nn.Linear(12, fc1_dim)
+        self.fc1 = nn.Linear(12+12, fc1_dim)
         self.fc2 = nn.Linear(fc1_dim, fc2_dim)
         self.fc3 = nn.Linear(fc2_dim, fc3_dim)
         self.lstm = nn.LSTM(fc3_dim, hidden_dim)
@@ -278,8 +308,13 @@ class LSTMTracker(nn.Module):
 
         self.dropout = nn.Dropout(p=0.15)
 
-    def forward(self, detections):
-        x = self.dropout(F.relu(self.fc1(detections)))
+    def forward(self, detections, patterns):
+        marker1 = patterns[:, :, 0, :].contiguous()
+        marker2 = patterns[:, :, 1, :].contiguous()
+        marker3 = patterns[:, :, 2, :].contiguous()
+        marker4 = patterns[:, :, 3, :].contiguous()
+        x = torch.cat([detections, patterns.view(T-1, -1, 12)], dim=2)
+        x = self.dropout(F.relu(self.fc1(x)))
         x = self.dropout(F.relu(self.fc2(x)))
         x = self.dropout(F.relu(self.fc3(x)))
         lstm_out, _ = self.lstm(x)
@@ -289,15 +324,11 @@ class LSTMTracker(nn.Module):
         # maybe leave out wenn not using pose error
         quat_norm = torch.sqrt(torch.sum(torch.pow(quat_space, 2, ), dim=2))
         quat_space = quat_space / torch.unsqueeze(quat_norm, dim=2)
-        #print(quat_space.shape)
-        #print(stacked_marker1.shape)
 
-        rotated_marker1 = qrot(quat_space, stacked_marker1) + pos_space
-        #print('HALL=')
-        #print(rotated_marker1.shape)
-        rotated_marker2 = qrot(quat_space, stacked_marker2) + pos_space
-        rotated_marker3 = qrot(quat_space, stacked_marker3) + pos_space
-        rotated_marker4 = qrot(quat_space, stacked_marker4) + pos_space
+        rotated_marker1 = qrot(quat_space, marker1) + pos_space
+        rotated_marker2 = qrot(quat_space, marker2) + pos_space
+        rotated_marker3 = qrot(quat_space, marker3) + pos_space
+        rotated_marker4 = qrot(quat_space, marker4) + pos_space
         rotated_pattern = torch.cat([rotated_marker1,
                              rotated_marker2,
                              rotated_marker3,
@@ -310,23 +341,26 @@ model = LSTMTracker(hidden_dim, input_dim)
 # TODO: respect antipodal pair as well!
 loss_function_pose = nn.MSELoss() #nn.L1Loss() #nn.MSELoss()
 loss_function_quat = nn.L1Loss()
-optimizer = optim.Adam(model.parameters(), lr=0.005)
+optimizer = optim.Adam(model.parameters(), lr=0.001)
 
 def train():
-    [X_train_shuffled, Y_quat_train, X_train, Y_pos_train, X_test_shuffled, Y_quat_test, X_test, Y_pos_test, pattern] = gen_training_data(N_train)
+    #TODO: store patterns
+    #TODO: adapt architecture to acceot patterns as well
+    [X_train_shuffled, Y_quat_train, X_train, Y_pos_train, X_test_shuffled, Y_quat_test, X_test, Y_pos_test, pattern_train, pattern_test] = gen_training_data(N_train)
     model.train()
     for epoch in range(NUM_EPOCHS):
         batches = torch.split(X_train_shuffled, BATCH_SIZE, 1)
         quat_truth_batches = torch.split(Y_quat_train, BATCH_SIZE, 1)
         pos_truth_batches = torch.split(Y_pos_train, BATCH_SIZE, 1)
         batches_not_shuffled = torch.split(X_train, BATCH_SIZE, 1)
+        pattern_batches = torch.split(pattern_train, BATCH_SIZE, 1)
         avg_loss_pose = 0
         avg_loss_quat = 0
         avg_loss_pos = 0
-        for batch, quat_truth_batch, pos_truth_batch, batch_not_shuffled in zip(batches, quat_truth_batches, pos_truth_batches, batches_not_shuffled):
+        for batch, quat_truth_batch, pos_truth_batch, batch_not_shuffled, pattern_batch in zip(batches, quat_truth_batches, pos_truth_batches, batches_not_shuffled, pattern_batches):
             model.zero_grad()
 
-            pred_quat, pred_pos, pred_markers = model(batch[:-1, :, :])
+            pred_quat, pred_pos, pred_markers = model(batch[:-1, :, :], pattern_batch[:-1, :, :, :])
 
             loss_pose = loss_function_pose(pred_markers, batch_not_shuffled[1:, :, :])
             loss_quat = loss_function_quat(pred_quat, quat_truth_batch[1:, :, :])
@@ -344,7 +378,7 @@ def train():
 
         model.eval()
         with torch.no_grad():
-            pred_quat, pred_pos, preds  = model(X_test_shuffled[:-1,:,:])
+            pred_quat, pred_pos, preds  = model(X_test_shuffled[:-1,:,:], pattern_test[:-1, :, :, :])
             loss_pose = loss_function_pose(preds, X_test[1:,:,:])
             loss_quat = loss_function_quat(pred_quat, Y_quat_test[1:, :, :])
             loss_pos = loss_function_pose(pred_pos, Y_pos_test[1:, :, :])
@@ -367,11 +401,11 @@ def eval():
         for n in range(10):
             visualize_tracking(pos_preds[:, n, :].detach().numpy(),
                                quat_preds[:, n, :].detach().numpy(),
-                               Y_pos_test[:, n, :].detach().numpy(),
+                               Y_pos_test[1:, n, :].detach().numpy(),
                                Y_quat_test[1:, n, :].detach().numpy(),
                                X_test[:-1, n, :].numpy(),
                                pattern)
 
 
 train()
-eval()
+#eval()
