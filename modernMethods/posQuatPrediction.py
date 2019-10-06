@@ -13,8 +13,8 @@ from vizTracking import visualize_tracking
 
 BATCH_SIZE = 50
 
-N_train = 200*BATCH_SIZE
-N_eval = 20*BATCH_SIZE
+N_train = 10*BATCH_SIZE
+N_eval = 10*BATCH_SIZE
 T = 200
 fc1_dim = 150
 fc2_dim = 200
@@ -23,10 +23,12 @@ hidden_dim = 35
 fc_out_1_size = 50
 input_dim = 4
 
-NUM_EPOCHS = 20
+NUM_EPOCHS = 10
 
 weight_file = 'weights/pos_quat_lstm.npy'
 
+
+# TODO: WIESO IST POS PRED SO NOISY? TESTE EINFACH MAL OHNE QUAT VORHERSAGE (const quat)
 
 # TODO: pattern as additional input! in order to learn with arbitrary patterns
 # TODO: try with bird behaviour and simulated pattern
@@ -66,12 +68,12 @@ def gen_quats(length, dims):
     z = np.random.uniform(1,3)*np.sin(np.linspace(0, z_range, length))
     rx = np.abs(z) ** np.random.uniform(1.5,3)*np.abs(np.random.rand())  + 1
     ry = np.abs(z) ** np.random.uniform(1.5,3)*np.abs(np.random.rand())  + 1
-    rw = np.abs(z)
     x = rx**1.5 * np.sin(theta)
     y = ry**1.5 * np.cos(theta)
     w = 1 + np.random.uniform(0.5, 4)*np.sin(theta)*np.cos(theta)**2
     quats = np.stack([w, x, y, z], axis=1)
     quats = quats / np.expand_dims(np.sqrt(np.sum(np.square(quats), axis=1)), axis=1)
+    quats = np.tile(np.array([1, 0, 0, 0]), [length, 1])
     return quats
 
 
@@ -88,24 +90,33 @@ def Gen_Spirals(length, dims=2):
     return np.stack([x,y,z], axis=1) + 5*np.random.uniform(low=-5, high=5, size=[1,dims])
 
 
+def scale_trajectory(trajectory):
+    max_pos = np.max(trajectory, axis=0)
+    min_pos = np.min(trajectory, axis=0)
+    movement_range = max_pos - min_pos
+    return  5 * (trajectory / movement_range)
+
+def center_trajectory(trajectory):
+    center = np.mean(trajectory, axis=0)
+    return trajectory - center
+
+
 def gen_pos(N):
 
     pos_train = np.zeros([T, N, 3], dtype=np.float32)
     pos_test = np.zeros([T, N, 3], dtype=np.float32)
 
     for n in range(N):
-        pos_train[:, n, :] = Gen_Spirals(T, 3)
-        pos_test[:, n, :] = Gen_Spirals(T, 3)
+        trajectory = Gen_Spirals(T, 3)
+        trajectory = center_trajectory(trajectory)
+        trajectory = scale_trajectory(trajectory)
+        pos_train[:, n, :] = trajectory
 
-    maxi1 = max(np.max(pos_train[:,:,0]), np.max(pos_test[:,:,0]))/5
-    maxi2 = max(np.max(pos_train[:,:,1]), np.max(pos_test[:,:,1]))/5
-    maxi3 = max(np.max(pos_train[:,:,2]), np.max(pos_test[:,:,2]))/5
-    pos_train[:,:,0] = pos_train[:,:,0] / maxi1
-    pos_train[:,:,1] = pos_train[:,:,1] / maxi2
-    pos_train[:,:,2] = pos_train[:,:,2] / maxi3
-    pos_test[:, :, 0] = pos_test[:, :, 0] / maxi1
-    pos_test[:, :, 1] = pos_test[:, :, 1] / maxi2
-    pos_test[:, :, 2] = pos_test[:, :, 2] / maxi3
+    for n in range(N):
+        trajectory = Gen_Spirals(T, 3)
+        trajectory = center_trajectory(trajectory)
+        trajectory = scale_trajectory(trajectory)
+        pos_test[:, n, :] = trajectory
 
     return pos_train, pos_test
 
@@ -338,7 +349,7 @@ def train():
             loss_quat = loss_function_quat(pred_quat, Y_quat_test[1:, :, :])
             loss_pos = loss_function_pose(pred_pos, Y_pos_test[1:, :, :])
             print("TrainPoseLoss: {train_pose:2.4f}, TrainQuatLoss: {train_quat:2.4f}  TrainPosLoss: {train_pos:2.4f}\t TestPoseLoss: {test_pose:2.4f}, TestQuatLoss: {test_quat:2.4f}, TestPosLoss: {test_pos:2.4f}".format(
-                train_pose=avg_loss_pose.data, train_quat=avg_loss_quat.data, train_pos=avg_loss_pos.data, test_pose=loss_pose, test_quat=loss_quat, test_pos=avg_loss_pos.data))
+                train_pose=avg_loss_pose.data, train_quat=avg_loss_quat.data, train_pos=avg_loss_pos.data, test_pose=loss_pose, test_quat=loss_quat, test_pos=loss_pos.data))
     torch.save(model.state_dict(), weight_file)
 
 
