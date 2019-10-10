@@ -4,21 +4,27 @@ import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
 import gc
-
 from pyquaternion import Quaternion as Quaternion
-
-
 from vizTracking import visualize_tracking
 
 
-drop_some_dets = False
+
+weight_file = 'weights/pos_quat_lstm.npy'
+generated_data_dir = 'generated_data'
+
+drop_some_dets = True
 use_const_pat = True
 
 BATCH_SIZE = 50
+NUM_EPOCHS = 100
+LEARNING_RATE = 0.0001
+DROPOUT_RATE = 0.15
 
-N_train = 50*BATCH_SIZE
+N_train = 200*BATCH_SIZE
 N_eval = int(N_train/10)
+
 T = 200
+
 fc1_det_dim = 250
 fc2_det_dim = 300
 fc3_det_dim = 300
@@ -30,11 +36,14 @@ fc3_pat_dim = 150
 #fc2_combo_dim = 100
 hidden_dim = 75
 fc_out_1_size = 30
-input_dim = 4
 
-NUM_EPOCHS = 20
+# TODO: put missed markers at the end of the detections
 
-weight_file = 'weights/pos_quat_lstm.npy'
+# TODO: proper noise model
+
+# TODO: generate bird behaviour
+
+# TODO: split up into multiple files, e.g. training_gen, predicition, logger
 
 # TODO: generate a log function, which:
 #       - stores model and task and hyperparams
@@ -135,7 +144,7 @@ class TrainingData():
 class HyperParams():
     def __init__(self, n_train, n_test, T, batch_size, optimizer, learning_rate, dropout_rate, batch_norm_type, loss_type, comments):
         self.batch_size = batch_size
-        self. n_train = n_test
+        self.n_train = n_test
         self.n_test = n_test
         self.T = T
         self.optimizer = optimizer
@@ -205,6 +214,7 @@ def gen_pattern_constant(N):
 
 
 def gen_pattern(N):
+
     # one marker is always the origin
     marker1 = np.zeros([T, N, 3])
 
@@ -221,16 +231,16 @@ def gen_pattern(N):
     scale_ortho = np.random.uniform(0.1, 1, [1, N, 1]) * np.random.choice([-1, 1], size=[1, N, 1], replace=True)
     marker4 = scale_marker2 * marker2 + scale_marker3 + marker3 + scale_ortho * ortho_marker23
 
-    marker2 = np.tile(marker2, [T, 1, 1])
-    marker3 = np.tile(marker3, [T, 1, 1])
-    marker4 = np.tile(marker4, [T, 1, 1])
+    marker2 = np.tile(marker2/10, [T, 1, 1])
+    marker3 = np.tile(marker3/10, [T, 1, 1])
+    marker4 = np.tile(marker4/10, [T, 1, 1])
 
     pattern = np.stack([marker1, marker2, marker3, marker4], axis=2)
 
     return pattern, marker1, marker2, marker3, marker4
 
 
-def gen_quats(length, dims):
+def gen_quats(length):
     theta_range = np.random.uniform(1,2)
     theta = np.linspace(-theta_range * np.pi, theta_range * np.pi, length)
     z_range = np.random.randint(1,10)
@@ -319,10 +329,10 @@ def gen_training_data(N_train, N_test):
     quat_test = np.zeros([T, N_test, 4], dtype=np.float32)
 
     for n in range(N_train):
-        quat_train[:, n, :] = gen_quats(T, input_dim)
+        quat_train[:, n, :] = gen_quats(T)
 
     for n in range(N_test):
-        quat_test[:, n, :] = gen_quats(T, input_dim)
+        quat_test[:, n, :] = gen_quats(T)
 
     pos_train = gen_pos(N_train)
     pos_test = gen_pos(N_test)
@@ -350,8 +360,10 @@ def gen_training_data(N_train, N_test):
             q = Quaternion(quat_train[t, n, :])
             np.random.shuffle(p_train_copy)
             rotated_pattern = (q.rotation_matrix @ p_train_copy.T).T
-            if drop_some_dets and np.random.uniform(0,1) < 0.2:
+            if drop_some_dets and np.random.uniform(0,1) < 0.5:
                 rotated_pattern[np.random.randint(0,3),:] = np.array([-1000,-1000,-1000])
+            if drop_some_dets and np.random.uniform(0, 1) < 0.5:
+                rotated_pattern[np.random.randint(0, 3), :] = np.array([-1000, -1000, -1000])
             X_train_shuffled[t, n, :] = np.reshape(rotated_pattern, -1)
 
             rotated_pattern = (q.rotation_matrix @ p_train.T).T
@@ -365,8 +377,10 @@ def gen_training_data(N_train, N_test):
             q = Quaternion(quat_test[t, n, :])
             np.random.shuffle(p_test_copy)
             rotated_pattern = (q.rotation_matrix @ p_test_copy.T).T
-            if drop_some_dets and  np.random.uniform(0,1) < 0.2:
-                rotated_pattern[np.random.randint(0,3),:] = np.array([-1000,-1000,-1000])
+            if drop_some_dets and np.random.uniform(0, 1) < 0.5:
+                rotated_pattern[np.random.randint(0, 3), :] = np.array([-1000, -1000, -1000])
+            if drop_some_dets and np.random.uniform(0, 1) < 0.5:
+                rotated_pattern[np.random.randint(0, 3), :] = np.array([-1000, -1000, -1000])
             X_test_shuffled[t, n, :] = np.reshape(rotated_pattern, -1)
 
             rotated_pattern = (q.rotation_matrix @ p_test.T).T
@@ -377,6 +391,11 @@ def gen_training_data(N_train, N_test):
     X_test = X_test + pos_test_stacked
     X_test_shuffled = X_test_shuffled + pos_test_stacked
 
+    data = TrainingData()
+    data.set_train_data(X_train, X_train_shuffled, quat_train, pos_train, pattern_train)
+    data.set_test_data(X_test, X_test_shuffled, quat_test, pos_test, pattern_test)
+    data.save_data(generated_data_dir)
+    data.convert_to_torch()
 
     #maxi1 = max(np.max(quat_train[:, :, 0]), np.max(quat_test[:, :, 0])) / 5
     #maxi2 = max(np.max(quat_train[:, :, 1]), np.max(quat_test[:, :, 1])) / 5
@@ -432,21 +451,24 @@ def gen_training_data(N_train, N_test):
    #                    rotated_marker4_test], dim=2)
    #
 
-    return torch.from_numpy(X_train_shuffled).float(), \
-           torch.from_numpy(quat_train).float(), \
-           torch.from_numpy(X_train).float(), \
-           torch.from_numpy(pos_train).float(), \
-           torch.from_numpy(X_test_shuffled).float(), \
-           torch.from_numpy(quat_test).float(), \
-           torch.from_numpy(X_test).float() , \
-           torch.from_numpy(pos_test).float(), \
-           torch.from_numpy(pattern_train).float(), \
-           torch.from_numpy(pattern_test).float()
+    return data
+
+
+def load_training_data():
+    data = TrainingData()
+    data.load_data(generated_data_dir)
+    global T, N_train, N_eval
+    T = np.shape(data.X_train)[0]
+    N_train = np.shape(data.X_train)[1]
+    N_eval = np.shape(data.X_test)[1]
+    data.convert_to_torch()
+    return data
+
 
 # todo custom LSTM-cell
 class LSTMTracker(nn.Module):
 
-    def __init__(self, hidden_dim, input_dim):
+    def __init__(self, hidden_dim):
         super(LSTMTracker, self).__init__()
         self.hidden_dim = hidden_dim
 
@@ -474,8 +496,7 @@ class LSTMTracker(nn.Module):
 
         self.hidden2pos = nn.Linear(hidden_dim, 3)
 
-        self.dropout = nn.Dropout(p=0.15)
-        self.dropout_10 = nn.Dropout(p=0.1)
+        self.dropout = nn.Dropout(p=DROPOUT_RATE)
 
     def forward(self, detections, patterns):
         marker1 = patterns[:, :, 0, :].contiguous()
@@ -520,19 +541,23 @@ class LSTMTracker(nn.Module):
 
         return quat_space, pos_space, rotated_pattern
 
+model = LSTMTracker(hidden_dim)
 
-model = LSTMTracker(hidden_dim, input_dim)
+# TODO determine automatically from model
+hyper_params = HyperParams(N_train, N_eval, T, BATCH_SIZE, 'ADAM', LEARNING_RATE, DROPOUT_RATE, 'NONE', 'l2 on pos + 5* l1 on quat', '')
+
+
 # TODO: try pose error!!
 # TODO: respect antipodal pair as well!
 loss_function_pose = nn.MSELoss() #nn.L1Loss() #nn.MSELoss()
 loss_function_quat = nn.L1Loss()
-optimizer = optim.Adam(model.parameters(), lr=0.001)
+optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
 
 def train():
     #TODO: store patterns
     #TODO: adapt architecture to acceot patterns as well
-    [X_train_shuffled, Y_quat_train, X_train, Y_pos_train, X_test_shuffled, Y_quat_test, X_test, Y_pos_test, pattern_train, pattern_test] = gen_training_data(N_train, N_eval)
+    data = gen_training_data(N_train, N_eval)
 
     for gci in range(10):
         gc.collect()
@@ -540,11 +565,11 @@ def train():
     model.train()
 
     for epoch in range(NUM_EPOCHS):
-        batches = torch.split(X_train_shuffled, BATCH_SIZE, 1)
-        quat_truth_batches = torch.split(Y_quat_train, BATCH_SIZE, 1)
-        pos_truth_batches = torch.split(Y_pos_train, BATCH_SIZE, 1)
-        batches_not_shuffled = torch.split(X_train, BATCH_SIZE, 1)
-        pattern_batches = torch.split(pattern_train, BATCH_SIZE, 1)
+        batches = torch.split(data.X_train_shuffled, BATCH_SIZE, 1)
+        quat_truth_batches = torch.split(data.quat_train, BATCH_SIZE, 1)
+        pos_truth_batches = torch.split(data.pos_train, BATCH_SIZE, 1)
+        batches_not_shuffled = torch.split(data.X_train, BATCH_SIZE, 1)
+        pattern_batches = torch.split(data.pattern_train, BATCH_SIZE, 1)
         avg_loss_pose = 0
         avg_loss_quat = 0
         avg_loss_pos = 0
@@ -557,7 +582,7 @@ def train():
             loss_quat = loss_function_quat(pred_quat, quat_truth_batch[1:, :, :])
             loss_pos = loss_function_pose(pred_pos, pos_truth_batch[1:, :, :])
 
-            loss = loss_pos + 5*loss_quat#loss_pose + 10*loss_quat #+ loss_pos
+            loss = loss_pos + loss_quat #loss_pose + 10*loss_quat #+ loss_pos
             loss.backward()
             optimizer.step()
             avg_loss_pose += loss_pose
@@ -569,34 +594,34 @@ def train():
 
         model.eval()
         with torch.no_grad():
-            pred_quat, pred_pos, preds  = model(X_test_shuffled[:-1,:,:], pattern_test[:-1, :, :, :])
-            loss_pose = loss_function_pose(preds, X_test[1:,:,:])
-            loss_quat = loss_function_quat(pred_quat, Y_quat_test[1:, :, :])
-            loss_pos = loss_function_pose(pred_pos, Y_pos_test[1:, :, :])
+            pred_quat, pred_pos, preds  = model(data.X_test_shuffled[:-1,:,:], data.pattern_test[:-1, :, :, :])
+            loss_pose = loss_function_pose(preds, data.X_test[1:,:,:])
+            loss_quat = loss_function_quat(pred_quat, data.quat_test[1:, :, :])
+            loss_pos = loss_function_pose(pred_pos, data.pos_test[1:, :, :])
             print("TrainPoseLoss: {train_pose:2.4f}, TrainQuatLoss: {train_quat:2.4f}  TrainPosLoss: {train_pos:2.4f}\t TestPoseLoss: {test_pose:2.4f}, TestQuatLoss: {test_quat:2.4f}, TestPosLoss: {test_pos:2.4f}".format(
                 train_pose=avg_loss_pose.data, train_quat=avg_loss_quat.data, train_pos=avg_loss_pos.data, test_pose=loss_pose, test_quat=loss_quat, test_pos=loss_pos.data))
     torch.save(model.state_dict(), weight_file)
 
 
 def eval():
-    [X_train, Y_quat_train, _, Y_pos_train, X_test, Y_quat_test, _, Y_pos_test, pattern_train, pattern_test] = gen_training_data(N_eval)
+    data = gen_training_data(10, N_eval)
 
     model.load_state_dict(torch.load(weight_file))
     model.eval()
 
 
     with torch.no_grad():
-        quat_preds, pos_preds, _ = model(X_test[:-1, :, :], pattern_test[:-1, :, :])
+        quat_preds, pos_preds, _ = model(data.X_test[:-1, :, :], data.pattern_test[:-1, :, :])
 
         for n in range(10):
             visualize_tracking(pos_preds[:, n, :].detach().numpy(),
                                quat_preds[:, n, :].detach().numpy(),
-                               Y_pos_test[1:, n, :].detach().numpy(),
-                               Y_quat_test[1:, n, :].detach().numpy(),
-                               X_test[:-1, n, :].numpy(),
-                               pattern_test)
+                               data.pos_test[1:, n, :].detach().numpy(),
+                               data.quat_test[1:, n, :].detach().numpy(),
+                               data.X_test[:-1, n, :].numpy(),
+                               data.pattern_test[0, n, :].numpy())
 
 
 
 train()
-#eval()
+eval()
