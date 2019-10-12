@@ -17,10 +17,10 @@ use_const_pat = True
 
 BATCH_SIZE = 50
 NUM_EPOCHS = 100
-LEARNING_RATE = 0.0001
-DROPOUT_RATE = 0.15
+LEARNING_RATE = 0.001
+DROPOUT_RATE = 0.25
 
-N_train = 200*BATCH_SIZE
+N_train = 100*BATCH_SIZE
 N_eval = int(N_train/10)
 
 T = 200
@@ -37,23 +37,23 @@ fc3_pat_dim = 150
 hidden_dim = 75
 fc_out_1_size = 30
 
-# TODO: put missed markers at the end of the detections
+# TODO: decay learning rate!
+# TODO: save checkpoints, and complete logger
 
-# TODO: proper noise model
+# TODO: move to google colab
 
-# TODO: generate bird behaviour
+# TODO: proper noise model, look at noise behaviour for individual markers inside pattern
 
-# TODO: split up into multiple files, e.g. training_gen, predicition, logger
+# TODO: generate bird behaviour from VICON predictions, if not enough use kalman filter predictions
 
 # TODO: generate a log function, which:
 #       - stores model and task and hyperparams
 #       - stores weights
 #       - saves plot of training progress and raw data
 
-# TODO: pattern as additional input! in order to learn with arbitrary patterns
-# TODO: try with bird behaviour and simulated pattern
 # TODO: missing dtections and false positives
-# TODO: easier data or more powerful net? It cannot even really overfit...
+
+# TODO: try relative inupts instead of absolute detections
 
 ####################################################################################
 ######### REPORT #########
@@ -361,9 +361,9 @@ def gen_training_data(N_train, N_test):
             np.random.shuffle(p_train_copy)
             rotated_pattern = (q.rotation_matrix @ p_train_copy.T).T
             if drop_some_dets and np.random.uniform(0,1) < 0.5:
-                rotated_pattern[np.random.randint(0,3),:] = np.array([-1000,-1000,-1000])
-            if drop_some_dets and np.random.uniform(0, 1) < 0.5:
-                rotated_pattern[np.random.randint(0, 3), :] = np.array([-1000, -1000, -1000])
+                rotated_pattern[3,:] = np.array([-1000,-1000,-1000])
+                if drop_some_dets and np.random.uniform(0, 1) < 0.5:
+                    rotated_pattern[2, :] = np.array([-1000, -1000, -1000])
             X_train_shuffled[t, n, :] = np.reshape(rotated_pattern, -1)
 
             rotated_pattern = (q.rotation_matrix @ p_train.T).T
@@ -377,10 +377,10 @@ def gen_training_data(N_train, N_test):
             q = Quaternion(quat_test[t, n, :])
             np.random.shuffle(p_test_copy)
             rotated_pattern = (q.rotation_matrix @ p_test_copy.T).T
-            if drop_some_dets and np.random.uniform(0, 1) < 0.5:
-                rotated_pattern[np.random.randint(0, 3), :] = np.array([-1000, -1000, -1000])
-            if drop_some_dets and np.random.uniform(0, 1) < 0.5:
-                rotated_pattern[np.random.randint(0, 3), :] = np.array([-1000, -1000, -1000])
+            if drop_some_dets and np.random.uniform(0,1) < 0.5:
+                rotated_pattern[3,:] = np.array([-1000,-1000,-1000])
+                if drop_some_dets and np.random.uniform(0, 1) < 0.5:
+                    rotated_pattern[2, :] = np.array([-1000, -1000, -1000])
             X_test_shuffled[t, n, :] = np.reshape(rotated_pattern, -1)
 
             rotated_pattern = (q.rotation_matrix @ p_test.T).T
@@ -618,10 +618,12 @@ def eval():
                                quat_preds[:, n, :].detach().numpy(),
                                data.pos_test[1:, n, :].detach().numpy(),
                                data.quat_test[1:, n, :].detach().numpy(),
-                               data.X_test[:-1, n, :].numpy(),
+                               data.X_test_shuffled[:-1, n, :].numpy(),
                                data.pattern_test[0, n, :].numpy())
 
 
+
+#
 
 train()
 eval()
