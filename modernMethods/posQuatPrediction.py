@@ -9,18 +9,22 @@ from vizTracking import visualize_tracking
 
 
 
-weight_file = 'weights/pos_quat_lstm.npy'
-generated_data_dir = 'generated_data'
+weight_file = 'weights/pos_quat_lstm'
+generated_data_dir = 'generated_training_data'
 
 drop_some_dets = True
 use_const_pat = True
 
 BATCH_SIZE = 50
 NUM_EPOCHS = 100
-LEARNING_RATE = 0.001
+LEARNING_RATE = 0.005
 DROPOUT_RATE = 0.25
 
-N_train = 100*BATCH_SIZE
+CHECKPOINT_INTERVAL = 10
+save_model_every_interval = True
+save_best_model = True
+
+N_train = 50*BATCH_SIZE
 N_eval = int(N_train/10)
 
 T = 200
@@ -37,8 +41,13 @@ fc3_pat_dim = 150
 hidden_dim = 75
 fc_out_1_size = 30
 
-# TODO: decay learning rate!
-# TODO: save checkpoints, and complete logger
+
+# TODO: TEST: decay learning rate!
+# TODO: TEST:save checkpoints
+
+
+
+# TODO: complete logger
 
 # TODO: move to google colab
 
@@ -102,17 +111,17 @@ class TrainingData():
         self.pattern_test = np.load(dir_name + '_pattern_test.npy')
 
     def save_data(self, dir_name):
-        np.save(dir_name + '_X_train.npy', self.X_train)
-        np.save(dir_name + '_X_train_shuffled', self.X_train_shuffled)
-        np.save(dir_name + '_quat_train', self.quat_train)
-        np.save(dir_name + '_pos_train.npy', self.pos_train)
-        np.save(dir_name + '_pattern_train.npy', self.pattern_train)
+        np.save(dir_name + '/X_train.npy', self.X_train)
+        np.save(dir_name + '/X_train_shuffled', self.X_train_shuffled)
+        np.save(dir_name + '/quat_train', self.quat_train)
+        np.save(dir_name + '/pos_train.npy', self.pos_train)
+        np.save(dir_name + '/pattern_train.npy', self.pattern_train)
 
-        np.save(dir_name + '_X_test.npy', self.X_test)
-        np.save(dir_name + '_X_test_shuffled', self.X_test_shuffled)
-        np.save(dir_name + '_quat_test', self.quat_test)
-        np.save(dir_name + '_pos_test.npy', self.pos_test)
-        np.save(dir_name + '_pattern_test.npy', self.pattern_test)
+        np.save(dir_name + '/X_test.npy', self.X_test)
+        np.save(dir_name + '/X_test_shuffled', self.X_test_shuffled)
+        np.save(dir_name + '/quat_test', self.quat_test)
+        np.save(dir_name + '/pos_test.npy', self.pos_test)
+        np.save(dir_name + '/pattern_test.npy', self.pattern_test)
 
     def convert_to_torch(self):
         self.X_train = torch.from_numpy(self.X_train).float()
@@ -544,7 +553,8 @@ class LSTMTracker(nn.Module):
 model = LSTMTracker(hidden_dim)
 
 # TODO determine automatically from model
-hyper_params = HyperParams(N_train, N_eval, T, BATCH_SIZE, 'ADAM', LEARNING_RATE, DROPOUT_RATE, 'NONE', 'l2 on pos + 5* l1 on quat', '')
+hyper_params = HyperParams(N_train, N_eval, T, BATCH_SIZE, 'ADAM', LEARNING_RATE, DROPOUT_RATE,
+                           'NONE', 'l2 on pos + 5* l1 on quat', '')
 
 
 # TODO: try pose error!!
@@ -552,6 +562,8 @@ hyper_params = HyperParams(N_train, N_eval, T, BATCH_SIZE, 'ADAM', LEARNING_RATE
 loss_function_pose = nn.MSELoss() #nn.L1Loss() #nn.MSELoss()
 loss_function_quat = nn.L1Loss()
 optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=0.2, patience=2, verbose=False,
+                                                       min_lr=1e-08)
 
 
 def train():
@@ -564,7 +576,9 @@ def train():
 
     model.train()
 
-    for epoch in range(NUM_EPOCHS):
+    best_val_loss = 1000
+
+    for epoch in range(1, NUM_EPOCHS + 1):
         batches = torch.split(data.X_train_shuffled, BATCH_SIZE, 1)
         quat_truth_batches = torch.split(data.quat_train, BATCH_SIZE, 1)
         pos_truth_batches = torch.split(data.pos_train, BATCH_SIZE, 1)
@@ -598,15 +612,24 @@ def train():
             loss_pose = loss_function_pose(preds, data.X_test[1:,:,:])
             loss_quat = loss_function_quat(pred_quat, data.quat_test[1:, :, :])
             loss_pos = loss_function_pose(pred_pos, data.pos_test[1:, :, :])
-            print("TrainPoseLoss: {train_pose:2.4f}, TrainQuatLoss: {train_quat:2.4f}  TrainPosLoss: {train_pos:2.4f}\t TestPoseLoss: {test_pose:2.4f}, TestQuatLoss: {test_quat:2.4f}, TestPosLoss: {test_pos:2.4f}".format(
-                train_pose=avg_loss_pose.data, train_quat=avg_loss_quat.data, train_pos=avg_loss_pos.data, test_pose=loss_pose, test_quat=loss_quat, test_pos=loss_pos.data))
-    torch.save(model.state_dict(), weight_file)
+            val_loss = loss_pos + loss_quat
+            for param_group in optimizer.param_groups:
+                learning_rate = param_group['lr']
+                print("Epoch: {epoch}, Learning Rate: {learning_rate} \t TrainPoseLoss: {train_pose:2.4f}, TrainQuatLoss: {train_quat:2.4f}  TrainPosLoss: {train_pos:2.4f} \t TestPoseLoss: {test_pose:2.4f}, TestQuatLoss: {test_quat:2.4f}, TestPosLoss: {test_pos:2.4f}".format(
+                    epoch=epoch, learning_rate=learning_rate, train_pose=avg_loss_pose.data, train_quat=avg_loss_quat.data, train_pos=avg_loss_pos.data, test_pose=loss_pose, test_quat=loss_quat, test_pos=loss_pos.data))
+            scheduler.step(val_loss)
+
+            if save_model_every_interval and epoch % CHECKPOINT_INTERVAL == 0:
+                torch.save(model.state_dict(), weight_file + '_EPOCH_{epoch}.npy'.format(epoch=epoch))
+            if save_best_model and best_val_loss > val_loss:
+                best_val_loss = val_loss
+                torch.save(model.state_dict(), weight_file + '_BEST.npy')
 
 
 def eval():
     data = gen_training_data(10, N_eval)
 
-    model.load_state_dict(torch.load(weight_file))
+    model.load_state_dict(torch.load(weight_file + '_BEST.npy'))
     model.eval()
 
 
@@ -621,9 +644,6 @@ def eval():
                                data.X_test_shuffled[:-1, n, :].numpy(),
                                data.pattern_test[0, n, :].numpy())
 
-
-
-#
 
 train()
 eval()
