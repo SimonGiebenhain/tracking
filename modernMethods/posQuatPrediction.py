@@ -7,6 +7,10 @@ import gc
 from pyquaternion import Quaternion as Quaternion
 from vizTracking import visualize_tracking
 
+import os
+import pandas as pd
+
+import matplotlib.pyplot as plt
 
 
 weight_file = 'weights/pos_quat_lstm'
@@ -24,7 +28,7 @@ CHECKPOINT_INTERVAL = 10
 save_model_every_interval = True
 save_best_model = True
 
-N_train = 50*BATCH_SIZE
+N_train = 10*BATCH_SIZE
 N_eval = int(N_train/10)
 
 T = 200
@@ -42,10 +46,8 @@ hidden_dim = 75
 fc_out_1_size = 30
 
 
-# TODO: TEST: decay learning rate!
-# TODO: TEST:save checkpoints
-
-
+# TODO: check defaults and params of ReduceLRonPlateau() scheduler
+# TODO: other val_loss s.t. non_improvement of pos_loss or val_loss are recoginized
 
 # TODO: complete logger
 
@@ -151,52 +153,79 @@ class TrainingData():
 
 
 class HyperParams():
-    def __init__(self, n_train, n_test, T, batch_size, optimizer, learning_rate, dropout_rate, batch_norm_type, loss_type, comments):
+    def __init__(self, n_train, n_test, T, batch_size, optimizer, init_learning_rate, lr_scheduler, dropout_rate, batch_norm_type, loss_type, comments):
         self.batch_size = batch_size
-        self.n_train = n_test
+        self.n_train = n_train
         self.n_test = n_test
         self.T = T
         self.optimizer = optimizer
-        self.learning_rate = learning_rate
+        self.init_learning_rate = init_learning_rate
+        self.lr_scheduler = lr_scheduler
         self.dropout_rate = dropout_rate
         self.batch_norm_type = batch_norm_type
         self.loss_type = loss_type
         self.comments = comments
 
+        # TODO generate string from some arguments!
 
-class TrainingLog():
-    def __init__(self, name, task, model, hyper_params):
+    def gen_string(self):
+        description = 'Description of hyper parameters of the model: \n'
+        description = description + 'Batch size: \t {} \n'.format(self.batch_size)
+        description = description + 'Train size: \t {} \n'.format(self.n_train)
+        description = description + 'Test size: \t {} \n'.format(self.n_test)
+        description = description + 'Sequence length: \t {} \n'.format(self.T)
+        description = description + 'Optimizer: \t ' + self.optimizer + '\n'
+        description = description + 'Initial LR: \t {} \n'.format(self.init_learning_rate)
+        description = description + 'LR scheduler: \t ' + self.lr_scheduler + '\n'
+        description = description + 'Dropout rate: \t {} \n'.format(self.dropout_rate)
+        description = description + 'Batch norm: \t ' + self.batch_norm_type + '\n'
+        description = description + 'Loss type: \t ' + self.loss_type + '\n'
+        description = description + 'Comments: \t ' + self.comments + '\n'
+        return description
+
+
+class TrainingLogger():
+    def __init__(self, name, task, hyper_params):
         self.name = name
         self.task = task
-        self.model = model
+        self.best_model = None
         self.hyper_params = hyper_params
 
-        self.train_pose_loss = []
-        self.train_quat_loss = []
-        self.train_pos_loss = []
-        self.test_pose_loss = []
-        self.test_quat_loss = []
-        self.test_pos_loss = []
+        self.progress_dict = {'train_pose': [], 'train_quat': [], 'train_pos': [],
+                              'test_pose':  [], 'test_quat':  [], 'test_pos':  []}
 
-    def log_epoch(self, train_pose, train_quat, train_pos, test_pose, test_quat, test_pos):
-        self.train_pose_loss.append(train_pose)
-        self.train_quat_loss.append(train_quat)
-        self.train_pos_loss.append(train_pos)
-        self.test_pose_loss.append(test_pose)
-        self.test_quat_loss.append(test_quat)
-        self.test_quat_loss.append(test_quat)
-        self.test_pos_loss.append(test_pos)
+        self.folder_name = self.name + '_' + self.task
+        self.model = model
 
-    #def save_log(model, hyperparams):
-        # folder_name = self.name + '_' + self.task
-        # TODO create folder with the following contens:
-        # TODO save model, e.g. with torch method
-        # TODO save hyper params text file
-        #   - write hyperparams to tile
-        #   - write best loss values to file
-        #   -
+        working_dir = os.getcwd()
+        path = working_dir + '/' + self.folder_name
+        os.mkdir(path)
 
-        # TODO save training progress, e.g. save numpy with 6 columns
+    def log_epoch(self, train_pose, train_quat, train_pos, test_pose, test_quat, test_pos, model):
+        self.progress_dict['train_pose_loss'].append(train_pose)
+        self.progress_dict['train_quat_loss'].append(train_quat)
+        self.progress_dict['train_pos_loss'].append(train_pos)
+        self.progress_dict['test_pose_loss'].append(test_pose)
+        self.progress_dict['test_quat_loss'].append(test_quat)
+        self.progress_dict['test_pos_loss'].append(test_pos)
+
+        # TODO: move checkpointing here, store and save best model
+
+    def save_log(self, model, best_pose_loss):
+
+        description = self.hyper_params.gen_string()
+        description = description + 'Best pose loss: \t {loss:1.8f} \n'.format(loss=best_pose_loss)
+        file = open(self.folder_name + '/' + 'hyper_params.txt', 'w+')
+        file.write(description)
+        file.close()
+
+        training_progress_df = pd.DataFrame.from_dict(self.progress_dict)
+        training_progress_df.to_csv(self.folder_name + '/' + 'training_progress.csv')
+
+        training_progress = training_progress_df.to_numpy()
+
+        plt.plot(training_progress)
+        plt.savefig(self.folder_name + '/training_progress.pdf', format='pdf')
 
 
 def gen_pattern_constant(N):
@@ -553,13 +582,12 @@ class LSTMTracker(nn.Module):
 model = LSTMTracker(hidden_dim)
 
 # TODO determine automatically from model
-hyper_params = HyperParams(N_train, N_eval, T, BATCH_SIZE, 'ADAM', LEARNING_RATE, DROPOUT_RATE,
-                           'NONE', 'l2 on pos + 5* l1 on quat', '')
+#hyper_params = HyperParams(N_train, N_eval, T, BATCH_SIZE, 'ADAM', LEARNING_RATE, DROPOUT_RATE,
+#                           'NONE', 'l2 on pos + 5* l1 on quat', '')
 
 
-# TODO: try pose error!!
 # TODO: respect antipodal pair as well!
-loss_function_pose = nn.MSELoss() #nn.L1Loss() #nn.MSELoss()
+loss_function_pose = nn.MSELoss()
 loss_function_quat = nn.L1Loss()
 optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=0.2, patience=2, verbose=False,
@@ -568,7 +596,6 @@ scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=
 
 def train():
     #TODO: store patterns
-    #TODO: adapt architecture to acceot patterns as well
     data = gen_training_data(N_train, N_eval)
 
     for gci in range(10):
@@ -576,7 +603,7 @@ def train():
 
     model.train()
 
-    best_val_loss = 1000
+    best_val_loss = np.Inf
 
     for epoch in range(1, NUM_EPOCHS + 1):
         batches = torch.split(data.X_train_shuffled, BATCH_SIZE, 1)
@@ -615,7 +642,7 @@ def train():
             val_loss = loss_pos + loss_quat
             for param_group in optimizer.param_groups:
                 learning_rate = param_group['lr']
-                print("Epoch: {epoch}, Learning Rate: {learning_rate} \t TrainPoseLoss: {train_pose:2.4f}, TrainQuatLoss: {train_quat:2.4f}  TrainPosLoss: {train_pos:2.4f} \t TestPoseLoss: {test_pose:2.4f}, TestQuatLoss: {test_quat:2.4f}, TestPosLoss: {test_pos:2.4f}".format(
+                print("Epoch: {epoch:2d}, Learning Rate: {learning_rate:1.8f} \n TrainPoseLoss: {train_pose:2.4f}, TrainQuatLoss: {train_quat:2.4f}  TrainPosLoss: {train_pos:2.4f} \t TestPoseLoss: {test_pose:2.4f}, TestQuatLoss: {test_quat:2.4f}, TestPosLoss: {test_pos:2.4f}".format(
                     epoch=epoch, learning_rate=learning_rate, train_pose=avg_loss_pose.data, train_quat=avg_loss_quat.data, train_pos=avg_loss_pos.data, test_pose=loss_pose, test_quat=loss_quat, test_pos=loss_pos.data))
             scheduler.step(val_loss)
 
