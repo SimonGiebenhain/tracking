@@ -36,15 +36,15 @@ else:
 
 
 BATCH_SIZE = 50
-NUM_EPOCHS = 5
-LEARNING_RATE = 0.005
+NUM_EPOCHS = 50
+LEARNING_RATE = 0.001
 DROPOUT_RATE = 0.25
 
 CHECKPOINT_INTERVAL = 10
 save_model_every_interval = True
 save_best_model = True
 
-N_train = 1*BATCH_SIZE
+N_train = 200*BATCH_SIZE
 N_eval = int(N_train/10)
 
 T = 200
@@ -62,10 +62,11 @@ hidden_dim = 75
 fc_out_1_size = 30
 
 
-# TODO: check defaults and params of ReduceLRonPlateau() scheduler
-# TODO: other val_loss s.t. non_improvement of pos_loss or val_loss are recoginized
+# TODO: schange factor of ReduceLRonPlateau(), exponential decay is to strong, maybe?
+# TODO: adapt learning rate after every x batches
+# TODO:  add false positives
 
-# TODO: complete logger
+# TODO: other val_loss s.t. non_improvement of pos_loss or val_loss are recoginized
 
 # TODO: move to google colab
 
@@ -78,8 +79,6 @@ fc_out_1_size = 30
 #       - stores weights
 #       - saves plot of training progress and raw data
 
-# TODO: missing dtections and false positives
-
 # TODO: try relative inupts instead of absolute detections
 
 # TODO: make saving and loading of training data better
@@ -88,6 +87,25 @@ fc_out_1_size = 30
 ######### REPORT #########
 #
 ####################################################################################
+
+
+def normalize_vector(v):
+    return v / np.sum(v)
+
+
+def gen_folder_name(task, name):
+    if len(task) > 20:
+        short_task = re.sub('[^A-Z]', '', task)
+    else:
+        short_task = task
+    if len(name) > 20:
+        short_name = re.sub('[^A-Z]', '', name)
+    else:
+        short_name = name
+    now = datetime.now()
+    dt_str = now.strftime("%d.%m.%Y@%H:%M:%S")
+    return short_name + '_' + short_task + '_' + dt_str
+
 
 class TrainingData():
     def __init__(self):
@@ -118,17 +136,17 @@ class TrainingData():
         self.pattern_test = pattern
 
     def load_data(self, dir_name):
-        self.X_train = np.load(dir_name + '_X_train.npy')
-        self.X_train_shuffled = np.load(dir_name + '_X_train_shuffled.npy')
-        self.quat_train = np.load(dir_name + '_quat_train.npy')
-        self.pos_train = np.load(dir_name + '_pos_train.npy')
-        self.pattern_train = np.load(dir_name + '_pattern_train.npy')
+        self.X_train = np.load(dir_name + '/X_train.npy')
+        self.X_train_shuffled = np.load(dir_name + '/X_train_shuffled.npy')
+        self.quat_train = np.load(dir_name + '/quat_train.npy')
+        self.pos_train = np.load(dir_name + '/pos_train.npy')
+        self.pattern_train = np.load(dir_name + '/pattern_train.npy')
 
-        self.X_test = np.load(dir_name + '_X_test.npy')
-        self.X_test_shuffled = np.load(dir_name + '_X_test_shuffled.npy')
-        self.quat_test = np.load(dir_name + '_quat_test.npy')
-        self.pos_test = np.load(dir_name + '_pos_test.npy')
-        self.pattern_test = np.load(dir_name + '_pattern_test.npy')
+        self.X_test = np.load(dir_name + '/X_test.npy')
+        self.X_test_shuffled = np.load(dir_name + '/X_test_shuffled.npy')
+        self.quat_test = np.load(dir_name + '/quat_test.npy')
+        self.pos_test = np.load(dir_name + '/pos_test.npy')
+        self.pattern_test = np.load(dir_name + '/pattern_test.npy')
 
     def save_data(self, dir_name):
         np.save(dir_name + '/X_train.npy', self.X_train)
@@ -216,32 +234,24 @@ class TrainingLogger():
         self.hyper_params = hyper_params
 
         self.progress_dict = {'train_pose': [], 'train_quat': [], 'train_pos': [],
-                              'test_pose':  [], 'test_quat':  [], 'test_pos':  []}
+                              'test_pose':  [], 'test_quat':  [], 'test_pos':  [],
+                              'learning_rate': []}
 
-        if len(task) > 10:
-            short_task = re.sub('[^A-Z]', '', task)
-        else:
-            short_task = task
-        if len(name) > 10:
-            short_name = re.sub('[^A-Z]', '', name)
-        else:
-            short_name = name
-        now = datetime.now()
-        dt_str = now.strftime("%d.%m.%Y@%H:%M:%S")
-        self.folder_name = short_name + '_' + short_task + '_' + dt_str
+        self.folder_name = gen_folder_name(task, name)
         self.model = model
 
         working_dir = os.getcwd()
         path = working_dir + '/' + self.folder_name
         os.mkdir(path)
 
-    def log_epoch(self, train_pose, train_quat, train_pos, test_pose, test_quat, test_pos, model):
+    def log_epoch(self, train_pose, train_quat, train_pos, test_pose, test_quat, test_pos, model, lr):
         self.progress_dict['train_pose'].append(train_pose)
         self.progress_dict['train_quat'].append(train_quat)
         self.progress_dict['train_pos'].append(train_pos)
         self.progress_dict['test_pose'].append(test_pose)
         self.progress_dict['test_quat'].append(test_quat)
         self.progress_dict['test_pos'].append(test_pos)
+        self.progress_dict['learning_rate'].append(lr)
 
         if self.best_pose_loss > test_pose:
             self.best_pose_loss = test_pose
@@ -265,10 +275,18 @@ class TrainingLogger():
         training_progress_df = pd.DataFrame.from_dict(self.progress_dict)
         training_progress_df.to_csv(self.folder_name + '/' + 'training_progress.csv')
 
-        # TODO plot in loop, give meaningful color and legend!
         training_progress = training_progress_df.to_numpy()
         print(np.shape(training_progress))
-        plt.plot(np.arange(0, np.shape(training_progress)[0]), training_progress)
+        for k, key in enumerate(self.progress_dict):
+            if key == 'learning_rate':
+                continue
+            if k < 3:
+                c_train = np.array([1, k*0.2, 0, 1])
+                plt.plot(training_progress[:, k], c=c_train, label=key)
+            else:
+                c_test = np.array([0, k*0.2, 1, 1])
+                plt.plot(training_progress[:, k], c=c_test, label=key)
+        plt.legend()
         plt.savefig(self.folder_name + '/training_progress.png', format='png')
 
 
@@ -479,60 +497,6 @@ def gen_training_data(N_train, N_test):
     data.save_data(generated_data_dir)
     data.convert_to_torch()
 
-    #maxi1 = max(np.max(quat_train[:, :, 0]), np.max(quat_test[:, :, 0])) / 5
-    #maxi2 = max(np.max(quat_train[:, :, 1]), np.max(quat_test[:, :, 1])) / 5
-    #maxi3 = max(np.max(quat_train[:, :, 2]), np.max(quat_test[:, :, 2])) / 5
-    #maxi4 = max(np.max(quat_train[:, :, 3]), np.max(quat_test[:, :, 3])) / 5
-
-   #quat_train[:, :, 0] = quat_train[:, :, 0]# / maxi1
-   #quat_train[:, :, 1] = quat_train[:, :, 1]# / maxi2
-   #quat_train[:, :, 2] = quat_train[:, :, 2]# / maxi3
-   #quat_train[:, :, 3] = quat_train[:, :, 3]# / maxi4
-
-   #quat_test[:, :, 0] = quat_test[:, :, 0]# / maxi1
-   #quat_test[:, :, 1] = quat_test[:, :, 1]# / maxi2
-   #quat_test[:, :, 2] = quat_test[:, :, 2]# / maxi3
-   #quat_test[:, :, 3] = quat_test[:, :, 3]# / maxi4
-
-   #stacked_marker1 = np.tile(marker1, reps=(T, N, 1))
-   #stacked_marker2 = np.tile(marker2, reps=(T, N, 1))
-   #stacked_marker3 = np.tile(marker3, reps=(T, N, 1))
-   #stacked_marker4 = np.tile(marker4, reps=(T, N, 1))
-
-
-
-
-   ##print(np.shape(stacked_marker1))
-   ##print(np.shape(quat_train))
-   #assert np.shape(stacked_marker1)[:2] == np.shape(quat_train)[:2]
-
-   #stacked_marker1 = torch.from_numpy(stacked_marker1).float()
-   #stacked_marker2 = torch.from_numpy(stacked_marker2).float()
-   #stacked_marker3 = torch.from_numpy(stacked_marker3).float()
-   #stacked_marker4 = torch.from_numpy(stacked_marker4).float()
-
-   #quat_train = torch.from_numpy(quat_train).float()
-   #quat_test = torch.from_numpy(quat_test).float()
-
-   #rotated_marker1_train = qrot(quat_train, stacked_marker1)
-   #rotated_marker2_train = qrot(quat_train, stacked_marker2)
-   #rotated_marker3_train = qrot(quat_train, stacked_marker3)
-   #rotated_marker4_train = qrot(quat_train, stacked_marker4)
-   #X_train = torch.cat([rotated_marker1_train,
-   #                    rotated_marker2_train,
-   #                    rotated_marker3_train,
-   #                    rotated_marker4_train], dim=2)
-
-   #rotated_marker1_test = qrot(quat_test, stacked_marker1)
-   #rotated_marker2_test = qrot(quat_test, stacked_marker2)
-   #rotated_marker3_test = qrot(quat_test, stacked_marker3)
-   #rotated_marker4_test = qrot(quat_test, stacked_marker4)
-   #X_test = torch.cat( [rotated_marker1_test,
-   #                    rotated_marker2_test,
-   #                    rotated_marker3_test,
-   #                    rotated_marker4_test], dim=2)
-   #
-
     return data
 
 
@@ -630,7 +594,7 @@ model = LSTMTracker(hidden_dim)
 loss_function_pose = nn.MSELoss()
 loss_function_quat = nn.L1Loss()
 optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
-lr_scheduler_params = {'mode': 'min', 'factor': 0.2, 'patience': 2}
+lr_scheduler_params = {'mode': 'min', 'factor': 0.5, 'patience': 0}
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode=lr_scheduler_params['mode'],
                                                        factor=lr_scheduler_params['factor'],
                                                        patience=lr_scheduler_params['patience'],
@@ -642,8 +606,9 @@ logger = TrainingLogger(MODEL_NAME, TASK, hyper_params)
 
 
 def train():
-    #TODO: store patterns
-    data = gen_training_data(N_train, N_eval)
+    data = TrainingData()
+    data.load_data(generated_data_dir)
+    data.convert_to_torch()
 
     for gci in range(10):
         gc.collect()
@@ -690,16 +655,16 @@ def train():
                 print("Epoch: {epoch:2d}, Learning Rate: {learning_rate:1.8f} \n TrainPoseLoss: {train_pose:2.4f}, TrainQuatLoss: {train_quat:2.4f}  TrainPosLoss: {train_pos:2.4f} \t TestPoseLoss: {test_pose:2.4f}, TestQuatLoss: {test_quat:2.4f}, TestPosLoss: {test_pos:2.4f}".format(
                     epoch=epoch, learning_rate=learning_rate, train_pose=avg_loss_pose.data, train_quat=avg_loss_quat.data, train_pos=avg_loss_pos.data, test_pose=loss_pose, test_quat=loss_quat, test_pos=loss_pos.data))
             scheduler.step(val_loss)
-            logger.log_epoch(avg_loss_pose, avg_loss_quat, avg_loss_pos, loss_pose, loss_quat, loss_pos, model)
+            logger.log_epoch(avg_loss_pose, avg_loss_quat, avg_loss_pos, loss_pose, loss_quat, loss_pos, model, learning_rate)
 
     logger.save_log()
 
 
-# TODO adpt method to usage of TrainingLogger
 def eval():
-    data = gen_training_data(10, N_eval)
-
-    model.load_state_dict(torch.load(weight_file + '_BEST.npy'))
+    data = TrainingData()
+    data.load_data(generated_data_dir)
+    data.convert_to_torch()
+    model = torch.load(gen_folder_name(TASK, MODEL_NAME) + '/model_best.npy')
     model.eval()
 
 
@@ -714,6 +679,6 @@ def eval():
                                data.X_test_shuffled[:-1, n, :].numpy(),
                                data.pattern_test[0, n, :].numpy())
 
-
+#gen_training_data(N_train, N_eval)
 train()
-#eval()
+eval()
