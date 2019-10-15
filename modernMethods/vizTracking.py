@@ -42,11 +42,6 @@ save_animation = False
 
 
 # Attaching 3D axis to the figure
-#TODO move to old()!!!
-fig = plt.figure()
-ax = p3.Axes3D(fig)
-patterns = np.load('data/patterns.npy')
-
 
 
 class MetaParams:
@@ -389,7 +384,10 @@ def importAndStoreMATLABData():
 
 
 def old(meta_params, animation_params):
-    global ax
+    fig = plt.figure()
+    ax = p3.Axes3D(fig)
+    patterns = np.load('data/patterns.npy')
+    #global ax
     global birdId
     # load data
     pos = np.load('data/pos.npy')
@@ -498,7 +496,7 @@ def visualize_tracking(predicted_pos, predicted_quat, true_pos, true_quats, dete
         track_viz = TrackedObject(predicted_pos, predicted_quat, true_pos, true_quats, pattern, detections,
                                   ax.plot(predicted_pos[0:1, 0], predicted_pos[0:1, 1], predicted_pos[0:1, 2])[0],
                                   ax.plot(true_pos[0:1, 0], true_pos[0:1, 1], true_pos[0:1, 2])[0],
-                                  ax.scatter([], [], []),
+                                  ax.scatter([], [], [], c='gray'),
                                   ax.scatter([], [], []),
                                   ax.scatter([], [], []) #TODO: add colors
                                   )

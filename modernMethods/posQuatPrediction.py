@@ -9,18 +9,34 @@ from vizTracking import visualize_tracking
 
 import os
 import pandas as pd
+import re
+from datetime import datetime
 
 import matplotlib.pyplot as plt
 
 
-weight_file = 'weights/pos_quat_lstm'
+#weight_file = 'weights/pos_quat_lstm'
 generated_data_dir = 'generated_training_data'
+MODEL_NAME = 'LSTM'
+TASK = 'PosQuatPred; '
 
 drop_some_dets = True
+add_false_positives = False
 use_const_pat = True
 
+if drop_some_dets:
+    TASK += 'Drop some detections; '
+if add_false_positives:
+    TASK += 'Add false positives; '
+if use_const_pat:
+    TASK += 'ConstantPattern; '
+else:
+    TASK += 'ChangingPattern; '
+
+
+
 BATCH_SIZE = 50
-NUM_EPOCHS = 100
+NUM_EPOCHS = 5
 LEARNING_RATE = 0.005
 DROPOUT_RATE = 0.25
 
@@ -28,7 +44,7 @@ CHECKPOINT_INTERVAL = 10
 save_model_every_interval = True
 save_best_model = True
 
-N_train = 10*BATCH_SIZE
+N_train = 1*BATCH_SIZE
 N_eval = int(N_train/10)
 
 T = 200
@@ -65,6 +81,8 @@ fc_out_1_size = 30
 # TODO: missing dtections and false positives
 
 # TODO: try relative inupts instead of absolute detections
+
+# TODO: make saving and loading of training data better
 
 ####################################################################################
 ######### REPORT #########
@@ -153,20 +171,23 @@ class TrainingData():
 
 
 class HyperParams():
-    def __init__(self, n_train, n_test, T, batch_size, optimizer, init_learning_rate, lr_scheduler, dropout_rate, batch_norm_type, loss_type, comments):
+    def __init__(self, n_train, n_test, T, batch_size, optimizer, init_learning_rate, lr_scheduler, lr_scheduler_params,
+                       dropout_rate, batch_norm_type, loss_type, comments):
         self.batch_size = batch_size
         self.n_train = n_train
         self.n_test = n_test
         self.T = T
-        self.optimizer = optimizer
+        self.optimizer = type(optimizer).__name__
         self.init_learning_rate = init_learning_rate
-        self.lr_scheduler = lr_scheduler
+        self.lr_scheduler = type(lr_scheduler).__name__
+        self.lr_scheduler_params = ''
+        for key in lr_scheduler_params:
+            self.lr_scheduler_params += key + ': ' + str(lr_scheduler_params[key]) + ', '
         self.dropout_rate = dropout_rate
         self.batch_norm_type = batch_norm_type
         self.loss_type = loss_type
         self.comments = comments
 
-        # TODO generate string from some arguments!
 
     def gen_string(self):
         description = 'Description of hyper parameters of the model: \n'
@@ -177,6 +198,7 @@ class HyperParams():
         description = description + 'Optimizer: \t ' + self.optimizer + '\n'
         description = description + 'Initial LR: \t {} \n'.format(self.init_learning_rate)
         description = description + 'LR scheduler: \t ' + self.lr_scheduler + '\n'
+        description = description + 'Scheduler params: \t' + self.lr_scheduler_params + '\n'
         description = description + 'Dropout rate: \t {} \n'.format(self.dropout_rate)
         description = description + 'Batch norm: \t ' + self.batch_norm_type + '\n'
         description = description + 'Loss type: \t ' + self.loss_type + '\n'
@@ -189,12 +211,24 @@ class TrainingLogger():
         self.name = name
         self.task = task
         self.best_model = None
+        self.best_val_loss = np.Inf
+        self.best_pose_loss = np.Inf
         self.hyper_params = hyper_params
 
         self.progress_dict = {'train_pose': [], 'train_quat': [], 'train_pos': [],
                               'test_pose':  [], 'test_quat':  [], 'test_pos':  []}
 
-        self.folder_name = self.name + '_' + self.task
+        if len(task) > 10:
+            short_task = re.sub('[^A-Z]', '', task)
+        else:
+            short_task = task
+        if len(name) > 10:
+            short_name = re.sub('[^A-Z]', '', name)
+        else:
+            short_name = name
+        now = datetime.now()
+        dt_str = now.strftime("%d.%m.%Y@%H:%M:%S")
+        self.folder_name = short_name + '_' + short_task + '_' + dt_str
         self.model = model
 
         working_dir = os.getcwd()
@@ -202,19 +236,28 @@ class TrainingLogger():
         os.mkdir(path)
 
     def log_epoch(self, train_pose, train_quat, train_pos, test_pose, test_quat, test_pos, model):
-        self.progress_dict['train_pose_loss'].append(train_pose)
-        self.progress_dict['train_quat_loss'].append(train_quat)
-        self.progress_dict['train_pos_loss'].append(train_pos)
-        self.progress_dict['test_pose_loss'].append(test_pose)
-        self.progress_dict['test_quat_loss'].append(test_quat)
-        self.progress_dict['test_pos_loss'].append(test_pos)
+        self.progress_dict['train_pose'].append(train_pose)
+        self.progress_dict['train_quat'].append(train_quat)
+        self.progress_dict['train_pos'].append(train_pos)
+        self.progress_dict['test_pose'].append(test_pose)
+        self.progress_dict['test_quat'].append(test_quat)
+        self.progress_dict['test_pos'].append(test_pos)
 
-        # TODO: move checkpointing here, store and save best model
+        if self.best_pose_loss > test_pose:
+            self.best_pose_loss = test_pose
 
-    def save_log(self, model, best_pose_loss):
+        val_loss = test_pos + test_quat
+        if save_best_model and val_loss < self.best_val_loss:
+            self.best_val_loss = val_loss
+            torch.save(model, self.folder_name + '/model_best.npy')
+        epoch = len(self.progress_dict['train_pose'])
+        if save_model_every_interval and epoch % CHECKPOINT_INTERVAL == 0:
+            torch.save(model, self.folder_name + '/model_epoch_{}'.format(epoch))
 
+    def save_log(self):
         description = self.hyper_params.gen_string()
-        description = description + 'Best pose loss: \t {loss:1.8f} \n'.format(loss=best_pose_loss)
+        description = 'MODEL: \t' + self.name + '\n TASK: \t' + self.task + '\n' + description
+        description = description + 'Best pose loss: \t {loss:1.8f} \n'.format(loss=self.best_pose_loss)
         file = open(self.folder_name + '/' + 'hyper_params.txt', 'w+')
         file.write(description)
         file.close()
@@ -222,10 +265,11 @@ class TrainingLogger():
         training_progress_df = pd.DataFrame.from_dict(self.progress_dict)
         training_progress_df.to_csv(self.folder_name + '/' + 'training_progress.csv')
 
+        # TODO plot in loop, give meaningful color and legend!
         training_progress = training_progress_df.to_numpy()
-
-        plt.plot(training_progress)
-        plt.savefig(self.folder_name + '/training_progress.pdf', format='pdf')
+        print(np.shape(training_progress))
+        plt.plot(np.arange(0, np.shape(training_progress)[0]), training_progress)
+        plt.savefig(self.folder_name + '/training_progress.png', format='png')
 
 
 def gen_pattern_constant(N):
@@ -581,17 +625,20 @@ class LSTMTracker(nn.Module):
 
 model = LSTMTracker(hidden_dim)
 
-# TODO determine automatically from model
-#hyper_params = HyperParams(N_train, N_eval, T, BATCH_SIZE, 'ADAM', LEARNING_RATE, DROPOUT_RATE,
-#                           'NONE', 'l2 on pos + 5* l1 on quat', '')
-
 
 # TODO: respect antipodal pair as well!
 loss_function_pose = nn.MSELoss()
 loss_function_quat = nn.L1Loss()
 optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
-scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=0.2, patience=2, verbose=False,
-                                                       min_lr=1e-08)
+lr_scheduler_params = {'mode': 'min', 'factor': 0.2, 'patience': 2}
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode=lr_scheduler_params['mode'],
+                                                       factor=lr_scheduler_params['factor'],
+                                                       patience=lr_scheduler_params['patience'],
+                                                       verbose=False, min_lr=1e-08)
+
+hyper_params = HyperParams(N_train, N_eval, T, BATCH_SIZE, optimizer, LEARNING_RATE, scheduler, lr_scheduler_params,
+                           DROPOUT_RATE, 'NONE', 'l2 on pos + 5* l1 on quat', '')
+logger = TrainingLogger(MODEL_NAME, TASK, hyper_params)
 
 
 def train():
@@ -602,8 +649,6 @@ def train():
         gc.collect()
 
     model.train()
-
-    best_val_loss = np.Inf
 
     for epoch in range(1, NUM_EPOCHS + 1):
         batches = torch.split(data.X_train_shuffled, BATCH_SIZE, 1)
@@ -645,14 +690,12 @@ def train():
                 print("Epoch: {epoch:2d}, Learning Rate: {learning_rate:1.8f} \n TrainPoseLoss: {train_pose:2.4f}, TrainQuatLoss: {train_quat:2.4f}  TrainPosLoss: {train_pos:2.4f} \t TestPoseLoss: {test_pose:2.4f}, TestQuatLoss: {test_quat:2.4f}, TestPosLoss: {test_pos:2.4f}".format(
                     epoch=epoch, learning_rate=learning_rate, train_pose=avg_loss_pose.data, train_quat=avg_loss_quat.data, train_pos=avg_loss_pos.data, test_pose=loss_pose, test_quat=loss_quat, test_pos=loss_pos.data))
             scheduler.step(val_loss)
+            logger.log_epoch(avg_loss_pose, avg_loss_quat, avg_loss_pos, loss_pose, loss_quat, loss_pos, model)
 
-            if save_model_every_interval and epoch % CHECKPOINT_INTERVAL == 0:
-                torch.save(model.state_dict(), weight_file + '_EPOCH_{epoch}.npy'.format(epoch=epoch))
-            if save_best_model and best_val_loss > val_loss:
-                best_val_loss = val_loss
-                torch.save(model.state_dict(), weight_file + '_BEST.npy')
+    logger.save_log()
 
 
+# TODO adpt method to usage of TrainingLogger
 def eval():
     data = gen_training_data(10, N_eval)
 
@@ -673,4 +716,4 @@ def eval():
 
 
 train()
-eval()
+#eval()
