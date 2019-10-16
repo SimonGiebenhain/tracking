@@ -15,7 +15,6 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 
 
-#weight_file = 'weights/pos_quat_lstm'
 generated_data_dir = 'generated_training_data'
 MODEL_NAME = 'LSTM'
 TASK = 'PosQuatPred; '
@@ -50,20 +49,34 @@ N_eval = int(N_train/10)
 T = 200
 
 fc1_det_dim = 250
-fc2_det_dim = 300
-fc3_det_dim = 300
-fc4_det_dim = 250
+fc2_det_dim = 350
+fc3_det_dim = 400
+fc4_det_dim = 350
+fc5_det_dim = 300
+
 fc1_pat_dim = 200
-fc2_pat_dim = 250
-fc3_pat_dim = 150
+fc2_pat_dim = 300
+fc3_pat_dim = 300
+fc4_pat_dim = 200
+
 #fc1_combo_dim = 300
 #fc2_combo_dim = 100
-hidden_dim = 75
-fc_out_1_size = 30
+hidden_dim = 100
+fc_out_1_size = 40
+
+#fc1_det_dim = 250
+#fc2_det_dim = 300
+#fc3_det_dim = 300
+#fc4_det_dim = 250
+#fc1_pat_dim = 200
+#fc2_pat_dim = 250
+#fc3_pat_dim = 150
+#hidden_dim = 75
+#fc_out_1_size = 30
 
 
 # TODO: schange factor of ReduceLRonPlateau(), exponential decay is to strong, maybe?
-# TODO: adapt learning rate after every x batches
+# TODO: adapt learning rate after every x batches, or go back to last checkpoint
 # TODO:  add false positives
 
 # TODO: other val_loss s.t. non_improvement of pos_loss or val_loss are recoginized
@@ -74,14 +87,14 @@ fc_out_1_size = 30
 
 # TODO: generate bird behaviour from VICON predictions, if not enough use kalman filter predictions
 
-# TODO: generate a log function, which:
-#       - stores model and task and hyperparams
-#       - stores weights
-#       - saves plot of training progress and raw data
-
 # TODO: try relative inupts instead of absolute detections
 
-# TODO: make saving and loading of training data better
+# TODO: look at hand notes for more ideas, e.g. multi modal predictions
+
+# TODO: introduce variable which distiguishes to use colab with cuda or not!
+
+# TODO: introduce small eval set and bigger test set to use after each episode
+
 
 ####################################################################################
 ######### REPORT #########
@@ -522,19 +535,21 @@ class LSTMTracker(nn.Module):
         self.fc2_det = nn.Linear(fc1_det_dim, fc2_det_dim)
         self.fc3_det = nn.Linear(fc2_det_dim, fc3_det_dim)
         self.fc4_det = nn.Linear(fc3_det_dim, fc4_det_dim)
+        self.fc5_det = nn.Linear(fc4_det_dim, fc5_det_dim)
 
         if not use_const_pat:
             self.fc1_pat = nn.Linear(12, fc1_pat_dim)
             self.fc2_pat = nn.Linear(fc1_pat_dim, fc2_pat_dim)
             self.fc3_pat = nn.Linear(fc2_pat_dim, fc3_pat_dim)
+            self.fc4_pat = nn.Linear(fc3_pat_dim, fc4_pat_dim)
 
         #self.fc1_combo = nn.Linear(fc2_pat_dim + fc3_det_dim, fc1_combo_dim)
         #self.fc2_combo = nn.Linear(fc1_combo_dim, fc2_combo_dim)
 
         if use_const_pat:
-            self.lstm = nn.LSTM(fc4_det_dim, hidden_dim)
+            self.lstm = nn.LSTM(fc5_det_dim, hidden_dim)
         else:
-            self.lstm = nn.LSTM(fc4_det_dim + fc3_pat_dim, hidden_dim)
+            self.lstm = nn.LSTM(fc5_det_dim + fc4_pat_dim, hidden_dim)
 
         # The linear layer that maps from hidden state space to tag space
         self.hidden2quat1 = nn.Linear(hidden_dim, fc_out_1_size)
@@ -554,11 +569,13 @@ class LSTMTracker(nn.Module):
         x = self.dropout(F.relu(self.fc2_det(x)))
         x = self.dropout(F.relu(self.fc3_det(x)))
         x = self.dropout(F.relu(self.fc4_det(x)))
+        x = self.dropout(F.relu(self.fc5_det(x)))
 
         if not use_const_pat:
             x_pat = self.dropout(F.relu(self.fc1_pat(patterns.view(T-1, -1, 12))))
             x_pat = self.dropout(F.relu(self.fc2_pat(x_pat)))
             x_pat = self.dropout(F.relu(self.fc3_pat(x_pat)))
+            x_pat = self.dropout(F.relu(self.fc4_pat(x_pat)))
             x = torch.cat([x, x_pat], dim=2)
 
         #x_combo = self.dropout(F.relu(self.fc1_combo(x_combo)))
@@ -594,15 +611,16 @@ model = LSTMTracker(hidden_dim)
 loss_function_pose = nn.MSELoss()
 loss_function_quat = nn.L1Loss()
 optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
-lr_scheduler_params = {'mode': 'min', 'factor': 0.5, 'patience': 0}
+lr_scheduler_params = {'mode': 'min', 'factor': 0.5, 'patience': 1, 'min_lr': 1e-06}
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode=lr_scheduler_params['mode'],
                                                        factor=lr_scheduler_params['factor'],
                                                        patience=lr_scheduler_params['patience'],
-                                                       verbose=False, min_lr=1e-08)
+                                                       verbose=True, min_lr=lr_scheduler_params['min_lr'])
 
 hyper_params = HyperParams(N_train, N_eval, T, BATCH_SIZE, optimizer, LEARNING_RATE, scheduler, lr_scheduler_params,
                            DROPOUT_RATE, 'NONE', 'l2 on pos + 5* l1 on quat', '')
 logger = TrainingLogger(MODEL_NAME, TASK, hyper_params)
+name = logger.folder_name + '/model_best.npy'
 
 
 def train():
@@ -613,9 +631,9 @@ def train():
     for gci in range(10):
         gc.collect()
 
-    model.train()
-
     for epoch in range(1, NUM_EPOCHS + 1):
+        model.train()
+
         batches = torch.split(data.X_train_shuffled, BATCH_SIZE, 1)
         quat_truth_batches = torch.split(data.quat_train, BATCH_SIZE, 1)
         pos_truth_batches = torch.split(data.pos_train, BATCH_SIZE, 1)
@@ -624,7 +642,9 @@ def train():
         avg_loss_pose = 0
         avg_loss_quat = 0
         avg_loss_pos = 0
-        for batch, quat_truth_batch, pos_truth_batch, batch_not_shuffled, pattern_batch in zip(batches, quat_truth_batches, pos_truth_batches, batches_not_shuffled, pattern_batches):
+        n_batches_per_epoch = len(batches)
+
+        for k, [batch, quat_truth_batch, pos_truth_batch, batch_not_shuffled, pattern_batch] in enumerate(zip(batches, quat_truth_batches, pos_truth_batches, batches_not_shuffled, pattern_batches)):
             model.zero_grad()
 
             pred_quat, pred_pos, pred_markers = model(batch[:-1, :, :], pattern_batch[:-1, :, :, :])
@@ -633,12 +653,24 @@ def train():
             loss_quat = loss_function_quat(pred_quat, quat_truth_batch[1:, :, :])
             loss_pos = loss_function_pose(pred_pos, pos_truth_batch[1:, :, :])
 
-            loss = loss_pos + loss_quat #loss_pose + 10*loss_quat #+ loss_pos
+            loss = loss_pos + loss_quat
             loss.backward()
             optimizer.step()
             avg_loss_pose += loss_pose
             avg_loss_quat += loss_quat
             avg_loss_pos += loss_pos
+            if k %int(n_batches_per_epoch/10) == 0:
+                model.eval()
+                with torch.no_grad():
+                    pred_quat, pred_pos, preds = model(data.X_test_shuffled[:-1, :, :], data.pattern_test[:-1, :, :, :])
+                    loss_pose = loss_function_pose(preds, data.X_test[1:, :, :])
+                    loss_quat = loss_function_quat(pred_quat, data.quat_test[1:, :, :])
+                    loss_pos = loss_function_pose(pred_pos, data.pos_test[1:, :, :])
+                    val_loss = loss_pos + loss_quat
+                    print(val_loss)
+                    scheduler.step(val_loss)
+                model.train()
+
         avg_loss_pose /= len(batches)
         avg_loss_quat /= len(batches)
         avg_loss_pos /= len(batches)
@@ -660,11 +692,11 @@ def train():
     logger.save_log()
 
 
-def eval():
+def eval(name):
     data = TrainingData()
     data.load_data(generated_data_dir)
     data.convert_to_torch()
-    model = torch.load(gen_folder_name(TASK, MODEL_NAME) + '/model_best.npy')
+    model = torch.load(name)
     model.eval()
 
 
@@ -681,4 +713,5 @@ def eval():
 
 #gen_training_data(N_train, N_eval)
 train()
-eval()
+eval(name)
+#eval('LSTM_PQPDCP_15.10.2019@22:48:10/model_best.npy')
