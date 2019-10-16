@@ -1,10 +1,22 @@
+use_colab = False
+
+
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
 import gc
+
+if use_colab:
+    from google.colab import drive
+    drive.mount('/content/gdrive')
+
+    import sys
+    sys.path.append('/content/gdrive/My Drive/pyquaternion')
 from pyquaternion import Quaternion as Quaternion
+
 from vizTracking import visualize_tracking
 
 import os
@@ -13,6 +25,8 @@ import re
 from datetime import datetime
 
 import matplotlib.pyplot as plt
+
+
 
 
 generated_data_dir = 'generated_training_data'
@@ -74,14 +88,15 @@ fc_out_1_size = 40
 #hidden_dim = 75
 #fc_out_1_size = 30
 
+# TODO: did more frquent eval make performance worse or what is going on?
+
+# TODO: check if works on colab then: finish moving to colab and implement holes
 
 # TODO: schange factor of ReduceLRonPlateau(), exponential decay is to strong, maybe?
 # TODO: adapt learning rate after every x batches, or go back to last checkpoint
 # TODO:  add false positives
 
 # TODO: other val_loss s.t. non_improvement of pos_loss or val_loss are recoginized
-
-# TODO: move to google colab
 
 # TODO: proper noise model, look at noise behaviour for individual markers inside pattern
 
@@ -91,7 +106,6 @@ fc_out_1_size = 40
 
 # TODO: look at hand notes for more ideas, e.g. multi modal predictions
 
-# TODO: introduce variable which distiguishes to use colab with cuda or not!
 
 # TODO: introduce small eval set and bigger test set to use after each episode
 
@@ -175,17 +189,30 @@ class TrainingData():
         np.save(dir_name + '/pattern_test.npy', self.pattern_test)
 
     def convert_to_torch(self):
-        self.X_train = torch.from_numpy(self.X_train).float()
-        self.X_train_shuffled = torch.from_numpy(self.X_train_shuffled).float()
-        self.quat_train = torch.from_numpy(self.quat_train).float()
-        self.pos_train = torch.from_numpy(self.pos_train).float()
-        self.pattern_train = torch.from_numpy(self.pattern_train).float()
+        if use_colab:
+            self.X_train = torch.from_numpy(self.X_train).float().cuda()
+            self.X_train_shuffled = torch.from_numpy(self.X_train_shuffled).float().cuda()
+            self.quat_train = torch.from_numpy(self.quat_train).float().cuda()
+            self.pos_train = torch.from_numpy(self.pos_train).float().cuda()
+            self.pattern_train = torch.from_numpy(self.pattern_train).float().cuda()
 
-        self.X_test = torch.from_numpy(self.X_test).float()
-        self.X_test_shuffled = torch.from_numpy(self.X_test_shuffled).float()
-        self.quat_test = torch.from_numpy(self.quat_test).float()
-        self.pos_test = torch.from_numpy(self.pos_test).float()
-        self.pattern_test = torch.from_numpy(self.pattern_test).float()
+            self.X_test = torch.from_numpy(self.X_test).float().cuda()
+            self.X_test_shuffled = torch.from_numpy(self.X_test_shuffled).float().cuda()
+            self.quat_test = torch.from_numpy(self.quat_test).float().cuda()
+            self.pos_test = torch.from_numpy(self.pos_test).float().cuda()
+            self.pattern_test = torch.from_numpy(self.pattern_test).float().cuda()
+        else:
+            self.X_train = torch.from_numpy(self.X_train).float()
+            self.X_train_shuffled = torch.from_numpy(self.X_train_shuffled).float()
+            self.quat_train = torch.from_numpy(self.quat_train).float()
+            self.pos_train = torch.from_numpy(self.pos_train).float()
+            self.pattern_train = torch.from_numpy(self.pattern_train).float()
+
+            self.X_test = torch.from_numpy(self.X_test).float()
+            self.X_test_shuffled = torch.from_numpy(self.X_test_shuffled).float()
+            self.quat_test = torch.from_numpy(self.quat_test).float()
+            self.pos_test = torch.from_numpy(self.pos_test).float()
+            self.pattern_test = torch.from_numpy(self.pattern_test).float()
 
     def convert_to_numpy(self):
         self.X_train = self.X_train.numpy()
@@ -253,9 +280,13 @@ class TrainingLogger():
         self.folder_name = gen_folder_name(task, name)
         self.model = model
 
-        working_dir = os.getcwd()
-        path = working_dir + '/' + self.folder_name
-        os.mkdir(path)
+        if use_colab:
+            #TODO
+            raise Exception('not implemented yet!')
+        else:
+            working_dir = os.getcwd()
+            path = working_dir + '/' + self.folder_name
+            os.mkdir(path)
 
     def log_epoch(self, train_pose, train_quat, train_pos, test_pose, test_quat, test_pos, model, lr):
         self.progress_dict['train_pose'].append(train_pose)
@@ -271,36 +302,48 @@ class TrainingLogger():
 
         val_loss = test_pos + test_quat
         if save_best_model and val_loss < self.best_val_loss:
-            self.best_val_loss = val_loss
-            torch.save(model, self.folder_name + '/model_best.npy')
+            if use_colab:
+                # TODO
+                raise Exception('not implemented yet!')
+            else:
+                self.best_val_loss = val_loss
+                torch.save(model, self.folder_name + '/model_best.npy')
         epoch = len(self.progress_dict['train_pose'])
         if save_model_every_interval and epoch % CHECKPOINT_INTERVAL == 0:
-            torch.save(model, self.folder_name + '/model_epoch_{}'.format(epoch))
+            if use_colab:
+                # TODO
+                raise Exception('not implemented yet!')
+            else:
+                torch.save(model, self.folder_name + '/model_epoch_{}'.format(epoch))
 
     def save_log(self):
         description = self.hyper_params.gen_string()
         description = 'MODEL: \t' + self.name + '\n TASK: \t' + self.task + '\n' + description
         description = description + 'Best pose loss: \t {loss:1.8f} \n'.format(loss=self.best_pose_loss)
-        file = open(self.folder_name + '/' + 'hyper_params.txt', 'w+')
-        file.write(description)
-        file.close()
+        if use_colab:
+            # TODO
+            raise Exception('not implemented yet!')
+        else:
+            file = open(self.folder_name + '/' + 'hyper_params.txt', 'w+')
+            file.write(description)
+            file.close()
 
-        training_progress_df = pd.DataFrame.from_dict(self.progress_dict)
-        training_progress_df.to_csv(self.folder_name + '/' + 'training_progress.csv')
+            training_progress_df = pd.DataFrame.from_dict(self.progress_dict)
+            training_progress_df.to_csv(self.folder_name + '/' + 'training_progress.csv')
 
-        training_progress = training_progress_df.to_numpy()
-        print(np.shape(training_progress))
-        for k, key in enumerate(self.progress_dict):
-            if key == 'learning_rate':
-                continue
-            if k < 3:
-                c_train = np.array([1, k*0.2, 0, 1])
-                plt.plot(training_progress[:, k], c=c_train, label=key)
-            else:
-                c_test = np.array([0, k*0.2, 1, 1])
-                plt.plot(training_progress[:, k], c=c_test, label=key)
-        plt.legend()
-        plt.savefig(self.folder_name + '/training_progress.png', format='png')
+            training_progress = training_progress_df.to_numpy()
+            print(np.shape(training_progress))
+            for k, key in enumerate(self.progress_dict):
+                if key == 'learning_rate':
+                    continue
+                if k < 3:
+                    c_train = np.array([1, k*0.2, 0, 1])
+                    plt.plot(training_progress[:, k], c=c_train, label=key)
+                else:
+                    c_test = np.array([0, k*0.2, 1, 1])
+                    plt.plot(training_progress[:, k], c=c_test, label=key)
+            plt.legend()
+            plt.savefig(self.folder_name + '/training_progress.png', format='png')
 
 
 def gen_pattern_constant(N):
@@ -507,20 +550,10 @@ def gen_training_data(N_train, N_test):
     data = TrainingData()
     data.set_train_data(X_train, X_train_shuffled, quat_train, pos_train, pattern_train)
     data.set_test_data(X_test, X_test_shuffled, quat_test, pos_test, pattern_test)
-    data.save_data(generated_data_dir)
+    if not use_colab:
+        data.save_data(generated_data_dir)
     data.convert_to_torch()
 
-    return data
-
-
-def load_training_data():
-    data = TrainingData()
-    data.load_data(generated_data_dir)
-    global T, N_train, N_eval
-    T = np.shape(data.X_train)[0]
-    N_train = np.shape(data.X_train)[1]
-    N_eval = np.shape(data.X_test)[1]
-    data.convert_to_torch()
     return data
 
 
@@ -605,6 +638,8 @@ class LSTMTracker(nn.Module):
         return quat_space, pos_space, rotated_pattern
 
 model = LSTMTracker(hidden_dim)
+if use_colab and torch.cuda.is_available():
+    model.cuda()
 
 
 # TODO: respect antipodal pair as well!
@@ -623,11 +658,7 @@ logger = TrainingLogger(MODEL_NAME, TASK, hyper_params)
 name = logger.folder_name + '/model_best.npy'
 
 
-def train():
-    data = TrainingData()
-    data.load_data(generated_data_dir)
-    data.convert_to_torch()
-
+def train(data):
     for gci in range(10):
         gc.collect()
 
@@ -711,7 +742,20 @@ def eval(name):
                                data.X_test_shuffled[:-1, n, :].numpy(),
                                data.pattern_test[0, n, :].numpy())
 
-#gen_training_data(N_train, N_eval)
-train()
-eval(name)
-#eval('LSTM_PQPDCP_15.10.2019@22:48:10/model_best.npy')
+
+
+#######################################################################################################################
+
+if use_colab:
+    data = gen_training_data(N_train, N_eval)
+else:
+    data = TrainingData()
+    data.load_data(generated_data_dir)
+    data.convert_to_torch()
+
+#data  = gen_training_data(N_train, N_eval)
+train(data)
+
+if not use_colab:
+    eval(name)
+    #eval('LSTM_PQPDCP_15.10.2019@22:48:10/model_best.npy')
