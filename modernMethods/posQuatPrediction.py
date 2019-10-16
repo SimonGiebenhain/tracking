@@ -59,6 +59,7 @@ save_best_model = True
 
 N_train = 200*BATCH_SIZE
 N_eval = int(N_train/10)
+N_test = int(N_train/2)
 
 T = 200
 
@@ -92,11 +93,7 @@ fc_out_1_size = 40
 
 # TODO: check if works on colab then: finish moving to colab and implement holes
 
-# TODO: schange factor of ReduceLRonPlateau(), exponential decay is to strong, maybe?
-# TODO: adapt learning rate after every x batches, or go back to last checkpoint
 # TODO:  add false positives
-
-# TODO: other val_loss s.t. non_improvement of pos_loss or val_loss are recoginized
 
 # TODO: proper noise model, look at noise behaviour for individual markers inside pattern
 
@@ -106,8 +103,11 @@ fc_out_1_size = 40
 
 # TODO: look at hand notes for more ideas, e.g. multi modal predictions
 
-
 # TODO: introduce small eval set and bigger test set to use after each episode
+
+# TODO: see handwirtten notes for more ideas
+
+# TODO: read some papers for more ideas
 
 
 ####################################################################################
@@ -148,19 +148,33 @@ class TrainingData():
         self.pos_test = None
         self.pattern_test = None
 
-    def set_train_data(self, X, X_shuffled, quat, pos, pattern):
-        self.X_train = X
-        self.X_train_shuffled = X_shuffled
-        self.quat_train = quat
-        self.pos_train = pos
-        self.pattern_train = pattern
+        self.X_eval = None
+        self.X_eval_shuffled = None
+        self.quat_eval = None
+        self.pos_eval = None
+        self.pattern_eval = None
 
-    def set_test_data(self, X, X_shuffled, quat, pos, pattern):
-        self.X_test = X
-        self.X_test_shuffled = X_shuffled
-        self.quat_test = quat
-        self.pos_test = pos
-        self.pattern_test = pattern
+    def set_train_data(self, data_dict):
+        self.X_train = data_dict['X']
+        self.X_train_shuffled = data_dict['X_shuffled']
+        self.quat_train = data_dict['quat']
+        self.pos_train = data_dict['pos']
+        self.pattern_train = data_dict['pattern']
+
+    def set_test_data(self, data_dict):
+        self.X_test = data_dict['X']
+        self.X_test_shuffled = data_dict['X_shuffled']
+        self.quat_test = data_dict['quat']
+        self.pos_test = data_dict['pos']
+        self.pattern_test = data_dict['pattern']
+
+    def set_eval_data(self, data_dict):
+        self.X_eval = data_dict['X']
+        self.X_eval_shuffled = data_dict['X_shuffled']
+        self.quat_eval = data_dict['quat']
+        self.pos_eval = data_dict['pos']
+        self.pattern_eval = data_dict['pattern']
+
 
     def load_data(self, dir_name):
         self.X_train = np.load(dir_name + '/X_train.npy')
@@ -175,6 +189,12 @@ class TrainingData():
         self.pos_test = np.load(dir_name + '/pos_test.npy')
         self.pattern_test = np.load(dir_name + '/pattern_test.npy')
 
+        self.X_eval = np.load(dir_name + '/X_eval.npy')
+        self.X_eval_shuffled = np.load(dir_name + '/X_eval_shuffled.npy')
+        self.quat_eval = np.load(dir_name + '/quat_eval.npy')
+        self.pos_eval = np.load(dir_name + '/pos_eval.npy')
+        self.pattern_eval = np.load(dir_name + '/pattern_eval.npy')
+
     def save_data(self, dir_name):
         np.save(dir_name + '/X_train.npy', self.X_train)
         np.save(dir_name + '/X_train_shuffled', self.X_train_shuffled)
@@ -187,6 +207,12 @@ class TrainingData():
         np.save(dir_name + '/quat_test', self.quat_test)
         np.save(dir_name + '/pos_test.npy', self.pos_test)
         np.save(dir_name + '/pattern_test.npy', self.pattern_test)
+
+        np.save(dir_name + '/X_eval.npy', self.X_eval)
+        np.save(dir_name + '/X_eval_shuffled', self.X_eval_shuffled)
+        np.save(dir_name + '/quat_eval', self.quat_eval)
+        np.save(dir_name + '/pos_eval.npy', self.pos_eval)
+        np.save(dir_name + '/pattern_eval.npy', self.pattern_eval)
 
     def convert_to_torch(self):
         if use_colab:
@@ -201,6 +227,12 @@ class TrainingData():
             self.quat_test = torch.from_numpy(self.quat_test).float().cuda()
             self.pos_test = torch.from_numpy(self.pos_test).float().cuda()
             self.pattern_test = torch.from_numpy(self.pattern_test).float().cuda()
+
+            self.X_eval = torch.from_numpy(self.X_eval).float().cuda()
+            self.X_eval_shuffled = torch.from_numpy(self.X_eval_shuffled).float().cuda()
+            self.quat_eval = torch.from_numpy(self.quat_eval).float().cuda()
+            self.pos_eval = torch.from_numpy(self.pos_eval).float().cuda()
+            self.pattern_eval = torch.from_numpy(self.pattern_eval).float().cuda()
         else:
             self.X_train = torch.from_numpy(self.X_train).float()
             self.X_train_shuffled = torch.from_numpy(self.X_train_shuffled).float()
@@ -214,6 +246,12 @@ class TrainingData():
             self.pos_test = torch.from_numpy(self.pos_test).float()
             self.pattern_test = torch.from_numpy(self.pattern_test).float()
 
+            self.X_eval = torch.from_numpy(self.X_eval).float()
+            self.X_eval_shuffled = torch.from_numpy(self.X_eval_shuffled).float()
+            self.quat_eval = torch.from_numpy(self.quat_eval).float()
+            self.pos_eval = torch.from_numpy(self.pos_eval).float()
+            self.pattern_eval = torch.from_numpy(self.pattern_eval).float()
+
     def convert_to_numpy(self):
         self.X_train = self.X_train.numpy()
         self.X_train_shuffled = self.X_train_shuffled.numpy()
@@ -226,6 +264,12 @@ class TrainingData():
         self.quat_test = self.quat_test.numpy()
         self.pos_test = self.pos_test.numpy()
         self.pattern_test = self.pattern_test.numpy()
+
+        self.X_eval = self.X_eval.numpy()
+        self.X_eval_shuffled = self.X_eval_shuffled.numpy()
+        self.quat_eval = self.quat_eval.numpy()
+        self.pos_eval = self.pos_eval.numpy()
+        self.pattern_eval = self.pattern_eval.numpy()
 
 
 class HyperParams():
@@ -479,82 +523,46 @@ def qrot(q, v):
 
 
 # TODO: vecotrize with qrot() and by shuffling markers while generating them
-def gen_training_data(N_train, N_test):
+def gen_data(N):
 
-    quat_train = np.zeros([T, N_train, 4], dtype=np.float32)
-    quat_test = np.zeros([T, N_test, 4], dtype=np.float32)
+    quat = np.zeros([T, N, 4], dtype=np.float32)
 
-    for n in range(N_train):
-        quat_train[:, n, :] = gen_quats(T)
+    for n in range(N):
+        quat[:, n, :] = gen_quats(T)
 
-    for n in range(N_test):
-        quat_test[:, n, :] = gen_quats(T)
+    pos = gen_pos(N)
 
-    pos_train = gen_pos(N_train)
-    pos_test = gen_pos(N_test)
-
-    pos_train_stacked = np.tile(pos_train, [1, 1, 4])
-    pos_test_stacked = np.tile(pos_test, [1, 1, 4])
+    pos_stacked = np.tile(pos, [1, 1, 4])
 
     if use_const_pat:
-        pattern_train, _, _, _, _ = gen_pattern_constant(N_train)
-        pattern_test, _, _, _, _ = gen_pattern_constant(N_test)
+        pattern, _, _, _, _ = gen_pattern_constant(N)
     else:
-        pattern_train, _, _, _, _ = gen_pattern(N_train)
-        pattern_test, _, _, _, _ = gen_pattern(N_test)
+        pattern, _, _, _, _ = gen_pattern(N)
 
-    X_train = np.zeros([T, N_train, 12])
-    X_train_shuffled = np.zeros([T, N_train, 12])
-    X_test = np.zeros([T, N_test, 12])
-    X_test_shuffled = np.zeros([T, N_test, 12])
+    X = np.zeros([T, N, 12])
+    X_shuffled = np.zeros([T, N, 12])
+
 
     for t in range(T):
-        for n in range(N_train):
-            p_train = pattern_train[t, n, :, :]
-            p_train_copy = np.copy(p_train)
+        for n in range(N):
+            p = pattern[t, n, :, :]
+            p_copy = np.copy(p)
 
-            q = Quaternion(quat_train[t, n, :])
-            np.random.shuffle(p_train_copy)
-            rotated_pattern = (q.rotation_matrix @ p_train_copy.T).T
+            q = Quaternion(quat[t, n, :])
+            np.random.shuffle(p_copy)
+            rotated_pattern = (q.rotation_matrix @ p_copy.T).T
             if drop_some_dets and np.random.uniform(0,1) < 0.5:
                 rotated_pattern[3,:] = np.array([-1000,-1000,-1000])
                 if drop_some_dets and np.random.uniform(0, 1) < 0.5:
                     rotated_pattern[2, :] = np.array([-1000, -1000, -1000])
-            X_train_shuffled[t, n, :] = np.reshape(rotated_pattern, -1)
+            X_shuffled[t, n, :] = np.reshape(rotated_pattern, -1)
 
-            rotated_pattern = (q.rotation_matrix @ p_train.T).T
-            X_train[t, n, :] = np.reshape(rotated_pattern, -1)
+            rotated_pattern = (q.rotation_matrix @ p.T).T
+            X[t, n, :] = np.reshape(rotated_pattern, -1)
+    X = X + pos_stacked
+    X_shuffled = X_shuffled + pos_stacked
 
-    for t in range(T):
-        for n in range(N_test):
-            p_test = pattern_test[t, n, :, :]
-            p_test_copy = np.copy(p_test)
-
-            q = Quaternion(quat_test[t, n, :])
-            np.random.shuffle(p_test_copy)
-            rotated_pattern = (q.rotation_matrix @ p_test_copy.T).T
-            if drop_some_dets and np.random.uniform(0,1) < 0.5:
-                rotated_pattern[3,:] = np.array([-1000,-1000,-1000])
-                if drop_some_dets and np.random.uniform(0, 1) < 0.5:
-                    rotated_pattern[2, :] = np.array([-1000, -1000, -1000])
-            X_test_shuffled[t, n, :] = np.reshape(rotated_pattern, -1)
-
-            rotated_pattern = (q.rotation_matrix @ p_test.T).T
-            X_test[t, n, :] = np.reshape(rotated_pattern, -1)
-
-    X_train = X_train + pos_train_stacked
-    X_train_shuffled = X_train_shuffled + pos_train_stacked
-    X_test = X_test + pos_test_stacked
-    X_test_shuffled = X_test_shuffled + pos_test_stacked
-
-    data = TrainingData()
-    data.set_train_data(X_train, X_train_shuffled, quat_train, pos_train, pattern_train)
-    data.set_test_data(X_test, X_test_shuffled, quat_test, pos_test, pattern_test)
-    if not use_colab:
-        data.save_data(generated_data_dir)
-    data.convert_to_torch()
-
-    return data
+    return {'X': X, 'X_shuffled': X_shuffled, 'quat': quat, 'pos': pos, 'pattern': pattern}
 
 
 # todo custom LSTM-cell
@@ -637,6 +645,7 @@ class LSTMTracker(nn.Module):
 
         return quat_space, pos_space, rotated_pattern
 
+
 model = LSTMTracker(hidden_dim)
 if use_colab and torch.cuda.is_available():
     model.cuda()
@@ -690,13 +699,14 @@ def train(data):
             avg_loss_pose += loss_pose
             avg_loss_quat += loss_quat
             avg_loss_pos += loss_pos
+            
             if k %int(n_batches_per_epoch/10) == 0:
                 model.eval()
                 with torch.no_grad():
-                    pred_quat, pred_pos, preds = model(data.X_test_shuffled[:-1, :, :], data.pattern_test[:-1, :, :, :])
-                    loss_pose = loss_function_pose(preds, data.X_test[1:, :, :])
-                    loss_quat = loss_function_quat(pred_quat, data.quat_test[1:, :, :])
-                    loss_pos = loss_function_pose(pred_pos, data.pos_test[1:, :, :])
+                    pred_quat, pred_pos, preds = model(data.X_eval_shuffled[:-1, :, :], data.pattern_eval[:-1, :, :, :])
+                    loss_pose = loss_function_pose(preds, data.X_eval[1:, :, :])
+                    loss_quat = loss_function_quat(pred_quat, data.quat_eval[1:, :, :])
+                    loss_pos = loss_function_pose(pred_pos, data.pos_eval[1:, :, :])
                     val_loss = loss_pos + loss_quat
                     print(val_loss)
                     scheduler.step(val_loss)
@@ -747,7 +757,14 @@ def eval(name):
 #######################################################################################################################
 
 if use_colab:
-    data = gen_training_data(N_train, N_eval)
+    data = TrainingData()
+    data.set_train_data(gen_data(N_train))
+    data.set_test_data(gen_data(N_test))
+    data.set_eval_data(gen_data(N_eval))
+    if not use_colab:
+        data.save_data(generated_data_dir)
+    data.convert_to_torch()
+
 else:
     data = TrainingData()
     data.load_data(generated_data_dir)
