@@ -35,12 +35,15 @@ TASK = 'PosQuatPred; '
 
 drop_some_dets = True
 add_false_positives = False
+add_noise = False
 use_const_pat = True
 
 if drop_some_dets:
     TASK += 'Drop some detections; '
 if add_false_positives:
     TASK += 'Add false positives; '
+if add_noise:
+    TASK += 'Noisy; '
 if use_const_pat:
     TASK += 'ConstantPattern; '
 else:
@@ -63,20 +66,20 @@ N_test = int(N_train/2)
 
 T = 200
 
-fc1_det_dim = 250
-fc2_det_dim = 350
-fc3_det_dim = 400
+fc1_det_dim = 150
+fc2_det_dim = 400
+fc3_det_dim = 500
 fc4_det_dim = 350
-fc5_det_dim = 300
+fc5_det_dim = 200
 
-fc1_pat_dim = 200
+fc1_pat_dim = 100
 fc2_pat_dim = 300
 fc3_pat_dim = 300
-fc4_pat_dim = 200
+fc4_pat_dim = 100
 
 #fc1_combo_dim = 300
 #fc2_combo_dim = 100
-hidden_dim = 100
+hidden_dim = 50
 fc_out_1_size = 40
 
 #fc1_det_dim = 250
@@ -89,11 +92,13 @@ fc_out_1_size = 40
 #hidden_dim = 75
 #fc_out_1_size = 30
 
-# TODO: did more frquent eval make performance worse or what is going on?
+# TODO: compare LSTM to simple RNN, then design custom cell, maybe with recurrent dropout and batch normalization
+
+# TODO: did more frquent eval make performance worse or what is going on? Something might be wrong!
 
 # TODO: check if works on colab then: finish moving to colab and implement holes
 
-# TODO:  add false positives
+# TODO:  add false positives, add noise
 
 # TODO: proper noise model, look at noise behaviour for individual markers inside pattern
 
@@ -102,10 +107,6 @@ fc_out_1_size = 40
 # TODO: try relative inupts instead of absolute detections
 
 # TODO: look at hand notes for more ideas, e.g. multi modal predictions
-
-# TODO: introduce small eval set and bigger test set to use after each episode
-
-# TODO: see handwirtten notes for more ideas
 
 # TODO: read some papers for more ideas
 
@@ -533,6 +534,11 @@ def gen_data(N):
     pos = gen_pos(N)
 
     pos_stacked = np.tile(pos, [1, 1, 4])
+    if add_false_positives:
+        pos_stacked_fp = np.tile(pos, [1, 1, 5])
+    else:
+        pos_stacked_fp = np.tile(pos, [1, 1, 4])
+
 
     if use_const_pat:
         pattern, _, _, _, _ = gen_pattern_constant(N)
@@ -540,8 +546,10 @@ def gen_data(N):
         pattern, _, _, _, _ = gen_pattern(N)
 
     X = np.zeros([T, N, 12])
-    X_shuffled = np.zeros([T, N, 12])
-
+    if add_false_positives:
+        X_shuffled = np.zeros([T, N, 15])
+    else:
+        X_shuffled = np.zeros([T, N, 12])
 
     for t in range(T):
         for n in range(N):
@@ -551,16 +559,36 @@ def gen_data(N):
             q = Quaternion(quat[t, n, :])
             np.random.shuffle(p_copy)
             rotated_pattern = (q.rotation_matrix @ p_copy.T).T
-            if drop_some_dets and np.random.uniform(0,1) < 0.5:
-                rotated_pattern[3,:] = np.array([-1000,-1000,-1000])
-                if drop_some_dets and np.random.uniform(0, 1) < 0.5:
-                    rotated_pattern[2, :] = np.array([-1000, -1000, -1000])
+            if add_false_positives:
+                rotated_pattern = np.concatenate([rotated_pattern, np.ones([1, 3])*-1000], axis=0)
+                if np.random.uniform(0, 1) < 0.1:
+                    if drop_some_dets:
+                        if np.random.uniform(0, 1) < 0.5:
+                            if np.random.uniform(0, 1) < 0.5:
+                                rotated_pattern[3, :] = np.ones([1, 3]) * -1000
+                                rotated_pattern[2, :] = np.random.uniform(-2, 2, [1, 3])
+                            else:
+                                rotated_pattern[3, :] = np.random.uniform(-2, 2, [1, 3])
+                        else:
+                            rotated_pattern[4, :] = np.random.uniform(-2, 2, [1, 3])
+                    else:
+                          rotated_pattern[4, :] = np.random.uniform(-2, 2, [1, 3])
+                else:
+                     if drop_some_dets and np.random.uniform(0,1) < 0.5:
+                        rotated_pattern[3,:] = np.array([-1000,-1000,-1000])
+                        if drop_some_dets and np.random.uniform(0, 1) < 0.5:
+                            rotated_pattern[2, :] = np.array([-1000, -1000, -1000])
+            else:
+                if drop_some_dets and np.random.uniform(0,1) < 0.5:
+                    rotated_pattern[3,:] = np.array([-1000,-1000,-1000])
+                    if drop_some_dets and np.random.uniform(0, 1) < 0.5:
+                        rotated_pattern[2, :] = np.array([-1000, -1000, -1000])
             X_shuffled[t, n, :] = np.reshape(rotated_pattern, -1)
 
             rotated_pattern = (q.rotation_matrix @ p.T).T
             X[t, n, :] = np.reshape(rotated_pattern, -1)
     X = X + pos_stacked
-    X_shuffled = X_shuffled + pos_stacked
+    X_shuffled = X_shuffled + pos_stacked_fp
 
     return {'X': X, 'X_shuffled': X_shuffled, 'quat': quat, 'pos': pos, 'pattern': pattern}
 
@@ -571,8 +599,10 @@ class LSTMTracker(nn.Module):
     def __init__(self, hidden_dim):
         super(LSTMTracker, self).__init__()
         self.hidden_dim = hidden_dim
-
-        self.fc1_det = nn.Linear(12, fc1_det_dim)
+        if add_false_positives:
+            self.fc1_det = nn.Linear(15, fc1_det_dim)
+        else:
+            self.fc1_det = nn.Linear(12, fc1_det_dim)
         self.fc2_det = nn.Linear(fc1_det_dim, fc2_det_dim)
         self.fc3_det = nn.Linear(fc2_det_dim, fc3_det_dim)
         self.fc4_det = nn.Linear(fc3_det_dim, fc4_det_dim)
@@ -655,7 +685,7 @@ if use_colab and torch.cuda.is_available():
 loss_function_pose = nn.MSELoss()
 loss_function_quat = nn.L1Loss()
 optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
-lr_scheduler_params = {'mode': 'min', 'factor': 0.5, 'patience': 1, 'min_lr': 1e-06}
+lr_scheduler_params = {'mode': 'min', 'factor': 0.5, 'patience': 2, 'min_lr': 1e-06}
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode=lr_scheduler_params['mode'],
                                                        factor=lr_scheduler_params['factor'],
                                                        patience=lr_scheduler_params['patience'],
@@ -672,6 +702,7 @@ def train(data):
         gc.collect()
 
     for epoch in range(1, NUM_EPOCHS + 1):
+        gc.collect()
         model.train()
 
         batches = torch.split(data.X_train_shuffled, BATCH_SIZE, 1)
@@ -761,18 +792,19 @@ if use_colab:
     data.set_train_data(gen_data(N_train))
     data.set_test_data(gen_data(N_test))
     data.set_eval_data(gen_data(N_eval))
-    if not use_colab:
-        data.save_data(generated_data_dir)
     data.convert_to_torch()
 
 else:
     data = TrainingData()
+    #data.set_train_data(gen_data(N_train))
+    #data.set_test_data(gen_data(N_test))
+    #data.set_eval_data(gen_data(N_eval))
     data.load_data(generated_data_dir)
     data.convert_to_torch()
 
-#data  = gen_training_data(N_train, N_eval)
+gc.collect()
 train(data)
-
+gc.collect()
 if not use_colab:
     eval(name)
     #eval('LSTM_PQPDCP_15.10.2019@22:48:10/model_best.npy')
