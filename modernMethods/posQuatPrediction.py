@@ -58,7 +58,7 @@ else:
 
 
 
-BATCH_SIZE = 50
+BATCH_SIZE = 128
 NUM_EPOCHS = 50
 LEARNING_RATE = 0.001
 DROPOUT_RATE = 0.25
@@ -67,8 +67,8 @@ CHECKPOINT_INTERVAL = 10
 save_model_every_interval = False
 save_best_model = True
 
-N_train = 200*BATCH_SIZE
-N_eval = int(N_train/10)
+N_train = 100*BATCH_SIZE
+N_eval = int(N_train/4)
 N_test = int(N_train/2)
 
 T = 200
@@ -99,11 +99,8 @@ fc_out_1_size = 40
 #hidden_dim = 75
 #fc_out_1_size = 30
 
-# TODO: include size of data in save and load
-
-# TODO: data load for colab as well
-
 # TODO: create generated_data_dir if not exists
+
 # TODO: solve memory leak?!?!?
 
 # TODO: more complex hidden2out network to allow for more abstract hidden representation, then recurrent dropout might be necessary
@@ -194,43 +191,50 @@ class TrainingData():
         self.pos_eval = data_dict['pos']
         self.pattern_eval = data_dict['pattern']
 
-    def load_data(self, dir_name):
-        self.X_train = np.load(dir_name + '/X_train.npy')
-        self.X_train_shuffled = np.load(dir_name + '/X_train_shuffled.npy')
-        self.quat_train = np.load(dir_name + '/quat_train.npy')
-        self.pos_train = np.load(dir_name + '/pos_train.npy')
-        self.pattern_train = np.load(dir_name + '/pattern_train.npy')
+    def load_data(self, dir_name, N_train, N_test, N_eval):
+        self.X_train = np.load(dir_name + '/X_train' + str(N_train) + '.npy')
+        self.X_train_shuffled = np.load(dir_name + '/X_train_shuffled' + str(N_train) + '.npy')
+        self.quat_train = np.load(dir_name + '/quat_train' + str(N_train) + '.npy')
+        self.pos_train = np.load(dir_name + '/pos_train' + str(N_train) + '.npy')
+        self.pattern_train = np.load(dir_name + '/pattern_train' + str(N_train) + '.npy')
 
-        self.X_test = np.load(dir_name + '/X_test.npy')
-        self.X_test_shuffled = np.load(dir_name + '/X_test_shuffled.npy')
-        self.quat_test = np.load(dir_name + '/quat_test.npy')
-        self.pos_test = np.load(dir_name + '/pos_test.npy')
-        self.pattern_test = np.load(dir_name + '/pattern_test.npy')
+        self.X_test = np.load(dir_name + '/X_test' + str(N_test) + '.npy')
+        self.X_test_shuffled = np.load(dir_name + '/X_test_shuffled' + str(N_test) + '.npy')
+        self.quat_test = np.load(dir_name + '/quat_test' + str(N_test) + '.npy')
+        self.pos_test = np.load(dir_name + '/pos_test' + str(N_test) + '.npy')
+        self.pattern_test = np.load(dir_name + '/pattern_test' + str(N_test) + '.npy')
 
-        self.X_eval = np.load(dir_name + '/X_eval.npy')
-        self.X_eval_shuffled = np.load(dir_name + '/X_eval_shuffled.npy')
-        self.quat_eval = np.load(dir_name + '/quat_eval.npy')
-        self.pos_eval = np.load(dir_name + '/pos_eval.npy')
-        self.pattern_eval = np.load(dir_name + '/pattern_eval.npy')
+        self.X_eval = np.load(dir_name + '/X_eval' + str(N_eval) + '.npy')
+        self.X_eval_shuffled = np.load(dir_name + '/X_eval_shuffled' + str(N_eval) + '.npy')
+        self.quat_eval = np.load(dir_name + '/quat_eval' + str(N_eval) + '.npy')
+        self.pos_eval = np.load(dir_name + '/pos_eval' + str(N_eval) + '.npy')
+        self.pattern_eval = np.load(dir_name + '/pattern_eval' + str(N_eval) + '.npy')
+
+        print('Loaded data successfully!')
 
     def save_data(self, dir_name):
-        np.save(dir_name + '/X_train.npy', self.X_train)
-        np.save(dir_name + '/X_train_shuffled', self.X_train_shuffled)
-        np.save(dir_name + '/quat_train', self.quat_train)
-        np.save(dir_name + '/pos_train.npy', self.pos_train)
-        np.save(dir_name + '/pattern_train.npy', self.pattern_train)
+        N = np.shape(self.X_train)[1]
+        np.save(dir_name + '/X_train' + str(N) + '.npy', self.X_train)
+        np.save(dir_name + '/X_train_shuffled' + str(N) + '.npy', self.X_train_shuffled)
+        np.save(dir_name + '/quat_train' + str(N) + '.npy', self.quat_train)
+        np.save(dir_name + '/pos_train' + str(N) + '.npy', self.pos_train)
+        np.save(dir_name + '/pattern_train' + str(N) + '.npy', self.pattern_train)
 
-        np.save(dir_name + '/X_test.npy', self.X_test)
-        np.save(dir_name + '/X_test_shuffled', self.X_test_shuffled)
-        np.save(dir_name + '/quat_test', self.quat_test)
-        np.save(dir_name + '/pos_test.npy', self.pos_test)
-        np.save(dir_name + '/pattern_test.npy', self.pattern_test)
+        N = np.shape(self.X_test)[1]
+        np.save(dir_name + '/X_test' + str(N) + '.npy', self.X_test)
+        np.save(dir_name + '/X_test_shuffled' + str(N) + '.npy', self.X_test_shuffled)
+        np.save(dir_name + '/quat_test' + str(N) + '.npy', self.quat_test)
+        np.save(dir_name + '/pos_test' + str(N) + '.npy', self.pos_test)
+        np.save(dir_name + '/pattern_test' + str(N) + '.npy', self.pattern_test)
 
-        np.save(dir_name + '/X_eval.npy', self.X_eval)
-        np.save(dir_name + '/X_eval_shuffled', self.X_eval_shuffled)
-        np.save(dir_name + '/quat_eval', self.quat_eval)
-        np.save(dir_name + '/pos_eval.npy', self.pos_eval)
-        np.save(dir_name + '/pattern_eval.npy', self.pattern_eval)
+        N = np.shape(self.X_eval)[1]
+        np.save(dir_name + '/X_eval' + str(N) + '.npy', self.X_eval)
+        np.save(dir_name + '/X_eval_shuffled' + str(N) + '.npy', self.X_eval_shuffled)
+        np.save(dir_name + '/quat_eval' + str(N) + '.npy', self.quat_eval)
+        np.save(dir_name + '/pos_eval' + str(N) + '.npy', self.pos_eval)
+        np.save(dir_name + '/pattern_eval' + str(N) + '.npy', self.pattern_eval)
+
+        print('Saved data successfully!')
 
     def convert_to_torch(self):
         if use_colab:
@@ -270,6 +274,8 @@ class TrainingData():
             self.pos_eval = torch.from_numpy(self.pos_eval).float()
             self.pattern_eval = torch.from_numpy(self.pattern_eval).float()
 
+        print('Converted data to torch format.')
+
     def convert_to_numpy(self):
         self.X_train = self.X_train.numpy()
         self.X_train_shuffled = self.X_train_shuffled.numpy()
@@ -288,6 +294,8 @@ class TrainingData():
         self.quat_eval = self.quat_eval.numpy()
         self.pos_eval = self.pos_eval.numpy()
         self.pattern_eval = self.pattern_eval.numpy()
+
+        print('Converted data to numpy format.')
 
 
 class HyperParams():
@@ -329,7 +337,6 @@ class TrainingLogger():
     def __init__(self, name, task, hyper_params):
         self.name = name
         self.task = task
-        self.best_model = None
         self.best_val_loss = np.Inf
         self.best_pose_loss = np.Inf
         self.hyper_params = hyper_params
@@ -342,7 +349,6 @@ class TrainingLogger():
             self.folder_name = colab_path_prefix + gen_folder_name(task, name)
         else:
             self.folder_name = gen_folder_name(task, name)
-        self.model = model
 
         working_dir = os.getcwd()
         if not use_colab:
@@ -352,12 +358,12 @@ class TrainingLogger():
         os.mkdir(path)
 
     def log_epoch(self, train_pose, train_quat, train_pos, test_pose, test_quat, test_pos, model, lr):
-        self.progress_dict['train_pose'].append(train_pose.data)
-        self.progress_dict['train_quat'].append(train_quat.data)
-        self.progress_dict['train_pos'].append(train_pos.data)
-        self.progress_dict['test_pose'].append(test_pose.data)
-        self.progress_dict['test_quat'].append(test_quat.data)
-        self.progress_dict['test_pos'].append(test_pos.data)
+        self.progress_dict['train_pose'].append(train_pose)
+        self.progress_dict['train_quat'].append(train_quat)
+        self.progress_dict['train_pos'].append(train_pos)
+        self.progress_dict['test_pose'].append(test_pose)
+        self.progress_dict['test_quat'].append(test_quat)
+        self.progress_dict['test_pos'].append(test_pos)
         self.progress_dict['learning_rate'].append(lr)
 
         if self.best_pose_loss > test_pose:
@@ -689,10 +695,11 @@ if use_colab and torch.cuda.is_available():
 loss_function_pose = nn.MSELoss()
 loss_function_quat = nn.L1Loss()
 optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
-lr_scheduler_params = {'mode': 'min', 'factor': 0.5, 'patience': 4, 'min_lr': 1e-06}
+lr_scheduler_params = {'mode': 'min', 'factor': 0.5, 'patience': 3, 'min_lr': 1e-06, 'cooldown': 4}
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode=lr_scheduler_params['mode'],
                                                        factor=lr_scheduler_params['factor'],
                                                        patience=lr_scheduler_params['patience'],
+                                                       cooldown= lr_scheduler_params['cooldown'],
                                                        verbose=True, min_lr=lr_scheduler_params['min_lr'])
 
 hyper_params = HyperParams(N_train, N_eval, T, BATCH_SIZE, optimizer, LEARNING_RATE, scheduler, lr_scheduler_params,
@@ -768,7 +775,9 @@ def train(data):
                     train_pose=avg_loss_pose.data, train_quat=avg_loss_quat.data, train_pos=avg_loss_pos.data,
                     test_pose=loss_pose, test_quat=loss_quat, test_pos=loss_pos.data))
             scheduler.step(val_loss)
-            logger.log_epoch(avg_loss_pose, avg_loss_quat, avg_loss_pos, loss_pose, loss_quat, loss_pos, model,
+            logger.log_epoch(avg_loss_pose.data, avg_loss_quat.data, avg_loss_pos.data,
+                             loss_pose.data, loss_quat.data, loss_pos.data,
+                             model,
                              learning_rate)
 
     logger.save_log()
@@ -776,7 +785,7 @@ def train(data):
 
 def eval(name):
     data = TrainingData()
-    data.load_data(generated_data_dir)
+    data.load_data(generated_data_dir, N_train, N_test, N_eval)
     data.convert_to_torch()
     model = torch.load(name)
     model.eval()
@@ -801,15 +810,16 @@ if use_colab:
     data.set_test_data(gen_data(N_test))
     data.set_eval_data(gen_data(N_eval))
     data.save_data(generated_data_dir)
+    data.load_data(generated_data_dir, N_train, N_test, N_eval)
     data.convert_to_torch()
 
 else:
     data = TrainingData()
-    #data.set_train_data(gen_data(N_train))
-    #data.set_test_data(gen_data(N_test))
-    #data.set_eval_data(gen_data(N_eval))
-    #data.save_data(generated_data_dir)
-    data.load_data(generated_data_dir)
+    data.set_train_data(gen_data(N_train))
+    data.set_test_data(gen_data(N_test))
+    data.set_eval_data(gen_data(N_eval))
+    data.save_data(generated_data_dir)
+    data.load_data(generated_data_dir, N_train, N_test, N_eval)
     data.convert_to_torch()
 
 gc.collect()
