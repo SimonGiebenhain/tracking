@@ -16,12 +16,13 @@ from datetime import datetime
 
 
 import matplotlib.pyplot as plt
+colab_path_prefix = '/content/gdrive/My Drive/'
 if use_colab:
     from google.colab import drive
     drive.mount('/content/gdrive')
 
     import sys
-    sys.path.append('/content/gdrive/My Drive/pyquaternion')
+    sys.path.append(colab_path_prefix + 'pyquaternion')
 from pyquaternion import Quaternion as Quaternion
 
 if not use_colab:
@@ -30,8 +31,11 @@ if not use_colab:
 
 
 
+if use_colab:
+    generated_data_dir = colab_path_prefix + 'generated_data'
+else:
+    generated_data_dir = 'generated_training_data'
 
-generated_data_dir = 'generated_training_data'
 MODEL_NAME = 'LSTM'
 TASK = 'PosQuatPred; '
 
@@ -95,7 +99,12 @@ fc_out_1_size = 40
 #hidden_dim = 75
 #fc_out_1_size = 30
 
-# TODO: check if works on colab then: finish moving to colab and implement holes
+# TODO: include size of data in save and load
+
+# TODO: data load for colab as well
+
+# TODO: create generated_data_dir if not exists
+# TODO: solve memory leak?!?!?
 
 # TODO: more complex hidden2out network to allow for more abstract hidden representation, then recurrent dropout might be necessary
 
@@ -329,20 +338,26 @@ class TrainingLogger():
                               'test_pose': [], 'test_quat': [], 'test_pos': [],
                               'learning_rate': []}
 
-        self.folder_name = gen_folder_name(task, name)
+        if use_colab:
+            self.folder_name = colab_path_prefix + gen_folder_name(task, name)
+        else:
+            self.folder_name = gen_folder_name(task, name)
         self.model = model
 
         working_dir = os.getcwd()
-        path = working_dir + '/' + self.folder_name
+        if not use_colab:
+            path = working_dir + '/' + self.folder_name
+        else:
+            path = self.folder_name
         os.mkdir(path)
 
     def log_epoch(self, train_pose, train_quat, train_pos, test_pose, test_quat, test_pos, model, lr):
-        self.progress_dict['train_pose'].append(train_pose)
-        self.progress_dict['train_quat'].append(train_quat)
-        self.progress_dict['train_pos'].append(train_pos)
-        self.progress_dict['test_pose'].append(test_pose)
-        self.progress_dict['test_quat'].append(test_quat)
-        self.progress_dict['test_pos'].append(test_pos)
+        self.progress_dict['train_pose'].append(train_pose.data)
+        self.progress_dict['train_quat'].append(train_quat.data)
+        self.progress_dict['train_pos'].append(train_pos.data)
+        self.progress_dict['test_pose'].append(test_pose.data)
+        self.progress_dict['test_quat'].append(test_quat.data)
+        self.progress_dict['test_pos'].append(test_pos.data)
         self.progress_dict['learning_rate'].append(lr)
 
         if self.best_pose_loss > test_pose:
@@ -674,7 +689,7 @@ if use_colab and torch.cuda.is_available():
 loss_function_pose = nn.MSELoss()
 loss_function_quat = nn.L1Loss()
 optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
-lr_scheduler_params = {'mode': 'min', 'factor': 0.5, 'patience': 2, 'min_lr': 1e-06}
+lr_scheduler_params = {'mode': 'min', 'factor': 0.5, 'patience': 4, 'min_lr': 1e-06}
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode=lr_scheduler_params['mode'],
                                                        factor=lr_scheduler_params['factor'],
                                                        patience=lr_scheduler_params['patience'],
@@ -785,6 +800,7 @@ if use_colab:
     data.set_train_data(gen_data(N_train))
     data.set_test_data(gen_data(N_test))
     data.set_eval_data(gen_data(N_eval))
+    data.save_data(generated_data_dir)
     data.convert_to_torch()
 
 else:
@@ -792,6 +808,7 @@ else:
     #data.set_train_data(gen_data(N_train))
     #data.set_test_data(gen_data(N_test))
     #data.set_eval_data(gen_data(N_eval))
+    #data.save_data(generated_data_dir)
     data.load_data(generated_data_dir)
     data.convert_to_torch()
 
