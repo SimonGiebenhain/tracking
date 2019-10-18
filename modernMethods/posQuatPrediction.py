@@ -1,4 +1,4 @@
-use_colab = False
+use_colab = True
 
 
 
@@ -7,8 +7,15 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
-import gc
 
+import gc
+import os
+import pandas as pd
+import re
+from datetime import datetime
+
+
+import matplotlib.pyplot as plt
 if use_colab:
     from google.colab import drive
     drive.mount('/content/gdrive')
@@ -17,14 +24,9 @@ if use_colab:
     sys.path.append('/content/gdrive/My Drive/pyquaternion')
 from pyquaternion import Quaternion as Quaternion
 
-from vizTracking import visualize_tracking
+if not use_colab:
+    from vizTracking import visualize_tracking
 
-import os
-import pandas as pd
-import re
-from datetime import datetime
-
-import matplotlib.pyplot as plt
 
 
 
@@ -36,6 +38,7 @@ TASK = 'PosQuatPred; '
 drop_some_dets = True
 add_false_positives = False
 add_noise = False
+NOISE_STD = 0.01
 use_const_pat = True
 
 if drop_some_dets:
@@ -57,7 +60,7 @@ LEARNING_RATE = 0.001
 DROPOUT_RATE = 0.25
 
 CHECKPOINT_INTERVAL = 10
-save_model_every_interval = True
+save_model_every_interval = False
 save_best_model = True
 
 N_train = 200*BATCH_SIZE
@@ -66,20 +69,20 @@ N_test = int(N_train/2)
 
 T = 200
 
-fc1_det_dim = 150
+fc1_det_dim = 300
 fc2_det_dim = 400
 fc3_det_dim = 500
 fc4_det_dim = 350
-fc5_det_dim = 200
+fc5_det_dim = 300
 
-fc1_pat_dim = 100
+fc1_pat_dim = 200
 fc2_pat_dim = 300
 fc3_pat_dim = 300
-fc4_pat_dim = 100
+fc4_pat_dim = 200
 
 #fc1_combo_dim = 300
 #fc2_combo_dim = 100
-hidden_dim = 50
+hidden_dim = 150
 fc_out_1_size = 40
 
 #fc1_det_dim = 250
@@ -92,17 +95,23 @@ fc_out_1_size = 40
 #hidden_dim = 75
 #fc_out_1_size = 30
 
-# TODO: compare LSTM to simple RNN, then design custom cell, maybe with recurrent dropout and batch normalization
-
-# TODO: did more frquent eval make performance worse or what is going on? Something might be wrong!
-
 # TODO: check if works on colab then: finish moving to colab and implement holes
 
-# TODO:  add false positives, add noise
+# TODO: more complex hidden2out network to allow for more abstract hidden representation, then recurrent dropout might be necessary
+
+# TODO:  improve false positives, i.e. roll where last real detection is, delete rest, roll where to put fp between real detections
+
+# TODO: compare LSTM to simple RNN, then design custom cell, maybe with recurrent dropout and batch normalization
+
+
 
 # TODO: proper noise model, look at noise behaviour for individual markers inside pattern
 
 # TODO: generate bird behaviour from VICON predictions, if not enough use kalman filter predictions
+
+
+
+# TODO: at some point figure out good dropout rate
 
 # TODO: try relative inupts instead of absolute detections
 
@@ -175,7 +184,6 @@ class TrainingData():
         self.quat_eval = data_dict['quat']
         self.pos_eval = data_dict['pos']
         self.pattern_eval = data_dict['pattern']
-
 
     def load_data(self, dir_name):
         self.X_train = np.load(dir_name + '/X_train.npy')
@@ -275,7 +283,7 @@ class TrainingData():
 
 class HyperParams():
     def __init__(self, n_train, n_test, T, batch_size, optimizer, init_learning_rate, lr_scheduler, lr_scheduler_params,
-                       dropout_rate, batch_norm_type, loss_type, comments):
+                 dropout_rate, batch_norm_type, loss_type, comments):
         self.batch_size = batch_size
         self.n_train = n_train
         self.n_test = n_test
@@ -290,7 +298,6 @@ class HyperParams():
         self.batch_norm_type = batch_norm_type
         self.loss_type = loss_type
         self.comments = comments
-
 
     def gen_string(self):
         description = 'Description of hyper parameters of the model: \n'
@@ -319,19 +326,15 @@ class TrainingLogger():
         self.hyper_params = hyper_params
 
         self.progress_dict = {'train_pose': [], 'train_quat': [], 'train_pos': [],
-                              'test_pose':  [], 'test_quat':  [], 'test_pos':  [],
+                              'test_pose': [], 'test_quat': [], 'test_pos': [],
                               'learning_rate': []}
 
         self.folder_name = gen_folder_name(task, name)
         self.model = model
 
-        if use_colab:
-            #TODO
-            raise Exception('not implemented yet!')
-        else:
-            working_dir = os.getcwd()
-            path = working_dir + '/' + self.folder_name
-            os.mkdir(path)
+        working_dir = os.getcwd()
+        path = working_dir + '/' + self.folder_name
+        os.mkdir(path)
 
     def log_epoch(self, train_pose, train_quat, train_pos, test_pose, test_quat, test_pos, model, lr):
         self.progress_dict['train_pose'].append(train_pose)
@@ -347,45 +350,34 @@ class TrainingLogger():
 
         val_loss = test_pos + test_quat
         if save_best_model and val_loss < self.best_val_loss:
-            if use_colab:
-                # TODO
-                raise Exception('not implemented yet!')
-            else:
-                self.best_val_loss = val_loss
-                torch.save(model, self.folder_name + '/model_best.npy')
+            self.best_val_loss = val_loss
+            torch.save(model, self.folder_name + '/model_best.npy')
         epoch = len(self.progress_dict['train_pose'])
         if save_model_every_interval and epoch % CHECKPOINT_INTERVAL == 0:
-            if use_colab:
-                # TODO
-                raise Exception('not implemented yet!')
-            else:
-                torch.save(model, self.folder_name + '/model_epoch_{}'.format(epoch))
+            torch.save(model, self.folder_name + '/model_epoch_{}'.format(epoch))
 
     def save_log(self):
         description = self.hyper_params.gen_string()
         description = 'MODEL: \t' + self.name + '\n TASK: \t' + self.task + '\n' + description
         description = description + 'Best pose loss: \t {loss:1.8f} \n'.format(loss=self.best_pose_loss)
-        if use_colab:
-            # TODO
-            raise Exception('not implemented yet!')
-        else:
-            file = open(self.folder_name + '/' + 'hyper_params.txt', 'w+')
-            file.write(description)
-            file.close()
+        file = open(self.folder_name + '/' + 'hyper_params.txt', 'w+')
+        file.write(description)
+        file.close()
 
-            training_progress_df = pd.DataFrame.from_dict(self.progress_dict)
-            training_progress_df.to_csv(self.folder_name + '/' + 'training_progress.csv')
+        training_progress_df = pd.DataFrame.from_dict(self.progress_dict)
+        training_progress_df.to_csv(self.folder_name + '/' + 'training_progress.csv')
 
+        if not use_colab:
             training_progress = training_progress_df.to_numpy()
             print(np.shape(training_progress))
             for k, key in enumerate(self.progress_dict):
                 if key == 'learning_rate':
                     continue
                 if k < 3:
-                    c_train = np.array([1, k*0.2, 0, 1])
+                    c_train = np.array([1, k * 0.2, 0, 1])
                     plt.plot(training_progress[:, k], c=c_train, label=key)
                 else:
-                    c_test = np.array([0, k*0.2, 1, 1])
+                    c_test = np.array([0, k * 0.2, 1, 1])
                     plt.plot(training_progress[:, k], c=c_test, label=key)
             plt.legend()
             plt.savefig(self.folder_name + '/training_progress.png', format='png')
@@ -406,16 +398,15 @@ def gen_pattern_constant(N):
 
     pattern = np.stack([stacked_marker1, stacked_marker2, stacked_marker3, stacked_marker4], axis=2)
 
-    #stacked_marker1 = torch.from_numpy(stacked_marker1).float()
-    #stacked_marker2 = torch.from_numpy(stacked_marker2).float()
-    #stacked_marker3 = torch.from_numpy(stacked_marker3).float()
-    #stacked_marker4 = torch.from_numpy(stacked_marker4).float()
+    # stacked_marker1 = torch.from_numpy(stacked_marker1).float()
+    # stacked_marker2 = torch.from_numpy(stacked_marker2).float()
+    # stacked_marker3 = torch.from_numpy(stacked_marker3).float()
+    # stacked_marker4 = torch.from_numpy(stacked_marker4).float()
 
     return pattern, stacked_marker1, stacked_marker2, stacked_marker3, stacked_marker4
 
 
 def gen_pattern(N):
-
     # one marker is always the origin
     marker1 = np.zeros([T, N, 3])
 
@@ -423,7 +414,7 @@ def gen_pattern(N):
     marker2 = np.random.uniform(-1, 1, [1, N, 3])
 
     marker3 = np.random.uniform(-1, 1, [1, N, 3])
-    ortho_marker2 = np.stack([marker2[:,:,1] + marker2[:, :, 2], -marker2[:, :, 0], -marker2[:, :, 0]], axis=2)
+    ortho_marker2 = np.stack([marker2[:, :, 1] + marker2[:, :, 2], -marker2[:, :, 0], -marker2[:, :, 0]], axis=2)
     marker3 = (marker3 + ortho_marker2) / 2
 
     ortho_marker23 = np.cross(marker2, marker3)
@@ -432,9 +423,9 @@ def gen_pattern(N):
     scale_ortho = np.random.uniform(0.1, 1, [1, N, 1]) * np.random.choice([-1, 1], size=[1, N, 1], replace=True)
     marker4 = scale_marker2 * marker2 + scale_marker3 + marker3 + scale_ortho * ortho_marker23
 
-    marker2 = np.tile(marker2/10, [T, 1, 1])
-    marker3 = np.tile(marker3/10, [T, 1, 1])
-    marker4 = np.tile(marker4/10, [T, 1, 1])
+    marker2 = np.tile(marker2 / 10, [T, 1, 1])
+    marker3 = np.tile(marker3 / 10, [T, 1, 1])
+    marker4 = np.tile(marker4 / 10, [T, 1, 1])
 
     pattern = np.stack([marker1, marker2, marker3, marker4], axis=2)
 
@@ -442,39 +433,39 @@ def gen_pattern(N):
 
 
 def gen_quats(length):
-    theta_range = np.random.uniform(1,2)
+    theta_range = np.random.uniform(1, 2)
     theta = np.linspace(-theta_range * np.pi, theta_range * np.pi, length)
-    z_range = np.random.randint(1,10)
-    z = np.random.uniform(1,3)*np.sin(np.linspace(0, z_range, length))
-    rx = np.abs(z) ** np.random.uniform(1.5,3)*np.abs(np.random.rand())  + 1
-    ry = np.abs(z) ** np.random.uniform(1.5,3)*np.abs(np.random.rand())  + 1
-    x = rx**1.5 * np.sin(theta)
-    y = ry**1.5 * np.cos(theta)
-    w = 1 + np.random.uniform(0.5, 4)*np.sin(theta)*np.cos(theta)**2
+    z_range = np.random.randint(1, 10)
+    z = np.random.uniform(1, 3) * np.sin(np.linspace(0, z_range, length))
+    rx = np.abs(z) ** np.random.uniform(1.5, 3) * np.abs(np.random.rand()) + 1
+    ry = np.abs(z) ** np.random.uniform(1.5, 3) * np.abs(np.random.rand()) + 1
+    x = rx ** 1.5 * np.sin(theta)
+    y = ry ** 1.5 * np.cos(theta)
+    w = 1 + np.random.uniform(0.5, 4) * np.sin(theta) * np.cos(theta) ** 2
     quats = np.stack([w, x, y, z], axis=1)
     quats = quats / np.expand_dims(np.sqrt(np.sum(np.square(quats), axis=1)), axis=1)
-    #quats = np.tile(np.array([1, 0, 0, 0]), [length, 1])
+    # quats = np.tile(np.array([1, 0, 0, 0]), [length, 1])
     return quats
 
 
 def Gen_Spirals(length, dims=2):
-    theta_range = np.random.randint(1,10)
+    theta_range = np.random.randint(1, 10)
     theta = np.linspace(-theta_range * np.pi, theta_range * np.pi, length)
-    z_range = np.random.randint(15,45)
-    z = np.random.uniform(1,3)*np.sin(np.linspace(0, z_range, length))
-    rx = np.abs(z) ** np.random.uniform(1.5,3)*np.abs(np.random.rand())  + 1
-    ry = np.abs(z) ** np.random.uniform(1.5,3)*np.abs(np.random.rand())  + 1
-    x = rx**1.5 * np.sin(theta)
-    y = ry**1.5 * np.cos(theta)
+    z_range = np.random.randint(15, 45)
+    z = np.random.uniform(1, 3) * np.sin(np.linspace(0, z_range, length))
+    rx = np.abs(z) ** np.random.uniform(1.5, 3) * np.abs(np.random.rand()) + 1
+    ry = np.abs(z) ** np.random.uniform(1.5, 3) * np.abs(np.random.rand()) + 1
+    x = rx ** 1.5 * np.sin(theta)
+    y = ry ** 1.5 * np.cos(theta)
 
-    return np.stack([x,y,z], axis=1) + 5*np.random.uniform(low=-5, high=5, size=[1,dims])
+    return np.stack([x, y, z], axis=1) + 5 * np.random.uniform(low=-5, high=5, size=[1, dims])
 
 
 def scale_trajectory(trajectory):
     max_pos = np.max(trajectory, axis=0)
     min_pos = np.min(trajectory, axis=0)
     movement_range = max_pos - min_pos
-    return  5 * (trajectory / movement_range)
+    return 5 * (trajectory / movement_range)
 
 
 def center_trajectory(trajectory):
@@ -483,7 +474,6 @@ def center_trajectory(trajectory):
 
 
 def gen_pos(N):
-
     pos = np.zeros([T, N, 3], dtype=np.float32)
 
     for n in range(N):
@@ -496,7 +486,7 @@ def gen_pos(N):
 
 
 def qrot(q, v):
-    #TODO can I change this function to also work with constant v and changing quaternions?
+    # TODO can I change this function to also work with constant v and changing quaternions?
     # if not just tile/stack v accordingly
     """
     Rotate vector(s) v about the rotation described by quaternion(s) q.
@@ -510,7 +500,7 @@ def qrot(q, v):
     assert v.shape[-1] == 3
     if not q.shape[:-1] == v.shape[:-1]:
         q_batch_size = list(q.shape)[1]
-        size = int(q_batch_size/BATCH_SIZE)
+        size = int(q_batch_size / BATCH_SIZE)
         v = v.repeat([1, size, 1])
 
     original_shape = list(v.shape)
@@ -525,7 +515,6 @@ def qrot(q, v):
 
 # TODO: vecotrize with qrot() and by shuffling markers while generating them
 def gen_data(N):
-
     quat = np.zeros([T, N, 4], dtype=np.float32)
 
     for n in range(N):
@@ -538,7 +527,6 @@ def gen_data(N):
         pos_stacked_fp = np.tile(pos, [1, 1, 5])
     else:
         pos_stacked_fp = np.tile(pos, [1, 1, 4])
-
 
     if use_const_pat:
         pattern, _, _, _, _ = gen_pattern_constant(N)
@@ -560,7 +548,7 @@ def gen_data(N):
             np.random.shuffle(p_copy)
             rotated_pattern = (q.rotation_matrix @ p_copy.T).T
             if add_false_positives:
-                rotated_pattern = np.concatenate([rotated_pattern, np.ones([1, 3])*-1000], axis=0)
+                rotated_pattern = np.concatenate([rotated_pattern, np.ones([1, 3]) * -1000], axis=0)
                 if np.random.uniform(0, 1) < 0.1:
                     if drop_some_dets:
                         if np.random.uniform(0, 1) < 0.5:
@@ -572,18 +560,22 @@ def gen_data(N):
                         else:
                             rotated_pattern[4, :] = np.random.uniform(-2, 2, [1, 3])
                     else:
-                          rotated_pattern[4, :] = np.random.uniform(-2, 2, [1, 3])
+                        rotated_pattern[4, :] = np.random.uniform(-2, 2, [1, 3])
                 else:
-                     if drop_some_dets and np.random.uniform(0,1) < 0.5:
-                        rotated_pattern[3,:] = np.array([-1000,-1000,-1000])
+                    if drop_some_dets and np.random.uniform(0, 1) < 0.5:
+                        rotated_pattern[3, :] = np.array([-1000, -1000, -1000])
                         if drop_some_dets and np.random.uniform(0, 1) < 0.5:
                             rotated_pattern[2, :] = np.array([-1000, -1000, -1000])
             else:
-                if drop_some_dets and np.random.uniform(0,1) < 0.5:
-                    rotated_pattern[3,:] = np.array([-1000,-1000,-1000])
+                if drop_some_dets and np.random.uniform(0, 1) < 0.5:
+                    rotated_pattern[3, :] = np.array([-1000, -1000, -1000])
                     if drop_some_dets and np.random.uniform(0, 1) < 0.5:
                         rotated_pattern[2, :] = np.array([-1000, -1000, -1000])
-            X_shuffled[t, n, :] = np.reshape(rotated_pattern, -1)
+            dets = np.reshape(rotated_pattern, -1)
+            if add_noise:
+                noise = np.random.normal(0, NOISE_STD, np.shape(dets))
+                dets = dets + noise
+            X_shuffled[t, n, :] = dets
 
             rotated_pattern = (q.rotation_matrix @ p.T).T
             X[t, n, :] = np.reshape(rotated_pattern, -1)
@@ -593,9 +585,7 @@ def gen_data(N):
     return {'X': X, 'X_shuffled': X_shuffled, 'quat': quat, 'pos': pos, 'pattern': pattern}
 
 
-# todo custom LSTM-cell
 class LSTMTracker(nn.Module):
-
     def __init__(self, hidden_dim):
         super(LSTMTracker, self).__init__()
         self.hidden_dim = hidden_dim
@@ -614,8 +604,8 @@ class LSTMTracker(nn.Module):
             self.fc3_pat = nn.Linear(fc2_pat_dim, fc3_pat_dim)
             self.fc4_pat = nn.Linear(fc3_pat_dim, fc4_pat_dim)
 
-        #self.fc1_combo = nn.Linear(fc2_pat_dim + fc3_det_dim, fc1_combo_dim)
-        #self.fc2_combo = nn.Linear(fc1_combo_dim, fc2_combo_dim)
+        # self.fc1_combo = nn.Linear(fc2_pat_dim + fc3_det_dim, fc1_combo_dim)
+        # self.fc2_combo = nn.Linear(fc1_combo_dim, fc2_combo_dim)
 
         if use_const_pat:
             self.lstm = nn.LSTM(fc5_det_dim, hidden_dim)
@@ -643,18 +633,18 @@ class LSTMTracker(nn.Module):
         x = self.dropout(F.relu(self.fc5_det(x)))
 
         if not use_const_pat:
-            x_pat = self.dropout(F.relu(self.fc1_pat(patterns.view(T-1, -1, 12))))
+            x_pat = self.dropout(F.relu(self.fc1_pat(patterns.view(T - 1, -1, 12))))
             x_pat = self.dropout(F.relu(self.fc2_pat(x_pat)))
             x_pat = self.dropout(F.relu(self.fc3_pat(x_pat)))
             x_pat = self.dropout(F.relu(self.fc4_pat(x_pat)))
             x = torch.cat([x, x_pat], dim=2)
 
-        #x_combo = self.dropout(F.relu(self.fc1_combo(x_combo)))
-        #x_combo = self.dropout(F.relu(self.fc2_combo(x_combo)))
+        # x_combo = self.dropout(F.relu(self.fc1_combo(x_combo)))
+        # x_combo = self.dropout(F.relu(self.fc2_combo(x_combo)))
 
-        #x = torch.cat([x_det, x_pat], dim=2)
+        # x = torch.cat([x_det, x_pat], dim=2)
 
-        #x = x_det - x_pat
+        # x = x_det - x_pat
 
         lstm_out, _ = self.lstm(x)
         x = F.relu(self.hidden2quat1(lstm_out))
@@ -679,7 +669,6 @@ class LSTMTracker(nn.Module):
 model = LSTMTracker(hidden_dim)
 if use_colab and torch.cuda.is_available():
     model.cuda()
-
 
 # TODO: respect antipodal pair as well!
 loss_function_pose = nn.MSELoss()
@@ -715,7 +704,8 @@ def train(data):
         avg_loss_pos = 0
         n_batches_per_epoch = len(batches)
 
-        for k, [batch, quat_truth_batch, pos_truth_batch, batch_not_shuffled, pattern_batch] in enumerate(zip(batches, quat_truth_batches, pos_truth_batches, batches_not_shuffled, pattern_batches)):
+        for k, [batch, quat_truth_batch, pos_truth_batch, batch_not_shuffled, pattern_batch] in enumerate(
+                zip(batches, quat_truth_batches, pos_truth_batches, batches_not_shuffled, pattern_batches)):
             model.zero_grad()
 
             pred_quat, pred_pos, pred_markers = model(batch[:-1, :, :], pattern_batch[:-1, :, :, :])
@@ -730,8 +720,8 @@ def train(data):
             avg_loss_pose += loss_pose
             avg_loss_quat += loss_quat
             avg_loss_pos += loss_pos
-            
-            if k %int(n_batches_per_epoch/10) == 0:
+
+            if k % int(n_batches_per_epoch / 10) == 0:
                 model.eval()
                 with torch.no_grad():
                     pred_quat, pred_pos, preds = model(data.X_eval_shuffled[:-1, :, :], data.pattern_eval[:-1, :, :, :])
@@ -749,17 +739,22 @@ def train(data):
 
         model.eval()
         with torch.no_grad():
-            pred_quat, pred_pos, preds  = model(data.X_test_shuffled[:-1,:,:], data.pattern_test[:-1, :, :, :])
-            loss_pose = loss_function_pose(preds, data.X_test[1:,:,:])
+            pred_quat, pred_pos, preds = model(data.X_test_shuffled[:-1, :, :], data.pattern_test[:-1, :, :, :])
+            loss_pose = loss_function_pose(preds, data.X_test[1:, :, :])
             loss_quat = loss_function_quat(pred_quat, data.quat_test[1:, :, :])
             loss_pos = loss_function_pose(pred_pos, data.pos_test[1:, :, :])
             val_loss = loss_pos + loss_quat
             for param_group in optimizer.param_groups:
                 learning_rate = param_group['lr']
-                print("Epoch: {epoch:2d}, Learning Rate: {learning_rate:1.8f} \n TrainPoseLoss: {train_pose:2.4f}, TrainQuatLoss: {train_quat:2.4f}  TrainPosLoss: {train_pos:2.4f} \t TestPoseLoss: {test_pose:2.4f}, TestQuatLoss: {test_quat:2.4f}, TestPosLoss: {test_pos:2.4f}".format(
-                    epoch=epoch, learning_rate=learning_rate, train_pose=avg_loss_pose.data, train_quat=avg_loss_quat.data, train_pos=avg_loss_pos.data, test_pose=loss_pose, test_quat=loss_quat, test_pos=loss_pos.data))
+                print("Epoch: {epoch:2d}, Learning Rate: {learning_rate:1.8f} \n TrainPoseLoss: {train_pose:2.4f}, "
+                      "TrainQuatLoss: {train_quat:2.4f}  TrainPosLoss: {train_pos:2.4f} \t "
+                      "TestPoseLoss: {test_pose:2.4f}, TestQuatLoss: {test_quat:2.4f}, TestPosLoss: {test_pos:2.4f}".format(
+                    epoch=epoch, learning_rate=learning_rate,
+                    train_pose=avg_loss_pose.data, train_quat=avg_loss_quat.data, train_pos=avg_loss_pos.data,
+                    test_pose=loss_pose, test_quat=loss_quat, test_pos=loss_pos.data))
             scheduler.step(val_loss)
-            logger.log_epoch(avg_loss_pose, avg_loss_quat, avg_loss_pos, loss_pose, loss_quat, loss_pos, model, learning_rate)
+            logger.log_epoch(avg_loss_pose, avg_loss_quat, avg_loss_pos, loss_pose, loss_quat, loss_pos, model,
+                             learning_rate)
 
     logger.save_log()
 
@@ -771,7 +766,6 @@ def eval(name):
     model = torch.load(name)
     model.eval()
 
-
     with torch.no_grad():
         quat_preds, pos_preds, _ = model(data.X_test[:-1, :, :], data.pattern_test[:-1, :, :])
 
@@ -782,7 +776,6 @@ def eval(name):
                                data.quat_test[1:, n, :].detach().numpy(),
                                data.X_test_shuffled[:-1, n, :].numpy(),
                                data.pattern_test[0, n, :].numpy())
-
 
 
 #######################################################################################################################
