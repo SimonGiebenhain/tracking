@@ -1,4 +1,4 @@
-use_colab = True
+use_colab = False
 
 
 
@@ -7,6 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
+from math import sqrt
 
 import gc
 import os
@@ -58,17 +59,18 @@ else:
 
 
 
-BATCH_SIZE = 128
+BATCH_SIZE = 50
 NUM_EPOCHS = 50
 LEARNING_RATE = 0.001
-DROPOUT_RATE = 0.25
+STRONG_DROPOUT_RATE = 0.25
+WEAK_DROPOUT_RATE = 0.1
 
 CHECKPOINT_INTERVAL = 10
 save_model_every_interval = False
 save_best_model = True
 
-N_train = 100*BATCH_SIZE
-N_eval = int(N_train/4)
+N_train = 20*BATCH_SIZE
+N_eval = int(N_train/10)
 N_test = int(N_train/2)
 
 T = 200
@@ -84,10 +86,13 @@ fc2_pat_dim = 300
 fc3_pat_dim = 300
 fc4_pat_dim = 200
 
-#fc1_combo_dim = 300
-#fc2_combo_dim = 100
 hidden_dim = 150
-fc_out_1_size = 40
+
+fc1_quat_size = 100
+fc2_quat_size = 50
+
+fc1_pos_size = 150
+fc2_pos_size = 50
 
 #fc1_det_dim = 250
 #fc2_det_dim = 300
@@ -99,25 +104,25 @@ fc_out_1_size = 40
 #hidden_dim = 75
 #fc_out_1_size = 30
 
-# TODO: create generated_data_dir if not exists
 
-# TODO: solve memory leak?!?!?
-
-# TODO: more complex hidden2out network to allow for more abstract hidden representation, then recurrent dropout might be necessary
-
-# TODO:  improve false positives, i.e. roll where last real detection is, delete rest, roll where to put fp between real detections
+# TODO: improve false positives, i.e. roll where last real detection is, delete rest, roll where to put fp between real detections
 
 # TODO: compare LSTM to simple RNN, then design custom cell, maybe with recurrent dropout and batch normalization
 
+# TODO: why does eval() not work with old model???
 
 
 # TODO: proper noise model, look at noise behaviour for individual markers inside pattern
 
 # TODO: generate bird behaviour from VICON predictions, if not enough use kalman filter predictions
 
+# TODO: ask for pidgeon data?
+
+# TODO: write goldlücke a mail
 
 
-# TODO: at some point figure out good dropout rate
+
+# TODO: at some point figure out good dropout rate, and other hyper parms
 
 # TODO: try relative inupts instead of absolute detections
 
@@ -213,6 +218,8 @@ class TrainingData():
         print('Loaded data successfully!')
 
     def save_data(self, dir_name):
+        if not os.path.exists(dir_name):
+            os.mkdir(dir_name)
         N = np.shape(self.X_train)[1]
         np.save(dir_name + '/X_train' + str(N) + '.npy', self.X_train)
         np.save(dir_name + '/X_train_shuffled' + str(N) + '.npy', self.X_train_shuffled)
@@ -606,6 +613,159 @@ def gen_data(N):
     return {'X': X, 'X_shuffled': X_shuffled, 'quat': quat, 'pos': pos, 'pattern': pattern}
 
 
+class customLSTMCell(nn.Module):
+    def __init__(self, input_size, hidden_size, bias=True):
+        super(customLSTMCell, self).__init__()
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.bias = bias
+        self.i2h = nn.Linear(input_size, 4 * hidden_size, bias=bias)
+        self.h2h = nn.Linear(hidden_size, 4 * hidden_size, bias=bias)
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        std = 1.0 / sqrt(self.hidden_size)
+        for w in self.parameters():
+            w.data.uniform_(-std, std)
+
+    def forward(self, x, hidden):
+
+        if hidden is None:
+            hidden = self._init_hidden(x)
+
+        h, c = hidden
+        h = h.view(h.size(1), -1)
+        c = c.view(c.size(1), -1)
+        x = x.view(x.size(1), -1)
+
+        # Linear mappings
+        preact = self.i2h(x) + self.h2h(h)
+
+        # activations
+        gates = preact[:, :3 * self.hidden_size].sigmoid()
+        g_t = preact[:, 3 * self.hidden_size:].tanh()
+        i_t = gates[:, :self.hidden_size]
+        f_t = gates[:, self.hidden_size:2 * self.hidden_size]
+        o_t = gates[:, -self.hidden_size:]
+
+        c_t = torch.mul(c, f_t) + torch.mul(i_t, g_t)
+
+        h_t = torch.mul(o_t, c_t.tanh())
+
+        h_t = h_t.view(1, h_t.size(0), -1)
+        c_t = c_t.view(1, c_t.size(0), -1)
+        return (h_t, c_t)
+        #return h_t, (h_t, c_t)
+
+    @staticmethod
+    def _init_hidden(input_):
+        #h = torch.zeros_like(input_.view(1, input_.size(1), -1))
+        #c = torch.zeros_like(input_.view(1, input_.size(1), -1))
+        h = torch.zeros([1, input_.size(1), hidden_dim]).cuda()
+        c = torch.zeros([1, input_.size(1), hidden_dim]).cuda()
+        return h, c
+
+
+class customLSTM(nn.Module):
+
+    def __init__(self, hidden_size, bias=True):
+        super().__init__()
+
+        if use_const_pat:
+            self.lstm_cell = customLSTMCell(fc5_det_dim, hidden_dim, bias)
+        else:
+            self.lstm_cell = customLSTMCell(fc5_det_dim + fc4_pat_dim, hidden_dim, bias)
+
+        if add_false_positives:
+            self.fc1_det = nn.Linear(15, fc1_det_dim)
+        else:
+            self.fc1_det = nn.Linear(12, fc1_det_dim)
+
+        self.fc2_det = nn.Linear(fc1_det_dim, fc2_det_dim)
+        self.fc3_det = nn.Linear(fc2_det_dim, fc3_det_dim)
+        self.fc4_det = nn.Linear(fc3_det_dim, fc4_det_dim)
+        self.fc5_det = nn.Linear(fc4_det_dim, fc5_det_dim)
+
+        if not use_const_pat:
+            self.fc1_pat = nn.Linear(12, fc1_pat_dim)
+            self.fc2_pat = nn.Linear(fc1_pat_dim, fc2_pat_dim)
+            self.fc3_pat = nn.Linear(fc2_pat_dim, fc3_pat_dim)
+            self.fc4_pat = nn.Linear(fc3_pat_dim, fc4_pat_dim)
+
+        # self.fc1_combo = nn.Linear(fc2_pat_dim + fc3_det_dim, fc1_combo_dim)
+        # self.fc2_combo = nn.Linear(fc1_combo_dim, fc2_combo_dim)
+
+        if use_const_pat:
+            self.lstm = nn.LSTM(fc5_det_dim, hidden_dim)
+        else:
+            self.lstm = nn.LSTM(fc5_det_dim + fc4_pat_dim, hidden_dim)
+
+        # The linear layer that maps from hidden state space to tag space
+        self.hidden2quat1 = nn.Linear(hidden_dim, fc1_quat_size)
+        self.hidden2quat2 = nn.Linear(fc1_quat_size, fc2_quat_size)
+        self.hidden2quat3 = nn.Linear(fc2_quat_size, 4)
+
+        self.hidden2pos1 = nn.Linear(hidden_dim, fc1_pos_size)
+        self.hidden2pos2 = nn.Linear(fc1_pos_size, fc2_pos_size)
+        self.hidden2pos3 = nn.Linear(fc2_pos_size, 3)
+
+        self.strong_dropout = nn.Dropout(p=STRONG_DROPOUT_RATE)
+        self.weak_dropout = nn.Dropout(p=WEAK_DROPOUT_RATE)
+
+
+    def forward(self, detections, patterns, hidden=None):
+        # input is of dimensionalty (time, input_size, ...)
+        marker1 = patterns[:, :, 0, :].contiguous()
+        marker2 = patterns[:, :, 1, :].contiguous()
+        marker3 = patterns[:, :, 2, :].contiguous()
+        marker4 = patterns[:, :, 3, :].contiguous()
+
+        x = self.weak_dropout(F.relu(self.fc1_det(detections)))
+        x = self.strong_dropout(F.relu(self.fc2_det(x)))
+        x = self.strong_dropout(F.relu(self.fc3_det(x)))
+        x = self.strong_dropout(F.relu(self.fc4_det(x)))
+        x = self.strong_dropout(F.relu(self.fc5_det(x)))
+
+        if not use_const_pat:
+            x_pat = self.weak_dropout(F.relu(self.fc1_pat(patterns.view(T - 1, -1, 12))))
+            x_pat = self.strong_dropout(F.relu(self.fc2_pat(x_pat)))
+            x_pat = self.strong_dropout(F.relu(self.fc3_pat(x_pat)))
+            x_pat = self.strong_dropout(F.relu(self.fc4_pat(x_pat)))
+            x = torch.cat([x, x_pat], dim=2)
+
+        x = torch.unsqueeze(x, dim=0)
+        lstm_out = []
+
+        for a in torch.unbind(x, dim=1):
+            hidden = self.lstm_cell(a, hidden)
+            lstm_out.append(hidden[0].clone())
+
+        lstm_out = torch.squeeze(torch.stack(lstm_out, dim=1))
+
+
+        x_quat = self.weak_dropout(F.relu(self.hidden2quat1(lstm_out)))
+        x_quat = self.weak_dropout(F.relu(self.hidden2quat2(x_quat)))
+        x_quat = self.hidden2quat3(x_quat)
+
+        x_pos = self.weak_dropout(F.relu(self.hidden2pos1(lstm_out)))
+        x_pos = self.weak_dropout(F.relu(self.hidden2pos2(x_pos)))
+        x_pos = self.hidden2pos3(x_pos)
+
+        quat_norm = torch.sqrt(torch.sum(torch.pow(x_quat, 2, ), dim=2))
+        x_quat = x_quat / torch.unsqueeze(quat_norm, dim=2)
+
+        rotated_marker1 = qrot(x_quat, marker1) + x_pos
+        rotated_marker2 = qrot(x_quat, marker2) + x_pos
+        rotated_marker3 = qrot(x_quat, marker3) + x_pos
+        rotated_marker4 = qrot(x_quat, marker4) + x_pos
+        rotated_pattern = torch.cat([rotated_marker1,
+                                     rotated_marker2,
+                                     rotated_marker3,
+                                     rotated_marker4], dim=2)
+
+        return x_quat, x_pos, rotated_pattern
+
+
 class LSTMTracker(nn.Module):
     def __init__(self, hidden_dim):
         super(LSTMTracker, self).__init__()
@@ -634,12 +794,16 @@ class LSTMTracker(nn.Module):
             self.lstm = nn.LSTM(fc5_det_dim + fc4_pat_dim, hidden_dim)
 
         # The linear layer that maps from hidden state space to tag space
-        self.hidden2quat1 = nn.Linear(hidden_dim, fc_out_1_size)
-        self.hidden2quat2 = nn.Linear(fc_out_1_size, 4)
+        self.hidden2quat1 = nn.Linear(hidden_dim, fc1_quat_size)
+        self.hidden2quat2 = nn.Linear(fc1_quat_size, fc2_quat_size)
+        self.hidden2quat3 = nn.Linear(fc2_quat_size, 4)
 
-        self.hidden2pos = nn.Linear(hidden_dim, 3)
+        self.hidden2pos1 = nn.Linear(hidden_dim, fc1_pos_size)
+        self.hidden2pos2 = nn.Linear(fc1_pos_size, fc2_pos_size)
+        self.hidden2pos3 = nn.Linear(fc2_pos_size, 3)
 
-        self.dropout = nn.Dropout(p=DROPOUT_RATE)
+        self.strong_dropout = nn.Dropout(p=STRONG_DROPOUT_RATE)
+        self.weak_dropout = nn.Dropout(p=WEAK_DROPOUT_RATE)
 
     def forward(self, detections, patterns):
         marker1 = patterns[:, :, 0, :].contiguous()
@@ -647,17 +811,17 @@ class LSTMTracker(nn.Module):
         marker3 = patterns[:, :, 2, :].contiguous()
         marker4 = patterns[:, :, 3, :].contiguous()
 
-        x = self.dropout(F.relu(self.fc1_det(detections)))
-        x = self.dropout(F.relu(self.fc2_det(x)))
-        x = self.dropout(F.relu(self.fc3_det(x)))
-        x = self.dropout(F.relu(self.fc4_det(x)))
-        x = self.dropout(F.relu(self.fc5_det(x)))
+        x = self.weak_dropout(F.relu(self.fc1_det(detections)))
+        x = self.strong_dropout(F.relu(self.fc2_det(x)))
+        x = self.strong_dropout(F.relu(self.fc3_det(x)))
+        x = self.strong_dropout(F.relu(self.fc4_det(x)))
+        x = self.strong_dropout(F.relu(self.fc5_det(x)))
 
         if not use_const_pat:
-            x_pat = self.dropout(F.relu(self.fc1_pat(patterns.view(T - 1, -1, 12))))
-            x_pat = self.dropout(F.relu(self.fc2_pat(x_pat)))
-            x_pat = self.dropout(F.relu(self.fc3_pat(x_pat)))
-            x_pat = self.dropout(F.relu(self.fc4_pat(x_pat)))
+            x_pat = self.weak_dropout(F.relu(self.fc1_pat(patterns.view(T - 1, -1, 12))))
+            x_pat = self.strong_dropout(F.relu(self.fc2_pat(x_pat)))
+            x_pat = self.strong_dropout(F.relu(self.fc3_pat(x_pat)))
+            x_pat = self.strong_dropout(F.relu(self.fc4_pat(x_pat)))
             x = torch.cat([x, x_pat], dim=2)
 
         # x_combo = self.dropout(F.relu(self.fc1_combo(x_combo)))
@@ -668,28 +832,40 @@ class LSTMTracker(nn.Module):
         # x = x_det - x_pat
 
         lstm_out, _ = self.lstm(x)
-        x = F.relu(self.hidden2quat1(lstm_out))
-        quat_space = self.hidden2quat2(x)
-        pos_space = self.hidden2pos(lstm_out)
-        # maybe leave out wenn not using pose error
-        quat_norm = torch.sqrt(torch.sum(torch.pow(quat_space, 2, ), dim=2))
-        quat_space = quat_space / torch.unsqueeze(quat_norm, dim=2)
 
-        rotated_marker1 = qrot(quat_space, marker1) + pos_space
-        rotated_marker2 = qrot(quat_space, marker2) + pos_space
-        rotated_marker3 = qrot(quat_space, marker3) + pos_space
-        rotated_marker4 = qrot(quat_space, marker4) + pos_space
+        x_quat = self.weak_dropout(F.relu(self.hidden2quat1(lstm_out)))
+        x_quat = self.weak_dropout(F.relu(self.hidden2quat2(x_quat)))
+        x_quat = self.hidden2quat3(x_quat)
+
+        x_pos = self.weak_dropout(F.relu(self.hidden2pos1(lstm_out)))
+        x_pos = self.weak_dropout(F.relu(self.hidden2pos2(x_pos)))
+        x_pos = self.hidden2pos3(x_pos)
+
+        quat_norm = torch.sqrt(torch.sum(torch.pow(x_quat, 2, ), dim=2))
+        x_quat = x_quat / torch.unsqueeze(quat_norm, dim=2)
+
+        rotated_marker1 = qrot(x_quat, marker1) + x_pos
+        rotated_marker2 = qrot(x_quat, marker2) + x_pos
+        rotated_marker3 = qrot(x_quat, marker3) + x_pos
+        rotated_marker4 = qrot(x_quat, marker4) + x_pos
         rotated_pattern = torch.cat([rotated_marker1,
                                      rotated_marker2,
                                      rotated_marker3,
                                      rotated_marker4], dim=2)
 
-        return quat_space, pos_space, rotated_pattern
+        return x_quat, x_pos, rotated_pattern
 
 
-model = LSTMTracker(hidden_dim)
+model = customLSTM(hidden_dim, bias=True)
+#model = LSTMTracker(hidden_dim)
 if use_colab and torch.cuda.is_available():
+    print('USING CUDA DEVICE')
     model.cuda()
+    device = torch.device('cuda')
+    print(torch.cuda.get_device_name(0))
+    print('Memory Usage:')
+    print('Allocated:', round(torch.cuda.memory_allocated(0) / 1024 ** 3, 1), 'GB')
+    print('Cached:   ', round(torch.cuda.memory_cached(0) / 1024 ** 3, 1), 'GB')
 
 # TODO: respect antipodal pair as well!
 loss_function_pose = nn.MSELoss()
@@ -703,7 +879,7 @@ scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode=lr_schedu
                                                        verbose=True, min_lr=lr_scheduler_params['min_lr'])
 
 hyper_params = HyperParams(N_train, N_eval, T, BATCH_SIZE, optimizer, LEARNING_RATE, scheduler, lr_scheduler_params,
-                           DROPOUT_RATE, 'NONE', 'l2 on pos + 5* l1 on quat', '')
+                           STRONG_DROPOUT_RATE, 'NONE', 'l2 on pos + 5* l1 on quat', '')
 logger = TrainingLogger(MODEL_NAME, TASK, hyper_params)
 name = logger.folder_name + '/model_best.npy'
 
@@ -743,17 +919,17 @@ def train(data):
             avg_loss_quat += loss_quat
             avg_loss_pos += loss_pos
 
-            if k % int(n_batches_per_epoch / 10) == 0:
-                model.eval()
-                with torch.no_grad():
-                    pred_quat, pred_pos, preds = model(data.X_eval_shuffled[:-1, :, :], data.pattern_eval[:-1, :, :, :])
-                    loss_pose = loss_function_pose(preds, data.X_eval[1:, :, :])
-                    loss_quat = loss_function_quat(pred_quat, data.quat_eval[1:, :, :])
-                    loss_pos = loss_function_pose(pred_pos, data.pos_eval[1:, :, :])
-                    val_loss = loss_pos + loss_quat
-                    print(val_loss)
-                    scheduler.step(val_loss)
-                model.train()
+            #if k % int(n_batches_per_epoch / 10) == 0:
+            #    model.eval()
+            #    with torch.no_grad():
+            #        pred_quat, pred_pos, preds = model(data.X_eval_shuffled[:-1, :, :], data.pattern_eval[:-1, :, :, :])
+            #        loss_pose = loss_function_pose(preds, data.X_eval[1:, :, :])
+            #        loss_quat = loss_function_quat(pred_quat, data.quat_eval[1:, :, :])
+            #        loss_pos = loss_function_pose(pred_pos, data.pos_eval[1:, :, :])
+            #        val_loss = loss_pos + loss_quat
+            #        print(val_loss)
+            #        scheduler.step(val_loss)
+            #    model.train()
 
         avg_loss_pose /= len(batches)
         avg_loss_quat /= len(batches)
@@ -779,6 +955,10 @@ def train(data):
                              loss_pose.data, loss_quat.data, loss_pos.data,
                              model,
                              learning_rate)
+        if use_colab:
+            print('Memory Usage:')
+            print('Allocated:', round(torch.cuda.memory_allocated(0) / 1024 ** 3, 1), 'GB')
+            print('Cached:   ', round(torch.cuda.memory_cached(0) / 1024 ** 3, 1), 'GB')
 
     logger.save_log()
 
@@ -815,16 +995,17 @@ if use_colab:
 
 else:
     data = TrainingData()
-    data.set_train_data(gen_data(N_train))
-    data.set_test_data(gen_data(N_test))
-    data.set_eval_data(gen_data(N_eval))
-    data.save_data(generated_data_dir)
+    #data.set_train_data(gen_data(N_train))
+    #data.set_test_data(gen_data(N_test))
+    #data.set_eval_data(gen_data(N_eval))
+    #data.save_data(generated_data_dir)
     data.load_data(generated_data_dir, N_train, N_test, N_eval)
     data.convert_to_torch()
 
 gc.collect()
 train(data)
+
 gc.collect()
 if not use_colab:
     eval(name)
-    #eval('LSTM_PQPDCP_15.10.2019@22:48:10/model_best.npy')
+    #eval('LSTM_baseline/model_best.npy')
