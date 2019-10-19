@@ -1,4 +1,4 @@
-use_colab = False
+use_colab = True
 
 
 
@@ -30,6 +30,10 @@ if not use_colab:
     from vizTracking import visualize_tracking
 
 
+
+
+
+
 MODEL_NAME = 'LSTM'
 TASK = 'PosQuatPred; '
 
@@ -37,19 +41,19 @@ drop_some_dets = True
 add_false_positives = False
 add_noise = False
 NOISE_STD = 0.01
-use_const_pat = True
+use_const_pat = False
 
 if use_colab:
     if use_const_pat:
-        generated_data_dir = colab_path_prefix + 'generated_data' + '_const_pat'
+      generated_data_dir = colab_path_prefix + 'generated_data' + '_const_pat'
     else:
-        generated_data_dir = colab_path_prefix + 'generated_data'
+      generated_data_dir = colab_path_prefix + 'generated_data'
 
 else:
     if use_const_pat:
-        generated_data_dir = 'generated_data' + '_const_pat'
+      generated_data_dir = 'generated_data' + '_const_pat'
     else:
-        generated_data_dir = 'generated_training_data'
+      generated_data_dir = 'generated_training_data'
 
 if drop_some_dets:
     TASK += 'Drop some detections; '
@@ -67,37 +71,37 @@ else:
 BATCH_SIZE = 32
 NUM_EPOCHS = 50
 LEARNING_RATE = 0.001
-STRONG_DROPOUT_RATE = 0.25
-WEAK_DROPOUT_RATE = 0.1
+STRONG_DROPOUT_RATE = 0.15
+WEAK_DROPOUT_RATE = 0.05
 
 CHECKPOINT_INTERVAL = 10
 save_model_every_interval = False
 save_best_model = True
 
-N_train = 400*BATCH_SIZE
+N_train = 600*BATCH_SIZE
 N_eval = int(N_train/10)
 N_test = int(N_train/2)
 
-T = 200
+T = 100
 
 fc1_det_dim = 300
 fc2_det_dim = 400
-fc3_det_dim = 500
-fc4_det_dim = 350
+fc3_det_dim = 400
+fc4_det_dim = 400
 fc5_det_dim = 300
 
-fc1_pat_dim = 200
-fc2_pat_dim = 300
-fc3_pat_dim = 300
-fc4_pat_dim = 200
+fc1_pat_dim = 300
+fc2_pat_dim = 400
+fc3_pat_dim = 400
+fc4_pat_dim = 250
 
 hidden_dim = 150
 
-fc1_quat_size = 150
-fc2_quat_size = 50
+fc1_quat_size = 200
+fc2_quat_size = 150
 
-fc1_pos_size = 150
-fc2_pos_size = 50
+fc1_pos_size = 200
+fc2_pos_size = 150
 
 #fc1_det_dim = 250
 #fc2_det_dim = 300
@@ -112,16 +116,14 @@ fc2_pos_size = 50
 
 # TODO: improve false positives, i.e. roll where last real detection is, delete rest, roll where to put fp between real detections
 
-# TODO: compare LSTM to simple RNN, and GRU, then design custom cell,
-# TODO: experiment with recurrent dropout and batch normalization
-# TODO: peephole lstm
+# TODO: compare LSTM to simple RNN, then design custom cell, maybe with recurrent dropout and batch normalization
+
 
 
 # TODO: proper noise model, look at noise behaviour for individual markers inside pattern
 
 # TODO: generate bird behaviour from VICON predictions, if not enough use kalman filter predictions
-# TODO: eval() with old model should work, but doesn't!
-# TODO: mail an guldlücke und ask for pigeon data
+
 
 
 # TODO: at some point figure out good dropout rate, and other hyper parms
@@ -475,15 +477,14 @@ def gen_pattern(N):
     chosen_pat_idx = np.random.choice(np.arange(0, 9), [N])
 
     for n in range(N):
-        marker1[:, n, :] = np.tile(patterns[chosen_pat_idx[n], :, 0], [T, 1, 1])
-        marker2[:, n, :] = np.tile(patterns[chosen_pat_idx[n], :, 1], [T, 1, 1])
-        marker3[:, n, :] = np.tile(patterns[chosen_pat_idx[n], :, 2], [T, 1, 1])
-        marker4[:, n, :] = np.tile(patterns[chosen_pat_idx[n], :, 3], [T, 1, 1])
+        marker1[:, n, :] = np.squeeze(np.tile(patterns[chosen_pat_idx[n], 0, :], [T, 1, 1])) / 10
+        marker2[:, n, :] = np.squeeze(np.tile(patterns[chosen_pat_idx[n], 1, :], [T, 1, 1])) / 10
+        marker3[:, n, :] = np.squeeze(np.tile(patterns[chosen_pat_idx[n], 2, :], [T, 1, 1])) / 10
+        marker4[:, n, :] = np.squeeze(np.tile(patterns[chosen_pat_idx[n], 3, :], [T, 1, 1])) / 10
 
     pattern = np.stack([marker1, marker2, marker3, marker4], axis=2)
 
     return pattern, marker1, marker2, marker3, marker4
-
 
 
 
@@ -675,7 +676,7 @@ class customLSTMCell(nn.Module):
         if use_const_pat:
            x = F.relu(self.det2vec(x_det) + hh)
         else:
-            x = F.relu(self.det2vec(x_det) + hh) + F.relu(self.pat2vec(x_pat) + hh)
+            x = F.relu(self.det2vec(x_det) + hh) - F.relu(self.pat2vec(x_pat) + hh)
 
         h = h.view(h.size(1), -1)
         c = c.view(c.size(1), -1)
@@ -704,8 +705,12 @@ class customLSTMCell(nn.Module):
     def _init_hidden(input_):
         #h = torch.zeros_like(input_.view(1, input_.size(1), -1))
         #c = torch.zeros_like(input_.view(1, input_.size(1), -1))
-        h = torch.zeros([1, input_.size(1), hidden_dim]).cuda()
-        c = torch.zeros([1, input_.size(1), hidden_dim]).cuda()
+        if use_colab:
+            h = torch.zeros([1, input_.size(1), hidden_dim]).cuda()
+            c = torch.zeros([1, input_.size(1), hidden_dim]).cuda()
+        else:
+            h = torch.zeros([1, input_.size(1), hidden_dim])
+            c = torch.zeros([1, input_.size(1), hidden_dim])
         return h, c
 
 
@@ -735,14 +740,6 @@ class customLSTM(nn.Module):
             self.fc3_pat = nn.Linear(fc2_pat_dim, fc3_pat_dim)
             self.fc4_pat = nn.Linear(fc3_pat_dim, fc4_pat_dim)
 
-        # self.fc1_combo = nn.Linear(fc2_pat_dim + fc3_det_dim, fc1_combo_dim)
-        # self.fc2_combo = nn.Linear(fc1_combo_dim, fc2_combo_dim)
-
-        if use_const_pat:
-            self.lstm = nn.LSTM(fc5_det_dim, hidden_dim)
-        else:
-            self.lstm = nn.LSTM(fc5_det_dim + fc4_pat_dim, hidden_dim)
-
         # The linear layer that maps from hidden state space to tag space
         self.hidden2quat1 = nn.Linear(hidden_dim, fc1_quat_size)
         self.hidden2quat2 = nn.Linear(fc1_quat_size, fc2_quat_size)
@@ -770,13 +767,14 @@ class customLSTM(nn.Module):
             x_pat = self.strong_dropout(F.relu(self.fc2_pat(x_pat)))
             x_pat = self.strong_dropout(F.relu(self.fc3_pat(x_pat)))
             x_pat = self.strong_dropout(F.relu(self.fc4_pat(x_pat)))
-            x = torch.cat([x, x_pat], dim=2)
+            #x = torch.cat([x, x_pat], dim=2)
 
         x = torch.unsqueeze(x, dim=0)
+        x_pat = torch.unsqueeze(x_pat, dim=0)
         lstm_out = []
 
-        for a in torch.unbind(x, dim=1):
-            hidden = self.lstm_cell(a, hidden)
+        for det, pat in zip(torch.unbind(x, dim=1), torch.unbind(x_pat, dim=1)):
+            hidden = self.lstm_cell(det, pat, hidden)
             lstm_out.append(hidden[0].clone())
 
         lstm_out = torch.squeeze(torch.stack(lstm_out, dim=1))
@@ -1022,8 +1020,9 @@ def eval(name):
 
 
 #######################################################################################################################
-pats = gen_pattern(5)
-print(pats)
+
+#######################################################################################################################
+
 #######################################################################################################################
 
 if use_colab:
