@@ -30,13 +30,6 @@ if not use_colab:
     from vizTracking import visualize_tracking
 
 
-
-
-if use_colab:
-    generated_data_dir = colab_path_prefix + 'generated_data'
-else:
-    generated_data_dir = 'generated_training_data'
-
 MODEL_NAME = 'LSTM'
 TASK = 'PosQuatPred; '
 
@@ -45,6 +38,18 @@ add_false_positives = False
 add_noise = False
 NOISE_STD = 0.01
 use_const_pat = True
+
+if use_colab:
+    if use_const_pat:
+        generated_data_dir = colab_path_prefix + 'generated_data' + '_const_pat'
+    else:
+        generated_data_dir = colab_path_prefix + 'generated_data'
+
+else:
+    if use_const_pat:
+        generated_data_dir = 'generated_data' + '_const_pat'
+    else:
+        generated_data_dir = 'generated_training_data'
 
 if drop_some_dets:
     TASK += 'Drop some detections; '
@@ -59,7 +64,7 @@ else:
 
 
 
-BATCH_SIZE = 50
+BATCH_SIZE = 32
 NUM_EPOCHS = 50
 LEARNING_RATE = 0.001
 STRONG_DROPOUT_RATE = 0.25
@@ -69,7 +74,7 @@ CHECKPOINT_INTERVAL = 10
 save_model_every_interval = False
 save_best_model = True
 
-N_train = 20*BATCH_SIZE
+N_train = 400*BATCH_SIZE
 N_eval = int(N_train/10)
 N_test = int(N_train/2)
 
@@ -88,7 +93,7 @@ fc4_pat_dim = 200
 
 hidden_dim = 150
 
-fc1_quat_size = 100
+fc1_quat_size = 150
 fc2_quat_size = 50
 
 fc1_pos_size = 150
@@ -107,19 +112,16 @@ fc2_pos_size = 50
 
 # TODO: improve false positives, i.e. roll where last real detection is, delete rest, roll where to put fp between real detections
 
-# TODO: compare LSTM to simple RNN, then design custom cell, maybe with recurrent dropout and batch normalization
-
-# TODO: why does eval() not work with old model???
+# TODO: compare LSTM to simple RNN, and GRU, then design custom cell,
+# TODO: experiment with recurrent dropout and batch normalization
+# TODO: peephole lstm
 
 
 # TODO: proper noise model, look at noise behaviour for individual markers inside pattern
 
 # TODO: generate bird behaviour from VICON predictions, if not enough use kalman filter predictions
-
-# TODO: ask for pidgeon data?
-
-# TODO: write goldlücke a mail
-
+# TODO: eval() with old model should work, but doesn't!
+# TODO: mail an guldlücke und ask for pigeon data
 
 
 # TODO: at some point figure out good dropout rate, and other hyper parms
@@ -135,7 +137,6 @@ fc2_pos_size = 50
 ######### REPORT #########
 #
 ####################################################################################
-
 
 def normalize_vector(v):
     return v / np.sum(v)
@@ -434,7 +435,7 @@ def gen_pattern_constant(N):
     return pattern, stacked_marker1, stacked_marker2, stacked_marker3, stacked_marker4
 
 
-def gen_pattern(N):
+def gen_pattern_(N):
     # one marker is always the origin
     marker1 = np.zeros([T, N, 3])
 
@@ -451,13 +452,39 @@ def gen_pattern(N):
     scale_ortho = np.random.uniform(0.1, 1, [1, N, 1]) * np.random.choice([-1, 1], size=[1, N, 1], replace=True)
     marker4 = scale_marker2 * marker2 + scale_marker3 + marker3 + scale_ortho * ortho_marker23
 
-    marker2 = np.tile(marker2 / 10, [T, 1, 1])
-    marker3 = np.tile(marker3 / 10, [T, 1, 1])
-    marker4 = np.tile(marker4 / 10, [T, 1, 1])
+    marker2 = np.tile(marker2, [T, 1, 1])
+    marker3 = np.tile(marker3, [T, 1, 1])
+    marker4 = np.tile(marker4, [T, 1, 1])
 
     pattern = np.stack([marker1, marker2, marker3, marker4], axis=2)
 
     return pattern, marker1, marker2, marker3, marker4
+
+
+def gen_pattern(N):
+    if use_colab:
+        patterns = np.load(colab_path_prefix + 'patterns.npy')
+    else:
+        patterns = np.load('data/patterns.npy')
+
+    marker1 = np.zeros([T, N, 3])
+    marker2 = np.zeros([T, N, 3])
+    marker3 = np.zeros([T, N, 3])
+    marker4 = np.zeros([T, N, 3])
+
+    chosen_pat_idx = np.random.choice(np.arange(0, 9), [N])
+
+    for n in range(N):
+        marker1[:, n, :] = np.tile(patterns[chosen_pat_idx[n], :, 0], [T, 1, 1])
+        marker2[:, n, :] = np.tile(patterns[chosen_pat_idx[n], :, 1], [T, 1, 1])
+        marker3[:, n, :] = np.tile(patterns[chosen_pat_idx[n], :, 2], [T, 1, 1])
+        marker4[:, n, :] = np.tile(patterns[chosen_pat_idx[n], :, 3], [T, 1, 1])
+
+    pattern = np.stack([marker1, marker2, marker3, marker4], axis=2)
+
+    return pattern, marker1, marker2, marker3, marker4
+
+
 
 
 def gen_quats(length):
@@ -614,26 +641,42 @@ def gen_data(N):
 
 
 class customLSTMCell(nn.Module):
-    def __init__(self, input_size, hidden_size, bias=True):
+    def __init__(self, input_size_det, input_size_pat, hidden_size, bias=True):
         super(customLSTMCell, self).__init__()
-        self.input_size = input_size
+        self.input_size_det = input_size_det
+        self.input_size_pat = input_size_pat
         self.hidden_size = hidden_size
         self.bias = bias
-        self.i2h = nn.Linear(input_size, 4 * hidden_size, bias=bias)
+        self.i2h = nn.Linear(hidden_size, 4 * hidden_size, bias=bias)
         self.h2h = nn.Linear(hidden_size, 4 * hidden_size, bias=bias)
+
+        self.det2vec = nn.Linear(input_size_det, self.hidden_size)
+        if not use_const_pat:
+            self.pat2vec = nn.Linear(input_size_pat, self.hidden_size)
+
+        self.fc1 = nn.Linear(self.hidden_size, self.hidden_size)
+
         self.reset_parameters()
+
 
     def reset_parameters(self):
         std = 1.0 / sqrt(self.hidden_size)
         for w in self.parameters():
             w.data.uniform_(-std, std)
 
-    def forward(self, x, hidden):
+    def forward(self, x_det, x_pat, hidden):
 
         if hidden is None:
-            hidden = self._init_hidden(x)
+            hidden = self._init_hidden(x_det)
 
         h, c = hidden
+
+        hh = self.fc1(h)
+        if use_const_pat:
+           x = F.relu(self.det2vec(x_det) + hh)
+        else:
+            x = F.relu(self.det2vec(x_det) + hh) + F.relu(self.pat2vec(x_pat) + hh)
+
         h = h.view(h.size(1), -1)
         c = c.view(c.size(1), -1)
         x = x.view(x.size(1), -1)
@@ -672,9 +715,9 @@ class customLSTM(nn.Module):
         super().__init__()
 
         if use_const_pat:
-            self.lstm_cell = customLSTMCell(fc5_det_dim, hidden_dim, bias)
+            self.lstm_cell = customLSTMCell(fc5_det_dim, None, hidden_dim, bias)
         else:
-            self.lstm_cell = customLSTMCell(fc5_det_dim + fc4_pat_dim, hidden_dim, bias)
+            self.lstm_cell = customLSTMCell(fc5_det_dim, fc4_pat_dim, hidden_dim, bias)
 
         if add_false_positives:
             self.fc1_det = nn.Linear(15, fc1_det_dim)
@@ -713,14 +756,10 @@ class customLSTM(nn.Module):
         self.weak_dropout = nn.Dropout(p=WEAK_DROPOUT_RATE)
 
 
-    def forward(self, detections, patterns, hidden=None):
+    def forward(self, x, patterns, hidden=None):
         # input is of dimensionalty (time, input_size, ...)
-        marker1 = patterns[:, :, 0, :].contiguous()
-        marker2 = patterns[:, :, 1, :].contiguous()
-        marker3 = patterns[:, :, 2, :].contiguous()
-        marker4 = patterns[:, :, 3, :].contiguous()
 
-        x = self.weak_dropout(F.relu(self.fc1_det(detections)))
+        x = self.weak_dropout(F.relu(self.fc1_det(x)))
         x = self.strong_dropout(F.relu(self.fc2_det(x)))
         x = self.strong_dropout(F.relu(self.fc3_det(x)))
         x = self.strong_dropout(F.relu(self.fc4_det(x)))
@@ -754,10 +793,10 @@ class customLSTM(nn.Module):
         quat_norm = torch.sqrt(torch.sum(torch.pow(x_quat, 2, ), dim=2))
         x_quat = x_quat / torch.unsqueeze(quat_norm, dim=2)
 
-        rotated_marker1 = qrot(x_quat, marker1) + x_pos
-        rotated_marker2 = qrot(x_quat, marker2) + x_pos
-        rotated_marker3 = qrot(x_quat, marker3) + x_pos
-        rotated_marker4 = qrot(x_quat, marker4) + x_pos
+        rotated_marker1 = qrot(x_quat, patterns[:, :, 0, :].contiguous()) + x_pos
+        rotated_marker2 = qrot(x_quat, patterns[:, :, 1, :].contiguous()) + x_pos
+        rotated_marker3 = qrot(x_quat, patterns[:, :, 2, :].contiguous()) + x_pos
+        rotated_marker4 = qrot(x_quat, patterns[:, :, 3, :].contiguous()) + x_pos
         rotated_pattern = torch.cat([rotated_marker1,
                                      rotated_marker2,
                                      rotated_marker3,
@@ -983,13 +1022,16 @@ def eval(name):
 
 
 #######################################################################################################################
+pats = gen_pattern(5)
+print(pats)
+#######################################################################################################################
 
 if use_colab:
     data = TrainingData()
-    data.set_train_data(gen_data(N_train))
-    data.set_test_data(gen_data(N_test))
-    data.set_eval_data(gen_data(N_eval))
-    data.save_data(generated_data_dir)
+    #data.set_train_data(gen_data(N_train))
+    #data.set_test_data(gen_data(N_test))
+    #data.set_eval_data(gen_data(N_eval))
+    #data.save_data(generated_data_dir)
     data.load_data(generated_data_dir, N_train, N_test, N_eval)
     data.convert_to_torch()
 
@@ -1004,8 +1046,7 @@ else:
 
 gc.collect()
 train(data)
-
 gc.collect()
 if not use_colab:
     eval(name)
-    #eval('LSTM_baseline/model_best.npy')
+    #eval('LSTM_PQPDCP_15.10.2019@22:48:10/model_best.npy')
