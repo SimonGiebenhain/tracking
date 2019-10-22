@@ -40,14 +40,13 @@ def center_snippets(snips):
 def scale_snippets(snips):
     norms = np.linalg.norm(snips, axis=2)
     norms_std = np.std(np.reshape(norms, -1))
-    print('NORM MEAN:')
-    print(norms_std)
     snips = snips / (10*np.sqrt(norms_std))
     return snips
 
+
 def visualize_snippet(snip):
     visualize(np.expand_dims(snip, axis=1), isNumpy=True)
-    print(snip)
+
 
 def rotate_snippets(snips, number_of_rotations):
 
@@ -66,6 +65,10 @@ def rotate_snippets(snips, number_of_rotations):
     rotated_snips = np.stack(rotated_snips, axis=0)
     return np.concatenate([rotated_snips, snips], axis=0)
 
+def save_as_training_data(snips):
+    snips = np.transpose(snips, [1, 0, 2])
+    np.save('data/cleaned_kalman_pos.npy', snips)
+
 
 plt.subplot(121)
 plot_trajectories(pos)
@@ -83,12 +86,14 @@ plt.show()
 
 snippets = get_snippets(pos_smoothened2, 200, 20)
 snippets = center_snippets(snippets)
-print(snippets[0, :100, :])
 snippets = scale_snippets(snippets)
-print(snippets[0, :100, :])
 
 number_of_rotations = 3
 snippets = rotate_snippets(snippets, number_of_rotations)
+
+print(snippets.shape)
+
+save_as_training_data(snippets)
 
 
 

@@ -1,4 +1,4 @@
-use_colab = True
+use_colab = False
 
 
 
@@ -15,6 +15,8 @@ import pandas as pd
 import re
 from datetime import datetime
 
+from math import ceil
+
 
 import matplotlib.pyplot as plt
 colab_path_prefix = '/content/gdrive/My Drive/'
@@ -30,10 +32,6 @@ if not use_colab:
     from vizTracking import visualize_tracking
 
 
-
-
-
-
 MODEL_NAME = 'LSTM'
 TASK = 'PosQuatPred; '
 
@@ -42,6 +40,7 @@ add_false_positives = False
 add_noise = False
 NOISE_STD = 0.01
 use_const_pat = False
+generate_data = False
 
 if use_colab:
     if use_const_pat:
@@ -79,29 +78,28 @@ save_model_every_interval = False
 save_best_model = True
 
 N_train = 600*BATCH_SIZE
-N_eval = int(N_train/10)
-N_test = int(N_train/2)
+N_test = int(N_train/10)
 
 T = 100
 
-fc1_det_dim = 300
-fc2_det_dim = 400
-fc3_det_dim = 400
-fc4_det_dim = 400
-fc5_det_dim = 300
+fc1_det_dim = 200
+fc2_det_dim = 300
+fc3_det_dim = 300
+fc4_det_dim = 300
+fc5_det_dim = 200
 
-fc1_pat_dim = 300
-fc2_pat_dim = 400
-fc3_pat_dim = 400
-fc4_pat_dim = 250
+fc1_pat_dim = 200
+fc2_pat_dim = 300
+fc3_pat_dim = 300
+fc4_pat_dim = 150
 
-hidden_dim = 150
+hidden_dim = 50
 
-fc1_quat_size = 200
-fc2_quat_size = 150
+fc1_quat_size = 100
+fc2_quat_size = 50
 
-fc1_pos_size = 200
-fc2_pos_size = 150
+fc1_pos_size = 100
+fc2_pos_size = 50
 
 #fc1_det_dim = 250
 #fc2_det_dim = 300
@@ -114,24 +112,25 @@ fc2_pos_size = 150
 #fc_out_1_size = 30
 
 
+# TODO: write some preprocessing methods, i.e. pattern should have std. dev of 1 of norm of markers or something
+
 # TODO: improve false positives, i.e. roll where last real detection is, delete rest, roll where to put fp between real detections
 
-# TODO: compare LSTM to simple RNN, then design custom cell, maybe with recurrent dropout and batch normalization
-
-
+# TODO: be patient when working with varying patterns, compare custom architecture(may be too slow!) to in-built LSTM
+# TODO: compare LSTM to simple RNN, and GRU, then design custom cell,
+# TODO: experiment with recurrent dropout and batch normalization
+# TODO: peephole lstm
 
 # TODO: proper noise model, look at noise behaviour for individual markers inside pattern
-
 # TODO: generate bird behaviour from VICON predictions, if not enough use kalman filter predictions
-
-
+# TODO: eval() with old model should work, but doesn't!
+# TODO: mail an guldlücke und ask for pigeon data
 
 # TODO: at some point figure out good dropout rate, and other hyper parms
 
 # TODO: try relative inupts instead of absolute detections
 
 # TODO: look at hand notes for more ideas, e.g. multi modal predictions
-
 # TODO: read some papers for more ideas
 
 
@@ -172,12 +171,6 @@ class TrainingData():
         self.pos_test = None
         self.pattern_test = None
 
-        self.X_eval = None
-        self.X_eval_shuffled = None
-        self.quat_eval = None
-        self.pos_eval = None
-        self.pattern_eval = None
-
     def set_train_data(self, data_dict):
         self.X_train = data_dict['X']
         self.X_train_shuffled = data_dict['X_shuffled']
@@ -192,14 +185,7 @@ class TrainingData():
         self.pos_test = data_dict['pos']
         self.pattern_test = data_dict['pattern']
 
-    def set_eval_data(self, data_dict):
-        self.X_eval = data_dict['X']
-        self.X_eval_shuffled = data_dict['X_shuffled']
-        self.quat_eval = data_dict['quat']
-        self.pos_eval = data_dict['pos']
-        self.pattern_eval = data_dict['pattern']
-
-    def load_data(self, dir_name, N_train, N_test, N_eval):
+    def load_data(self, dir_name, N_train, N_test):
         self.X_train = np.load(dir_name + '/X_train' + str(N_train) + '.npy')
         self.X_train_shuffled = np.load(dir_name + '/X_train_shuffled' + str(N_train) + '.npy')
         self.quat_train = np.load(dir_name + '/quat_train' + str(N_train) + '.npy')
@@ -211,12 +197,6 @@ class TrainingData():
         self.quat_test = np.load(dir_name + '/quat_test' + str(N_test) + '.npy')
         self.pos_test = np.load(dir_name + '/pos_test' + str(N_test) + '.npy')
         self.pattern_test = np.load(dir_name + '/pattern_test' + str(N_test) + '.npy')
-
-        self.X_eval = np.load(dir_name + '/X_eval' + str(N_eval) + '.npy')
-        self.X_eval_shuffled = np.load(dir_name + '/X_eval_shuffled' + str(N_eval) + '.npy')
-        self.quat_eval = np.load(dir_name + '/quat_eval' + str(N_eval) + '.npy')
-        self.pos_eval = np.load(dir_name + '/pos_eval' + str(N_eval) + '.npy')
-        self.pattern_eval = np.load(dir_name + '/pattern_eval' + str(N_eval) + '.npy')
 
         print('Loaded data successfully!')
 
@@ -237,13 +217,6 @@ class TrainingData():
         np.save(dir_name + '/pos_test' + str(N) + '.npy', self.pos_test)
         np.save(dir_name + '/pattern_test' + str(N) + '.npy', self.pattern_test)
 
-        N = np.shape(self.X_eval)[1]
-        np.save(dir_name + '/X_eval' + str(N) + '.npy', self.X_eval)
-        np.save(dir_name + '/X_eval_shuffled' + str(N) + '.npy', self.X_eval_shuffled)
-        np.save(dir_name + '/quat_eval' + str(N) + '.npy', self.quat_eval)
-        np.save(dir_name + '/pos_eval' + str(N) + '.npy', self.pos_eval)
-        np.save(dir_name + '/pattern_eval' + str(N) + '.npy', self.pattern_eval)
-
         print('Saved data successfully!')
 
     def convert_to_torch(self):
@@ -259,12 +232,6 @@ class TrainingData():
             self.quat_test = torch.from_numpy(self.quat_test).float().cuda()
             self.pos_test = torch.from_numpy(self.pos_test).float().cuda()
             self.pattern_test = torch.from_numpy(self.pattern_test).float().cuda()
-
-            self.X_eval = torch.from_numpy(self.X_eval).float().cuda()
-            self.X_eval_shuffled = torch.from_numpy(self.X_eval_shuffled).float().cuda()
-            self.quat_eval = torch.from_numpy(self.quat_eval).float().cuda()
-            self.pos_eval = torch.from_numpy(self.pos_eval).float().cuda()
-            self.pattern_eval = torch.from_numpy(self.pattern_eval).float().cuda()
         else:
             self.X_train = torch.from_numpy(self.X_train).float()
             self.X_train_shuffled = torch.from_numpy(self.X_train_shuffled).float()
@@ -277,13 +244,6 @@ class TrainingData():
             self.quat_test = torch.from_numpy(self.quat_test).float()
             self.pos_test = torch.from_numpy(self.pos_test).float()
             self.pattern_test = torch.from_numpy(self.pattern_test).float()
-
-            self.X_eval = torch.from_numpy(self.X_eval).float()
-            self.X_eval_shuffled = torch.from_numpy(self.X_eval_shuffled).float()
-            self.quat_eval = torch.from_numpy(self.quat_eval).float()
-            self.pos_eval = torch.from_numpy(self.pos_eval).float()
-            self.pattern_eval = torch.from_numpy(self.pattern_eval).float()
-
         print('Converted data to torch format.')
 
     def convert_to_numpy(self):
@@ -298,12 +258,6 @@ class TrainingData():
         self.quat_test = self.quat_test.numpy()
         self.pos_test = self.pos_test.numpy()
         self.pattern_test = self.pattern_test.numpy()
-
-        self.X_eval = self.X_eval.numpy()
-        self.X_eval_shuffled = self.X_eval_shuffled.numpy()
-        self.quat_eval = self.quat_eval.numpy()
-        self.pos_eval = self.pos_eval.numpy()
-        self.pattern_eval = self.pattern_eval.numpy()
 
         print('Converted data to numpy format.')
 
@@ -487,7 +441,6 @@ def gen_pattern(N):
     return pattern, marker1, marker2, marker3, marker4
 
 
-
 def gen_quats(length):
     theta_range = np.random.uniform(1, 2)
     theta = np.linspace(-theta_range * np.pi, theta_range * np.pi, length)
@@ -570,75 +523,102 @@ def qrot(q, v):
 
 
 # TODO: vecotrize with qrot() and by shuffling markers while generating them
-def gen_data(N):
-    quat = np.zeros([T, N, 4], dtype=np.float32)
+def gen_data(N_train, N_test):
 
-    for n in range(N):
-        quat[:, n, :] = gen_quats(T)
+    print(N_train)
+    print(N_test)
+    if not generate_data:
+        ratio = N_train / (N_train + N_test)
+        pos = np.load('data/cleaned_kalman_pos.npy')
+        true_N = pos.shape[1]
+        N_train = ceil(true_N * ratio)
+        pos_train = pos[:, :N_train, :]
+        pos_test = pos[:, N_train:, :]
+        N_test = pos_test.shape[1]
+        print(N_train)
+        print(N_test)
 
-    pos = gen_pos(N)
+    def gen_datum(N, pos_data=None):
 
-    pos_stacked = np.tile(pos, [1, 1, 4])
-    if add_false_positives:
-        pos_stacked_fp = np.tile(pos, [1, 1, 5])
-    else:
-        pos_stacked_fp = np.tile(pos, [1, 1, 4])
+        if generate_data:
+            pos = gen_pos(N)
+        else:
+            pos = pos_data
 
-    if use_const_pat:
-        pattern, _, _, _, _ = gen_pattern_constant(N)
-    else:
-        pattern, _, _, _, _ = gen_pattern(N)
 
-    X = np.zeros([T, N, 12])
-    if add_false_positives:
-        X_shuffled = np.zeros([T, N, 15])
-    else:
-        X_shuffled = np.zeros([T, N, 12])
+        quat = np.zeros([T, N, 4], dtype=np.float32)
 
-    for t in range(T):
         for n in range(N):
-            p = pattern[t, n, :, :]
-            p_copy = np.copy(p)
+            quat[:, n, :] = gen_quats(T)
 
-            q = Quaternion(quat[t, n, :])
-            np.random.shuffle(p_copy)
-            rotated_pattern = (q.rotation_matrix @ p_copy.T).T
-            if add_false_positives:
-                rotated_pattern = np.concatenate([rotated_pattern, np.ones([1, 3]) * -1000], axis=0)
-                if np.random.uniform(0, 1) < 0.1:
-                    if drop_some_dets:
-                        if np.random.uniform(0, 1) < 0.5:
+
+
+        pos_stacked = np.tile(pos, [1, 1, 4])
+        if add_false_positives:
+            pos_stacked_fp = np.tile(pos, [1, 1, 5])
+        else:
+            pos_stacked_fp = np.tile(pos, [1, 1, 4])
+
+        if use_const_pat:
+            pattern, _, _, _, _ = gen_pattern_constant(N)
+        else:
+            pattern, _, _, _, _ = gen_pattern(N)
+
+        X = np.zeros([T, N, 12])
+        if add_false_positives:
+            X_shuffled = np.zeros([T, N, 15])
+        else:
+            X_shuffled = np.zeros([T, N, 12])
+
+        for t in range(T):
+            for n in range(N):
+                p = pattern[t, n, :, :]
+                p_copy = np.copy(p)
+
+                q = Quaternion(quat[t, n, :])
+                np.random.shuffle(p_copy)
+                rotated_pattern = (q.rotation_matrix @ p_copy.T).T
+                if add_false_positives:
+                    rotated_pattern = np.concatenate([rotated_pattern, np.ones([1, 3]) * -1000], axis=0)
+                    if np.random.uniform(0, 1) < 0.1:
+                        if drop_some_dets:
                             if np.random.uniform(0, 1) < 0.5:
-                                rotated_pattern[3, :] = np.ones([1, 3]) * -1000
-                                rotated_pattern[2, :] = np.random.uniform(-2, 2, [1, 3])
+                                if np.random.uniform(0, 1) < 0.5:
+                                    rotated_pattern[3, :] = np.ones([1, 3]) * -1000
+                                    rotated_pattern[2, :] = np.random.uniform(-2, 2, [1, 3])
+                                else:
+                                    rotated_pattern[3, :] = np.random.uniform(-2, 2, [1, 3])
                             else:
-                                rotated_pattern[3, :] = np.random.uniform(-2, 2, [1, 3])
+                                rotated_pattern[4, :] = np.random.uniform(-2, 2, [1, 3])
                         else:
                             rotated_pattern[4, :] = np.random.uniform(-2, 2, [1, 3])
                     else:
-                        rotated_pattern[4, :] = np.random.uniform(-2, 2, [1, 3])
+                        if drop_some_dets and np.random.uniform(0, 1) < 0.5:
+                            rotated_pattern[3, :] = np.array([-1000, -1000, -1000])
+                            if drop_some_dets and np.random.uniform(0, 1) < 0.5:
+                                rotated_pattern[2, :] = np.array([-1000, -1000, -1000])
                 else:
                     if drop_some_dets and np.random.uniform(0, 1) < 0.5:
                         rotated_pattern[3, :] = np.array([-1000, -1000, -1000])
                         if drop_some_dets and np.random.uniform(0, 1) < 0.5:
                             rotated_pattern[2, :] = np.array([-1000, -1000, -1000])
-            else:
-                if drop_some_dets and np.random.uniform(0, 1) < 0.5:
-                    rotated_pattern[3, :] = np.array([-1000, -1000, -1000])
-                    if drop_some_dets and np.random.uniform(0, 1) < 0.5:
-                        rotated_pattern[2, :] = np.array([-1000, -1000, -1000])
-            dets = np.reshape(rotated_pattern, -1)
-            if add_noise:
-                noise = np.random.normal(0, NOISE_STD, np.shape(dets))
-                dets = dets + noise
-            X_shuffled[t, n, :] = dets
+                dets = np.reshape(rotated_pattern, -1)
+                if add_noise:
+                    noise = np.random.normal(0, NOISE_STD, np.shape(dets))
+                    dets = dets + noise
+                X_shuffled[t, n, :] = dets
 
-            rotated_pattern = (q.rotation_matrix @ p.T).T
-            X[t, n, :] = np.reshape(rotated_pattern, -1)
-    X = X + pos_stacked
-    X_shuffled = X_shuffled + pos_stacked_fp
+                rotated_pattern = (q.rotation_matrix @ p.T).T
+                X[t, n, :] = np.reshape(rotated_pattern, -1)
+        X = X + pos_stacked
+        X_shuffled = X_shuffled + pos_stacked_fp
 
-    return {'X': X, 'X_shuffled': X_shuffled, 'quat': quat, 'pos': pos, 'pattern': pattern}
+        return {'X': X, 'X_shuffled': X_shuffled, 'quat': quat, 'pos': pos, 'pattern': pattern}
+
+    if generate_data:
+        return (gen_datum(N_train), gen_datum(N_test))
+    else:
+        return (gen_datum(N_train, pos_train), gen_datum(N_test, pos_test)), N_train, N_test
 
 
 class customLSTMCell(nn.Module):
@@ -915,7 +895,7 @@ scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode=lr_schedu
                                                        cooldown= lr_scheduler_params['cooldown'],
                                                        verbose=True, min_lr=lr_scheduler_params['min_lr'])
 
-hyper_params = HyperParams(N_train, N_eval, T, BATCH_SIZE, optimizer, LEARNING_RATE, scheduler, lr_scheduler_params,
+hyper_params = HyperParams(N_train, N_test, T, BATCH_SIZE, optimizer, LEARNING_RATE, scheduler, lr_scheduler_params,
                            STRONG_DROPOUT_RATE, 'NONE', 'l2 on pos + 5* l1 on quat', '')
 logger = TrainingLogger(MODEL_NAME, TASK, hyper_params)
 name = logger.folder_name + '/model_best.npy'
@@ -1002,7 +982,7 @@ def train(data):
 
 def eval(name):
     data = TrainingData()
-    data.load_data(generated_data_dir, N_train, N_test, N_eval)
+    data.load_data(generated_data_dir, N_train, N_test)
     data.convert_to_torch()
     model = torch.load(name)
     model.eval()
@@ -1027,20 +1007,26 @@ def eval(name):
 
 if use_colab:
     data = TrainingData()
-    #data.set_train_data(gen_data(N_train))
-    #data.set_test_data(gen_data(N_test))
-    #data.set_eval_data(gen_data(N_eval))
-    #data.save_data(generated_data_dir)
-    data.load_data(generated_data_dir, N_train, N_test, N_eval)
+    if not generate_data:
+        train_data, test_data, N_train, N_test = gen_data(N_train, N_test)
+    else:
+        (train_data, test_data) = gen_data(N_train, N_test)
+    data.set_train_data(train_data)
+    data.set_test_data(test_data)
+    data.save_data(generated_data_dir)
+    #data.load_data(generated_data_dir, N_train, N_test)
     data.convert_to_torch()
 
 else:
     data = TrainingData()
-    #data.set_train_data(gen_data(N_train))
-    #data.set_test_data(gen_data(N_test))
-    #data.set_eval_data(gen_data(N_eval))
-    #data.save_data(generated_data_dir)
-    data.load_data(generated_data_dir, N_train, N_test, N_eval)
+    if not generate_data:
+        (train_data, test_data), N_train, N_test = gen_data(N_train, N_test)
+    else:
+        (train_data, test_data) = gen_data(N_train, N_test)
+    data.set_train_data(train_data)
+    data.set_test_data(test_data)
+    data.save_data(generated_data_dir)
+    #data.load_data(generated_data_dir, N_train, N_test)
     data.convert_to_torch()
 
 gc.collect()
