@@ -1,0 +1,96 @@
+import numpy as np
+import pandas as pd
+from matplotlib import pyplot as plt
+from viz import visualize
+
+
+# TODO: apply kalamnFIlter to complete sequence
+# TODO: make use of second dataset
+
+pos = np.load('data/pos.npy')
+colors = np.load('data/colors.npy')
+n_objects = pos.shape[0]
+T = pos.shape[1]
+
+rolling_media_window_size = 30
+rolling_mean_window_size = 10
+
+
+def plot_trajectories(pos):
+    for k in range(n_objects):
+        traj = pos[k, :, 0]
+        plt.plot(traj, c=colors[k, :])
+
+
+def get_snippets(pos, length, interval):
+    snippets = []
+    for k in range(n_objects):
+        traj = pos[k, :, :]
+        T = traj.shape[0]
+        r_bnd = T - length
+        for t in range(0, r_bnd, interval):
+            snippets.append(traj[t:t+length, :])
+    return np.stack(snippets, axis=0)
+
+
+def center_snippets(snips):
+    return snips - np.expand_dims(np.nanmean(snips, axis=1), axis=1)
+
+
+def scale_snippets(snips):
+    norms = np.linalg.norm(snips, axis=2)
+    norms_std = np.std(np.reshape(norms, -1))
+    print('NORM MEAN:')
+    print(norms_std)
+    snips = snips / (10*np.sqrt(norms_std))
+    return snips
+
+def visualize_snippet(snip):
+    visualize(np.expand_dims(snip, axis=1), isNumpy=True)
+    print(snip)
+
+def rotate_snippets(snips, number_of_rotations):
+
+    def rotate_snippet(snip):
+        theta = np.random.uniform(1, 5)
+        c, s = np.cos(theta), np.sin(theta)
+        R = np.array(((c, -s), (s, c)))
+        rotated_xy = np.matmul(R, snip[:, :2].T).T
+        return np.concatenate([rotated_xy, np.expand_dims(snip[:, 2], axis=1)], axis=1)
+
+    rotated_snips = []
+    for i in range(len(snips)):
+        for r in range(number_of_rotations):
+            rotated_snip = rotate_snippet(snips[i, :, :])
+            rotated_snips.append(rotated_snip)
+    rotated_snips = np.stack(rotated_snips, axis=0)
+    return np.concatenate([rotated_snips, snips], axis=0)
+
+
+plt.subplot(121)
+plot_trajectories(pos)
+pos_smoothened = np.zeros([n_objects, T - rolling_media_window_size + 1, 3])
+for k in range(n_objects):
+    pos_smoothened[k, :, :] = pd.DataFrame(pos[k, :, :]).rolling(rolling_media_window_size).median().to_numpy()[29:, :]
+
+pos_smoothened2 = np.zeros([n_objects,T - rolling_media_window_size + 1 - rolling_mean_window_size + 1, 3])
+for k in range(n_objects):
+    pos_smoothened2[k, :, :] = pd.DataFrame(pos_smoothened[k, :, :]).rolling(rolling_mean_window_size).mean().to_numpy()[9:, :]
+plt.subplot(122)
+plot_trajectories(pos_smoothened2)
+plt.show()
+
+
+snippets = get_snippets(pos_smoothened2, 200, 20)
+snippets = center_snippets(snippets)
+print(snippets[0, :100, :])
+snippets = scale_snippets(snippets)
+print(snippets[0, :100, :])
+
+number_of_rotations = 3
+snippets = rotate_snippets(snippets, number_of_rotations)
+
+
+
+for k in range(500, 1020, 20):
+    visualize_snippet(snippets[k, :, :])
