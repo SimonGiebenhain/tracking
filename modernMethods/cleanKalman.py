@@ -2,12 +2,23 @@ import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 from viz import visualize
+import pickle as pkl
 
 
 # TODO: apply kalamnFIlter to complete sequence
 # TODO: make use of second dataset
 
-pos = np.load('data/pos.npy')
+path = 'data/'
+with open(path + 'all_positionsX.pkl', 'rb') as fin:
+    posX = pkl.load(fin)
+with open(path + 'all_positionsY.pkl', 'rb') as fin:
+    posY = pkl.load(fin)
+with open(path + 'all_positionsZ.pkl', 'rb') as fin:
+    posZ = pkl.load(fin)
+
+pos = np.stack([posX, posY, posZ], axis=2)
+np.save('data/pos_all.npy', pos)
+#pos = np.load('data/pos.npy')
 colors = np.load('data/colors.npy')
 n_objects = pos.shape[0]
 T = pos.shape[1]
@@ -18,7 +29,7 @@ rolling_mean_window_size = 10
 
 def plot_trajectories(pos):
     for k in range(n_objects):
-        traj = pos[k, :, 0]
+        traj = pos[k, :, 2]
         plt.plot(traj, c=colors[k, :])
 
 
@@ -29,7 +40,16 @@ def get_snippets(pos, length, interval):
         T = traj.shape[0]
         r_bnd = T - length
         for t in range(0, r_bnd, interval):
-            snippets.append(traj[t:t+length, :])
+            tr = traj[t:t+length, :]
+            if not np.any(np.isnan(tr)):
+                tr_norm = np.linalg.norm(tr, axis=1)
+                diff = tr_norm[1:] - tr_norm[:-1]
+                if np.any(diff > 50):
+                    print('Big Jump encountered!')
+                else:
+                    snippets.append(tr)
+            else:
+                print('NaN encountered!')
     return np.stack(snippets, axis=0)
 
 
@@ -67,7 +87,7 @@ def rotate_snippets(snips, number_of_rotations):
 
 def save_as_training_data(snips):
     snips = np.transpose(snips, [1, 0, 2])
-    np.save('data/cleaned_kalman_pos.npy', snips)
+    np.save('data/cleaned_kalman_pos_all.npy', snips)
 
 
 plt.subplot(121)
@@ -84,7 +104,8 @@ plot_trajectories(pos_smoothened2)
 plt.show()
 
 
-snippets = get_snippets(pos_smoothened2, 200, 20)
+snippets = get_snippets(pos_smoothened2, 100, 20)
+print(len(snippets))
 snippets = center_snippets(snippets)
 snippets = scale_snippets(snippets)
 
@@ -95,7 +116,7 @@ print(snippets.shape)
 
 save_as_training_data(snippets)
 
+# TODO: could also mirror
 
-
-for k in range(500, 1020, 20):
-    visualize_snippet(snippets[k, :, :])
+#for k in range(500, 1020, 20):
+#    visualize_snippet(snippets[k, :, :])

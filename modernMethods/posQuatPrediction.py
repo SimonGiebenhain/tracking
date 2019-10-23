@@ -32,14 +32,14 @@ if not use_colab:
     from vizTracking import visualize_tracking
 
 
-MODEL_NAME = 'LSTM'
+MODEL_NAME = 'LSTM_BIRDS'
 TASK = 'PosQuatPred; '
 
-drop_some_dets = True
+drop_some_dets = False
 add_false_positives = False
 add_noise = False
 NOISE_STD = 0.01
-use_const_pat = False
+use_const_pat = True
 generate_data = False
 
 if use_colab:
@@ -70,8 +70,8 @@ else:
 BATCH_SIZE = 32
 NUM_EPOCHS = 50
 LEARNING_RATE = 0.001
-STRONG_DROPOUT_RATE = 0.15
-WEAK_DROPOUT_RATE = 0.05
+STRONG_DROPOUT_RATE = 0.05
+WEAK_DROPOUT_RATE = 0.01
 
 CHECKPOINT_INTERVAL = 10
 save_model_every_interval = False
@@ -82,24 +82,24 @@ N_test = int(N_train/10)
 
 T = 100
 
-fc1_det_dim = 200
-fc2_det_dim = 300
-fc3_det_dim = 300
-fc4_det_dim = 300
-fc5_det_dim = 200
+fc1_det_dim = 20
+fc2_det_dim = 30
+fc3_det_dim = 30
+fc4_det_dim = 30
+fc5_det_dim = 20
 
-fc1_pat_dim = 200
-fc2_pat_dim = 300
-fc3_pat_dim = 300
-fc4_pat_dim = 150
+fc1_pat_dim = 20
+fc2_pat_dim = 30
+fc3_pat_dim = 30
+fc4_pat_dim = 15
 
-hidden_dim = 50
+hidden_dim = 20
 
-fc1_quat_size = 100
-fc2_quat_size = 50
+fc1_quat_size = 20
+fc2_quat_size = 5
 
-fc1_pos_size = 100
-fc2_pos_size = 50
+fc1_pos_size = 20
+fc2_pos_size = 5
 
 #fc1_det_dim = 250
 #fc2_det_dim = 300
@@ -112,6 +112,13 @@ fc2_pos_size = 50
 #fc_out_1_size = 30
 
 
+# TODO: MATLAB: HOW TO REINITIALIZE LOST TRACKS??
+
+# TODO: make position independent,
+
+# TODO: use noise model to drop detections
+# TODO: think about noise model for false positives
+
 # TODO: write some preprocessing methods, i.e. pattern should have std. dev of 1 of norm of markers or something
 
 # TODO: improve false positives, i.e. roll where last real detection is, delete rest, roll where to put fp between real detections
@@ -121,14 +128,7 @@ fc2_pos_size = 50
 # TODO: experiment with recurrent dropout and batch normalization
 # TODO: peephole lstm
 
-# TODO: proper noise model, look at noise behaviour for individual markers inside pattern
-# TODO: generate bird behaviour from VICON predictions, if not enough use kalman filter predictions
-# TODO: eval() with old model should work, but doesn't!
-# TODO: mail an guldlücke und ask for pigeon data
-
 # TODO: at some point figure out good dropout rate, and other hyper parms
-
-# TODO: try relative inupts instead of absolute detections
 
 # TODO: look at hand notes for more ideas, e.g. multi modal predictions
 # TODO: read some papers for more ideas
@@ -185,37 +185,57 @@ class TrainingData():
         self.pos_test = data_dict['pos']
         self.pattern_test = data_dict['pattern']
 
-    def load_data(self, dir_name, N_train, N_test):
-        self.X_train = np.load(dir_name + '/X_train' + str(N_train) + '.npy')
-        self.X_train_shuffled = np.load(dir_name + '/X_train_shuffled' + str(N_train) + '.npy')
-        self.quat_train = np.load(dir_name + '/quat_train' + str(N_train) + '.npy')
-        self.pos_train = np.load(dir_name + '/pos_train' + str(N_train) + '.npy')
-        self.pattern_train = np.load(dir_name + '/pattern_train' + str(N_train) + '.npy')
+    def load_data(self, dir_name, N_train, N_test, name):
+        dname = dir_name + '_' + name
+        if generate_data:
+            postfix = str(N_train) + '.npy'
+        else:
+            postfix = '.npy'
+        self.X_train = np.load(dname + '/X_train' + postfix)
+        self.X_train_shuffled = np.load(dname + '/X_train_shuffled' + postfix)
+        self.quat_train = np.load(dname + '/quat_train' + postfix)
+        self.pos_train = np.load(dname + '/pos_train' + postfix)
+        self.pattern_train = np.load(dname + '/pattern_train' + postfix)
+        # TODO:
+        self.X_train_shuffled = make_detections_relative(self.X_train_shuffled, self.pos_train)
 
-        self.X_test = np.load(dir_name + '/X_test' + str(N_test) + '.npy')
-        self.X_test_shuffled = np.load(dir_name + '/X_test_shuffled' + str(N_test) + '.npy')
-        self.quat_test = np.load(dir_name + '/quat_test' + str(N_test) + '.npy')
-        self.pos_test = np.load(dir_name + '/pos_test' + str(N_test) + '.npy')
-        self.pattern_test = np.load(dir_name + '/pattern_test' + str(N_test) + '.npy')
+        if generate_data:
+            postfix = str(N_test) + '.npy'
+        else:
+            postfix = '.npy'
+        self.X_test = np.load(dname + '/X_test' + postfix)
+        self.X_test_shuffled = np.load(dname + '/X_test_shuffled' + postfix)
+        self.quat_test = np.load(dname + '/quat_test' + postfix)
+        self.pos_test = np.load(dname + '/pos_test' + postfix)
+        self.pattern_test = np.load(dname + '/pattern_test' + postfix)
+        # TODO: write method of TrainingData() class, which does this
+        # TODO: introduce delta-pos
+        # TODO: in order to calculate pose error use pos to revert back to absolute values
+        self.X_test_shuffled = make_detections_relative(self.X_test_shuffled, self.pos_test)
 
         print('Loaded data successfully!')
 
-    def save_data(self, dir_name):
-        if not os.path.exists(dir_name):
-            os.mkdir(dir_name)
+    def save_data(self, dir_name, name):
+        dname = dir_name + '_' + name
+        if not os.path.exists(dname):
+            os.mkdir(dname)
         N = np.shape(self.X_train)[1]
-        np.save(dir_name + '/X_train' + str(N) + '.npy', self.X_train)
-        np.save(dir_name + '/X_train_shuffled' + str(N) + '.npy', self.X_train_shuffled)
-        np.save(dir_name + '/quat_train' + str(N) + '.npy', self.quat_train)
-        np.save(dir_name + '/pos_train' + str(N) + '.npy', self.pos_train)
-        np.save(dir_name + '/pattern_train' + str(N) + '.npy', self.pattern_train)
+        if generate_data:
+            postfix = str(N) + '.npy'
+        else:
+            postfix = '.npy'
+        np.save(dname + '/X_train' + postfix, self.X_train)
+        np.save(dname + '/X_train_shuffled' + postfix, self.X_train_shuffled)
+        np.save(dname + '/quat_train' + postfix, self.quat_train)
+        np.save(dname + '/pos_train' + postfix, self.pos_train)
+        np.save(dname + '/pattern_train' + postfix, self.pattern_train)
 
         N = np.shape(self.X_test)[1]
-        np.save(dir_name + '/X_test' + str(N) + '.npy', self.X_test)
-        np.save(dir_name + '/X_test_shuffled' + str(N) + '.npy', self.X_test_shuffled)
-        np.save(dir_name + '/quat_test' + str(N) + '.npy', self.quat_test)
-        np.save(dir_name + '/pos_test' + str(N) + '.npy', self.pos_test)
-        np.save(dir_name + '/pattern_test' + str(N) + '.npy', self.pattern_test)
+        np.save(dname + '/X_test' + postfix, self.X_test)
+        np.save(dname + '/X_test_shuffled' + postfix, self.X_test_shuffled)
+        np.save(dname + '/quat_test' + postfix, self.quat_test)
+        np.save(dname + '/pos_test' + postfix, self.pos_test)
+        np.save(dname + '/pattern_test' + postfix, self.pattern_test)
 
         print('Saved data successfully!')
 
@@ -529,7 +549,7 @@ def gen_data(N_train, N_test):
     print(N_test)
     if not generate_data:
         ratio = N_train / (N_train + N_test)
-        pos = np.load('data/cleaned_kalman_pos.npy')
+        pos = np.load('data/cleaned_kalman_pos_all.npy')
         true_N = pos.shape[1]
         N_train = ceil(true_N * ratio)
         pos_train = pos[:, :N_train, :]
@@ -552,7 +572,6 @@ def gen_data(N_train, N_test):
             quat[:, n, :] = gen_quats(T)
 
 
-
         pos_stacked = np.tile(pos, [1, 1, 4])
         if add_false_positives:
             pos_stacked_fp = np.tile(pos, [1, 1, 5])
@@ -563,6 +582,7 @@ def gen_data(N_train, N_test):
             pattern, _, _, _, _ = gen_pattern_constant(N)
         else:
             pattern, _, _, _, _ = gen_pattern(N)
+        pattern = pattern / 10
 
         X = np.zeros([T, N, 12])
         if add_false_positives:
@@ -620,6 +640,10 @@ def gen_data(N_train, N_test):
     else:
         return (gen_datum(N_train, pos_train), gen_datum(N_test, pos_test)), N_train, N_test
 
+
+def make_detections_relative(dets, pos):
+    tiled_pos = np.tile(pos, [1, 1, 4])
+    return dets[1:, :, :] - tiled_pos[:-1, :, :]
 
 class customLSTMCell(nn.Module):
     def __init__(self, input_size_det, input_size_pat, hidden_size, bias=True):
@@ -873,8 +897,8 @@ class LSTMTracker(nn.Module):
         return x_quat, x_pos, rotated_pattern
 
 
-model = customLSTM(hidden_dim, bias=True)
-#model = LSTMTracker(hidden_dim)
+#model = customLSTM(hidden_dim, bias=True)
+model = LSTMTracker(hidden_dim)
 if use_colab and torch.cuda.is_available():
     print('USING CUDA DEVICE')
     model.cuda()
@@ -980,17 +1004,19 @@ def train(data):
     logger.save_log()
 
 
-def eval(name):
-    data = TrainingData()
-    data.load_data(generated_data_dir, N_train, N_test)
-    data.convert_to_torch()
-    model = torch.load(name)
+def eval(name, data):
+    #data = TrainingData()
+    #data.load_data(generated_data_dir, N_train, N_test, 'all')
+    #data.convert_to_torch()
+    model = torch.load(name, map_location=lambda storage, loc: storage)
     model.eval()
 
     with torch.no_grad():
         quat_preds, pos_preds, _ = model(data.X_test[:-1, :, :], data.pattern_test[:-1, :, :])
 
-        for n in range(10):
+        for n in range(10000):
+            if np.amax(np.reshape(pos_preds[:, n, :].numpy(), -1)) < 2:
+                continue
             visualize_tracking(pos_preds[:, n, :].detach().numpy(),
                                quat_preds[:, n, :].detach().numpy(),
                                data.pos_test[1:, n, :].detach().numpy(),
@@ -1007,31 +1033,31 @@ def eval(name):
 
 if use_colab:
     data = TrainingData()
-    if not generate_data:
-        train_data, test_data, N_train, N_test = gen_data(N_train, N_test)
-    else:
-        (train_data, test_data) = gen_data(N_train, N_test)
-    data.set_train_data(train_data)
-    data.set_test_data(test_data)
-    data.save_data(generated_data_dir)
-    #data.load_data(generated_data_dir, N_train, N_test)
+    #if not generate_data:
+    #    train_data, test_data, N_train, N_test = gen_data(N_train, N_test)
+    #else:
+    #    (train_data, test_data) = gen_data(N_train, N_test)
+    #data.set_train_data(train_data)
+    #data.set_test_data(test_data)
+    #data.save_data(generated_data_dir, 'all')
+    data.load_data(generated_data_dir, N_train, N_test, 'all')
     data.convert_to_torch()
 
 else:
     data = TrainingData()
-    if not generate_data:
-        (train_data, test_data), N_train, N_test = gen_data(N_train, N_test)
-    else:
-        (train_data, test_data) = gen_data(N_train, N_test)
-    data.set_train_data(train_data)
-    data.set_test_data(test_data)
-    data.save_data(generated_data_dir)
-    #data.load_data(generated_data_dir, N_train, N_test)
+    #if not generate_data:
+    #    (train_data, test_data), N_train, N_test = gen_data(N_train, N_test)
+    #else:
+    #    (train_data, test_data) = gen_data(N_train, N_test)
+    #data.set_train_data(train_data)
+    #data.set_test_data(test_data)
+    #data.save_data(generated_data_dir, 'all')
+    data.load_data(generated_data_dir, N_train, N_test, 'all')
     data.convert_to_torch()
 
 gc.collect()
 train(data)
 gc.collect()
 if not use_colab:
-    eval(name)
-    #eval('LSTM_PQPDCP_15.10.2019@22:48:10/model_best.npy')
+    eval(name, data)
+    #eval('LSTM_BIRDS_good/model_best.npy', data)
