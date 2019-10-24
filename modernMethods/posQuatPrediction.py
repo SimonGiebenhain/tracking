@@ -177,6 +177,7 @@ class TrainingData():
         self.quat_train = data_dict['quat']
         self.pos_train = data_dict['pos']
         self.pattern_train = data_dict['pattern']
+        self.make_relative()
 
     def set_test_data(self, data_dict):
         self.X_test = data_dict['X']
@@ -184,6 +185,21 @@ class TrainingData():
         self.quat_test = data_dict['quat']
         self.pos_test = data_dict['pos']
         self.pattern_test = data_dict['pattern']
+        self.make_relative()
+
+    def make_relative(self):
+        self.X_train_shuffled = make_detections_relative(self.X_train_shuffled, self.pos_train)
+        self.X_test_shuffled = make_detections_relative(self.X_test_shuffled, self.pos_test)
+        self.delta_pos_train = make_pos_relative(self.pos_train)
+        self.delta_pos_test = make_pos_relative(self.pos_test)
+        self.pattern_train = self.pattern_train[1:, :, :]
+        self.pattern_test = self.pattern_test[1:, :, :]
+        self.X_train = self.X_train[1:, :, :]
+        self.X_test = self.X_test[1:, :, :]
+        self.quat_train = self.quat_train[1:, :, :]
+        self.quat_test = self.quat_test[1:, :, :]
+        self.pos_train = self.pos_train[1:, :, :]
+        self.pos_test = self.pos_test[1:, :, :]
 
     def load_data(self, dir_name, N_train, N_test, name):
         dname = dir_name + '_' + name
@@ -196,8 +212,6 @@ class TrainingData():
         self.quat_train = np.load(dname + '/quat_train' + postfix)
         self.pos_train = np.load(dname + '/pos_train' + postfix)
         self.pattern_train = np.load(dname + '/pattern_train' + postfix)
-        # TODO:
-        self.X_train_shuffled = make_detections_relative(self.X_train_shuffled, self.pos_train)
 
         if generate_data:
             postfix = str(N_test) + '.npy'
@@ -208,10 +222,7 @@ class TrainingData():
         self.quat_test = np.load(dname + '/quat_test' + postfix)
         self.pos_test = np.load(dname + '/pos_test' + postfix)
         self.pattern_test = np.load(dname + '/pattern_test' + postfix)
-        # TODO: write method of TrainingData() class, which does this
-        # TODO: introduce delta-pos
-        # TODO: in order to calculate pose error use pos to revert back to absolute values
-        self.X_test_shuffled = make_detections_relative(self.X_test_shuffled, self.pos_test)
+        self.make_relative()
 
         print('Loaded data successfully!')
 
@@ -246,24 +257,31 @@ class TrainingData():
             self.quat_train = torch.from_numpy(self.quat_train).float().cuda()
             self.pos_train = torch.from_numpy(self.pos_train).float().cuda()
             self.pattern_train = torch.from_numpy(self.pattern_train).float().cuda()
+            self.delta_pos_train = torch.from_numpy(self.delta_pos_train).float().cuda()
 
             self.X_test = torch.from_numpy(self.X_test).float().cuda()
             self.X_test_shuffled = torch.from_numpy(self.X_test_shuffled).float().cuda()
             self.quat_test = torch.from_numpy(self.quat_test).float().cuda()
             self.pos_test = torch.from_numpy(self.pos_test).float().cuda()
             self.pattern_test = torch.from_numpy(self.pattern_test).float().cuda()
+            self.delta_pos_test = torch.from_numpy(self.delta_pos_test).float().cuda()
+
         else:
             self.X_train = torch.from_numpy(self.X_train).float()
             self.X_train_shuffled = torch.from_numpy(self.X_train_shuffled).float()
             self.quat_train = torch.from_numpy(self.quat_train).float()
             self.pos_train = torch.from_numpy(self.pos_train).float()
             self.pattern_train = torch.from_numpy(self.pattern_train).float()
+            self.delta_pos_train = torch.from_numpy(self.delta_pos_train).float()
+
 
             self.X_test = torch.from_numpy(self.X_test).float()
             self.X_test_shuffled = torch.from_numpy(self.X_test_shuffled).float()
             self.quat_test = torch.from_numpy(self.quat_test).float()
             self.pos_test = torch.from_numpy(self.pos_test).float()
             self.pattern_test = torch.from_numpy(self.pattern_test).float()
+            self.delta_pos_test = torch.from_numpy(self.delta_pos_test).float()
+
         print('Converted data to torch format.')
 
     def convert_to_numpy(self):
@@ -272,12 +290,14 @@ class TrainingData():
         self.quat_train = self.quat_train.numpy()
         self.pos_train = self.pos_train.numpy()
         self.pattern_train = self.pattern_train.numpy()
+        self.delta_pos_train = self.delta_pos_train.numpy()
 
         self.X_test = self.X_test.numpy()
         self.X_test_shuffled = self.X_test_shuffled.numpy()
         self.quat_test = self.quat_test.numpy()
         self.pos_test = self.pos_test.numpy()
         self.pattern_test = self.pattern_test.numpy()
+        self.delta_pos_test = self.delta_pos_test.numpy()
 
         print('Converted data to numpy format.')
 
@@ -645,6 +665,9 @@ def make_detections_relative(dets, pos):
     tiled_pos = np.tile(pos, [1, 1, 4])
     return dets[1:, :, :] - tiled_pos[:-1, :, :]
 
+def make_pos_relative(pos):
+    return pos[1:, :, :] - pos[:-1, :, :]
+
 class customLSTMCell(nn.Module):
     def __init__(self, input_size_det, input_size_pat, hidden_size, bias=True):
         super(customLSTMCell, self).__init__()
@@ -865,13 +888,6 @@ class LSTMTracker(nn.Module):
             x_pat = self.strong_dropout(F.relu(self.fc4_pat(x_pat)))
             x = torch.cat([x, x_pat], dim=2)
 
-        # x_combo = self.dropout(F.relu(self.fc1_combo(x_combo)))
-        # x_combo = self.dropout(F.relu(self.fc2_combo(x_combo)))
-
-        # x = torch.cat([x_det, x_pat], dim=2)
-
-        # x = x_det - x_pat
-
         lstm_out, _ = self.lstm(x)
 
         x_quat = self.weak_dropout(F.relu(self.hidden2quat1(lstm_out)))
@@ -885,6 +901,9 @@ class LSTMTracker(nn.Module):
         quat_norm = torch.sqrt(torch.sum(torch.pow(x_quat, 2, ), dim=2))
         x_quat = x_quat / torch.unsqueeze(quat_norm, dim=2)
 
+        #print('Inside FOrward():')
+        #print(x_quat.shape)
+        #print(marker1.shape)
         rotated_marker1 = qrot(x_quat, marker1) + x_pos
         rotated_marker2 = qrot(x_quat, marker2) + x_pos
         rotated_marker3 = qrot(x_quat, marker3) + x_pos
@@ -908,8 +927,11 @@ if use_colab and torch.cuda.is_available():
     print('Allocated:', round(torch.cuda.memory_allocated(0) / 1024 ** 3, 1), 'GB')
     print('Cached:   ', round(torch.cuda.memory_cached(0) / 1024 ** 3, 1), 'GB')
 
+#def loss_function_pose(pred_quat, pred_delta_pos, pos_truth, marker_truth):
+
+
+loss_function_pos = nn.MSELoss()
 # TODO: respect antipodal pair as well!
-loss_function_pose = nn.MSELoss()
 loss_function_quat = nn.L1Loss()
 optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 lr_scheduler_params = {'mode': 'min', 'factor': 0.5, 'patience': 3, 'min_lr': 1e-06, 'cooldown': 4}
@@ -933,25 +955,32 @@ def train(data):
         gc.collect()
         model.train()
 
-        batches = torch.split(data.X_train_shuffled, BATCH_SIZE, 1)
+        delta_detection_batches = torch.split(data.X_train_shuffled, BATCH_SIZE, 1)
         quat_truth_batches = torch.split(data.quat_train, BATCH_SIZE, 1)
         pos_truth_batches = torch.split(data.pos_train, BATCH_SIZE, 1)
-        batches_not_shuffled = torch.split(data.X_train, BATCH_SIZE, 1)
+        delta_pos_truth_batches = torch.split(data.delta_pos_train, BATCH_SIZE, 1)
+        detections_truth_batches = torch.split(data.X_train, BATCH_SIZE, 1)
         pattern_batches = torch.split(data.pattern_train, BATCH_SIZE, 1)
         avg_loss_pose = 0
         avg_loss_quat = 0
         avg_loss_pos = 0
-        n_batches_per_epoch = len(batches)
+        n_batches_per_epoch = len(delta_detection_batches)
 
-        for k, [batch, quat_truth_batch, pos_truth_batch, batch_not_shuffled, pattern_batch] in enumerate(
-                zip(batches, quat_truth_batches, pos_truth_batches, batches_not_shuffled, pattern_batches)):
+        for k, [delta_dets, quat_truth, pos_truth, marker_truth, delta_pos_truth, pattern_batch] in enumerate(
+                zip(delta_detection_batches, quat_truth_batches, pos_truth_batches, detections_truth_batches,
+                    delta_pos_truth_batches, pattern_batches)):
             model.zero_grad()
 
-            pred_quat, pred_pos, pred_markers = model(batch[:-1, :, :], pattern_batch[:-1, :, :, :])
+            #print('Printing tensor shapes:')
+            #print(delta_dets.shape)
+            #print(pattern_batch.shape)
 
-            loss_pose = loss_function_pose(pred_markers, batch_not_shuffled[1:, :, :])
-            loss_quat = loss_function_quat(pred_quat, quat_truth_batch[1:, :, :])
-            loss_pos = loss_function_pose(pred_pos, pos_truth_batch[1:, :, :])
+            pred_quat, pred_delta_pos, pred_delta_markers = model(delta_dets[:-1, :, :], pattern_batch[:-1, :, :, :])
+
+            pred_markers = pos_truth[:-1, :, :].repeat(1, 1, 4) + pred_delta_markers
+            loss_pose = loss_function_pos(pred_markers, marker_truth[1:, :, :])
+            loss_quat = loss_function_quat(pred_quat, quat_truth[1:, :, :])
+            loss_pos = loss_function_pos(pred_delta_pos, delta_pos_truth[1:, :, :])
 
             loss = loss_pos + loss_quat
             loss.backward()
@@ -960,28 +989,17 @@ def train(data):
             avg_loss_quat += loss_quat
             avg_loss_pos += loss_pos
 
-            #if k % int(n_batches_per_epoch / 10) == 0:
-            #    model.eval()
-            #    with torch.no_grad():
-            #        pred_quat, pred_pos, preds = model(data.X_eval_shuffled[:-1, :, :], data.pattern_eval[:-1, :, :, :])
-            #        loss_pose = loss_function_pose(preds, data.X_eval[1:, :, :])
-            #        loss_quat = loss_function_quat(pred_quat, data.quat_eval[1:, :, :])
-            #        loss_pos = loss_function_pose(pred_pos, data.pos_eval[1:, :, :])
-            #        val_loss = loss_pos + loss_quat
-            #        print(val_loss)
-            #        scheduler.step(val_loss)
-            #    model.train()
-
-        avg_loss_pose /= len(batches)
-        avg_loss_quat /= len(batches)
-        avg_loss_pos /= len(batches)
+        avg_loss_pose /= n_batches_per_epoch
+        avg_loss_quat /= n_batches_per_epoch
+        avg_loss_pos /= n_batches_per_epoch
 
         model.eval()
         with torch.no_grad():
-            pred_quat, pred_pos, preds = model(data.X_test_shuffled[:-1, :, :], data.pattern_test[:-1, :, :, :])
-            loss_pose = loss_function_pose(preds, data.X_test[1:, :, :])
+            pred_quat, pred_delta_pos, pred_delta_markers = model(data.X_test_shuffled[:-1, :, :], data.pattern_test[:-1, :, :, :])
+            pred_markers = data.pos_test[:-1, :, :].repeat(1, 1, 4) + pred_delta_markers
+            loss_pose = loss_function_pos(pred_markers, data.X_test[1:, :, :])
             loss_quat = loss_function_quat(pred_quat, data.quat_test[1:, :, :])
-            loss_pos = loss_function_pose(pred_pos, data.pos_test[1:, :, :])
+            loss_pos = loss_function_pos(pred_delta_pos, data.delta_pos_test[1:, :, :])
             val_loss = loss_pos + loss_quat
             for param_group in optimizer.param_groups:
                 learning_rate = param_group['lr']
@@ -1012,7 +1030,10 @@ def eval(name, data):
     model.eval()
 
     with torch.no_grad():
-        quat_preds, pos_preds, _ = model(data.X_test[:-1, :, :], data.pattern_test[:-1, :, :])
+        quat_preds, pred_delta_pos, _ = model(data.X_test_shuffled[:-1, :, :],
+                                                              data.pattern_test[:-1, :, :, :])
+        # TODO: 1: oder :-1??
+        pos_preds = data.pos_test[:-1, :, :] + pred_delta_pos
 
         for n in range(10000):
             if np.amax(np.reshape(pos_preds[:, n, :].numpy(), -1)) < 2:
@@ -1056,8 +1077,8 @@ else:
     data.convert_to_torch()
 
 gc.collect()
-train(data)
+#train(data)
 gc.collect()
 if not use_colab:
-    eval(name, data)
-    #eval('LSTM_BIRDS_good/model_best.npy', data)
+    #eval(name, data)
+    eval('LSTM_BIRDS_relative/model_best.npy', data)
