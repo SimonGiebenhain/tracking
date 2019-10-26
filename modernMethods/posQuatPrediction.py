@@ -39,7 +39,7 @@ drop_some_dets = False
 add_false_positives = False
 add_noise = False
 NOISE_STD = 0.01
-use_const_pat = True
+use_const_pat = False
 generate_data = False
 
 if use_colab:
@@ -52,7 +52,7 @@ else:
     if use_const_pat:
       generated_data_dir = 'generated_data' + '_const_pat'
     else:
-      generated_data_dir = 'generated_training_data'
+      generated_data_dir = 'generated_data'
 
 if drop_some_dets:
     TASK += 'Drop some detections; '
@@ -70,8 +70,8 @@ else:
 BATCH_SIZE = 32
 NUM_EPOCHS = 50
 LEARNING_RATE = 0.001
-STRONG_DROPOUT_RATE = 0.05
-WEAK_DROPOUT_RATE = 0.01
+STRONG_DROPOUT_RATE = 0.10
+WEAK_DROPOUT_RATE = 0.05
 
 CHECKPOINT_INTERVAL = 10
 save_model_every_interval = False
@@ -82,24 +82,24 @@ N_test = int(N_train/10)
 
 T = 100
 
-fc1_det_dim = 20
-fc2_det_dim = 30
-fc3_det_dim = 30
-fc4_det_dim = 30
-fc5_det_dim = 20
+fc1_det_dim = 300
+fc2_det_dim = 400
+fc3_det_dim = 400
+fc4_det_dim = 400
+fc5_det_dim = 300
 
-fc1_pat_dim = 20
-fc2_pat_dim = 30
-fc3_pat_dim = 30
-fc4_pat_dim = 15
+fc1_pat_dim = 200
+fc2_pat_dim = 300
+fc3_pat_dim = 300
+fc4_pat_dim = 200
 
-hidden_dim = 20
+hidden_dim = 150
 
-fc1_quat_size = 20
-fc2_quat_size = 5
+fc1_quat_size = 200
+fc2_quat_size = 100
 
-fc1_pos_size = 20
-fc2_pos_size = 5
+fc1_pos_size = 200
+fc2_pos_size = 100
 
 #fc1_det_dim = 250
 #fc2_det_dim = 300
@@ -114,14 +114,12 @@ fc2_pos_size = 5
 
 # TODO: MATLAB: HOW TO REINITIALIZE LOST TRACKS??
 
-# TODO: make position independent,
+# TODO: google for MOT specifically instead of trajectory prediction!
+
+# TODO:  be more careful when generating training data from kalman, don't have same traj with differen rotations in train and test
 
 # TODO: use noise model to drop detections
 # TODO: think about noise model for false positives
-
-# TODO: write some preprocessing methods, i.e. pattern should have std. dev of 1 of norm of markers or something
-
-# TODO: improve false positives, i.e. roll where last real detection is, delete rest, roll where to put fp between real detections
 
 # TODO: be patient when working with varying patterns, compare custom architecture(may be too slow!) to in-built LSTM
 # TODO: compare LSTM to simple RNN, and GRU, then design custom cell,
@@ -164,27 +162,27 @@ class TrainingData():
         self.quat_train = None
         self.pos_train = None
         self.pattern_train = None
+        self.delta_pos_train = None
 
         self.X_test = None
         self.X_test_shuffled = None
         self.quat_test = None
         self.pos_test = None
         self.pattern_test = None
+        self.delta_pos_test = None
 
-    def set_train_data(self, data_dict):
-        self.X_train = data_dict['X']
-        self.X_train_shuffled = data_dict['X_shuffled']
-        self.quat_train = data_dict['quat']
-        self.pos_train = data_dict['pos']
-        self.pattern_train = data_dict['pattern']
-        self.make_relative()
+    def set_data(self, train_data_dict, test_data_dict):
+        self.X_train = train_data_dict['X']
+        self.X_train_shuffled = train_data_dict['X_shuffled']
+        self.quat_train = train_data_dict['quat']
+        self.pos_train = train_data_dict['pos']
+        self.pattern_train = train_data_dict['pattern']
 
-    def set_test_data(self, data_dict):
-        self.X_test = data_dict['X']
-        self.X_test_shuffled = data_dict['X_shuffled']
-        self.quat_test = data_dict['quat']
-        self.pos_test = data_dict['pos']
-        self.pattern_test = data_dict['pattern']
+        self.X_test = test_data_dict['X']
+        self.X_test_shuffled = test_data_dict['X_shuffled']
+        self.quat_test = test_data_dict['quat']
+        self.pos_test = test_data_dict['pos']
+        self.pattern_test = test_data_dict['pattern']
         self.make_relative()
 
     def make_relative(self):
@@ -212,6 +210,7 @@ class TrainingData():
         self.quat_train = np.load(dname + '/quat_train' + postfix)
         self.pos_train = np.load(dname + '/pos_train' + postfix)
         self.pattern_train = np.load(dname + '/pattern_train' + postfix)
+        self.delta_pos_train = np.load(dname + '/delta_pos_train' + postfix)
 
         if generate_data:
             postfix = str(N_test) + '.npy'
@@ -222,12 +221,13 @@ class TrainingData():
         self.quat_test = np.load(dname + '/quat_test' + postfix)
         self.pos_test = np.load(dname + '/pos_test' + postfix)
         self.pattern_test = np.load(dname + '/pattern_test' + postfix)
-        self.make_relative()
+        self.delta_pos_test = np.load(dname + '/delta_pos_test' + postfix)
 
         print('Loaded data successfully!')
 
     def save_data(self, dir_name, name):
         dname = dir_name + '_' + name
+        print(dname)
         if not os.path.exists(dname):
             os.mkdir(dname)
         N = np.shape(self.X_train)[1]
@@ -240,6 +240,7 @@ class TrainingData():
         np.save(dname + '/quat_train' + postfix, self.quat_train)
         np.save(dname + '/pos_train' + postfix, self.pos_train)
         np.save(dname + '/pattern_train' + postfix, self.pattern_train)
+        np.save(dname + '/delta_pos_train' + postfix, self.delta_pos_train)
 
         N = np.shape(self.X_test)[1]
         np.save(dname + '/X_test' + postfix, self.X_test)
@@ -247,6 +248,7 @@ class TrainingData():
         np.save(dname + '/quat_test' + postfix, self.quat_test)
         np.save(dname + '/pos_test' + postfix, self.pos_test)
         np.save(dname + '/pattern_test' + postfix, self.pattern_test)
+        np.save(dname+ '/delta_pos_test' + postfix, self.delta_pos_test)
 
         print('Saved data successfully!')
 
@@ -273,7 +275,6 @@ class TrainingData():
             self.pos_train = torch.from_numpy(self.pos_train).float()
             self.pattern_train = torch.from_numpy(self.pattern_train).float()
             self.delta_pos_train = torch.from_numpy(self.delta_pos_train).float()
-
 
             self.X_test = torch.from_numpy(self.X_test).float()
             self.X_test_shuffled = torch.from_numpy(self.X_test_shuffled).float()
@@ -570,7 +571,14 @@ def gen_data(N_train, N_test):
     if not generate_data:
         ratio = N_train / (N_train + N_test)
         pos = np.load('data/cleaned_kalman_pos_all.npy')
+        #pos_fast = []
         true_N = pos.shape[1]
+        #for n in range(true_N):
+        #    p = pos[:, n, :]
+        #    if np.max(p) > 2:
+        #        pos_fast.append(p)
+        #pos = np.stack(pos_fast, 1)
+        #true_N = pos.shape[1]
         N_train = ceil(true_N * ratio)
         pos_train = pos[:, :N_train, :]
         pos_test = pos[:, N_train:, :]
@@ -882,7 +890,7 @@ class LSTMTracker(nn.Module):
         x = self.strong_dropout(F.relu(self.fc5_det(x)))
 
         if not use_const_pat:
-            x_pat = self.weak_dropout(F.relu(self.fc1_pat(patterns.view(T - 1, -1, 12))))
+            x_pat = self.weak_dropout(F.relu(self.fc1_pat(patterns.view(T - 2, -1, 12))))
             x_pat = self.strong_dropout(F.relu(self.fc2_pat(x_pat)))
             x_pat = self.strong_dropout(F.relu(self.fc3_pat(x_pat)))
             x_pat = self.strong_dropout(F.relu(self.fc4_pat(x_pat)))
@@ -982,7 +990,7 @@ def train(data):
             loss_quat = loss_function_quat(pred_quat, quat_truth[1:, :, :])
             loss_pos = loss_function_pos(pred_delta_pos, delta_pos_truth[1:, :, :])
 
-            loss = loss_pos + loss_quat
+            loss = 100*loss_pos + loss_quat
             loss.backward()
             optimizer.step()
             avg_loss_pose += loss_pose
@@ -1000,12 +1008,12 @@ def train(data):
             loss_pose = loss_function_pos(pred_markers, data.X_test[1:, :, :])
             loss_quat = loss_function_quat(pred_quat, data.quat_test[1:, :, :])
             loss_pos = loss_function_pos(pred_delta_pos, data.delta_pos_test[1:, :, :])
-            val_loss = loss_pos + loss_quat
+            val_loss = 100*loss_pos + loss_quat
             for param_group in optimizer.param_groups:
                 learning_rate = param_group['lr']
-                print("Epoch: {epoch:2d}, Learning Rate: {learning_rate:1.8f} \n TrainPoseLoss: {train_pose:2.4f}, "
-                      "TrainQuatLoss: {train_quat:2.4f}  TrainPosLoss: {train_pos:2.4f} \t "
-                      "TestPoseLoss: {test_pose:2.4f}, TestQuatLoss: {test_quat:2.4f}, TestPosLoss: {test_pos:2.4f}".format(
+                print("Epoch: {epoch:2d}, Learning Rate: {learning_rate:1.8f} \n TrainPose: {train_pose:1.6f}, "
+                      "TrainQuat: {train_quat:1.4f}  TrainPos: {train_pos:1.6f} \t "
+                      "TestPose: {test_pose:1.6f}, TestQuat: {test_quat:1.4f}, TestPos: {test_pos:1.6f}".format(
                     epoch=epoch, learning_rate=learning_rate,
                     train_pose=avg_loss_pose.data, train_quat=avg_loss_quat.data, train_pos=avg_loss_pos.data,
                     test_pose=loss_pose, test_quat=loss_quat, test_pos=loss_pos.data))
@@ -1028,21 +1036,27 @@ def eval(name, data):
     #data.convert_to_torch()
     model = torch.load(name, map_location=lambda storage, loc: storage)
     model.eval()
-
+    printed_slow = False
     with torch.no_grad():
-        quat_preds, pred_delta_pos, _ = model(data.X_test_shuffled[:-1, :, :],
-                                                              data.pattern_test[:-1, :, :, :])
+        quat_preds, pred_delta_pos, _ = model(data.X_test_shuffled[:-1, :, :], data.pattern_test[:-1, :, :, :])
         # TODO: 1: oder :-1??
         pos_preds = data.pos_test[:-1, :, :] + pred_delta_pos
 
         for n in range(10000):
             if np.amax(np.reshape(pos_preds[:, n, :].numpy(), -1)) < 2:
+                #if not printed_slow:
+                #    print('slow')
+                #    print(pred_delta_pos[:, n, :])
+                #    printed_slow = True
                 continue
+            print('fast')
+            print(pred_delta_pos[:, n, : ])
+
             visualize_tracking(pos_preds[:, n, :].detach().numpy(),
                                quat_preds[:, n, :].detach().numpy(),
                                data.pos_test[1:, n, :].detach().numpy(),
                                data.quat_test[1:, n, :].detach().numpy(),
-                               data.X_test_shuffled[:-1, n, :].numpy(),
+                               data.X_test[:-1, n, :].numpy(), #data.X_test_shuffled[:-1, n, :].numpy(),
                                data.pattern_test[0, n, :].numpy())
 
 
@@ -1058,27 +1072,26 @@ if use_colab:
     #    train_data, test_data, N_train, N_test = gen_data(N_train, N_test)
     #else:
     #    (train_data, test_data) = gen_data(N_train, N_test)
-    #data.set_train_data(train_data)
-    #data.set_test_data(test_data)
+    #data.set_data(train_data, test_data)
     #data.save_data(generated_data_dir, 'all')
     data.load_data(generated_data_dir, N_train, N_test, 'all')
     data.convert_to_torch()
 
 else:
     data = TrainingData()
-    #if not generate_data:
-    #    (train_data, test_data), N_train, N_test = gen_data(N_train, N_test)
-    #else:
-    #    (train_data, test_data) = gen_data(N_train, N_test)
-    #data.set_train_data(train_data)
-    #data.set_test_data(test_data)
-    #data.save_data(generated_data_dir, 'all')
+    if not generate_data:
+        (train_data, test_data), N_train, N_test = gen_data(N_train, N_test)
+    else:
+        (train_data, test_data) = gen_data(N_train, N_test)
+    data.set_data(train_data, test_data)
+    data.save_data(generated_data_dir, 'all')
+    data = TrainingData()
     data.load_data(generated_data_dir, N_train, N_test, 'all')
     data.convert_to_torch()
 
 gc.collect()
-#train(data)
+train(data)
 gc.collect()
 if not use_colab:
-    #eval(name, data)
-    eval('LSTM_BIRDS_relative/model_best.npy', data)
+    eval(name, data)
+    #eval('LSTM_BIRDS_katrin/model_best.npy', data)
