@@ -26,6 +26,8 @@ T = pos.shape[1]
 rolling_media_window_size = 30
 rolling_mean_window_size = 10
 
+num_similar_copies = 10
+
 
 def plot_trajectories(pos):
     for k in range(n_objects):
@@ -63,24 +65,56 @@ def scale_snippets(snips):
     snips = snips / (10*np.sqrt(norms_std))
     return snips
 
+def balance_snippets(snips):
+    N = snips.shape[0]
+    interesting_snips = []
+    new_copies = 0
+    for n in range(N):
+        snip = snips[n, :, :]
+        maxi = np.max(snip)
+        if maxi > 1.7:
+            for _ in range(num_similar_copies):
+                scale = np.random.uniform(0.5, 2, [1, 3])
+                theta = np.random.uniform(2,4)
+                snip = snip * scale
+                snip = rotate_snippet(snip, theta)
+                interesting_snips.append(snip)
+                new_copies += 1
+        elif maxi > 1.2:
+            for _ in range(num_similar_copies):
+                scale = np.random.uniform(0.8, 3, [1, 3])
+                theta = np.random.uniform(2,4)
+                snip = snip * scale
+                snip = rotate_snippet(snip, theta)
+                interesting_snips.append(snip)
+                new_copies += 1
+        else:
+            interesting_snips.append(snip)
+    print('Number of fast snips')
+    print(new_copies)
+    print('Number of all snips')
+    print(len(interesting_snips))
+    return np.stack(interesting_snips, axis=0)
+
+
 
 def visualize_snippet(snip):
     visualize(np.expand_dims(snip, axis=1), isNumpy=True)
 
 
+def rotate_snippet(snip, theta):
+    #theta = np.random.uniform(1, 5)
+    c, s = np.cos(theta), np.sin(theta)
+    R = np.array(((c, -s), (s, c)))
+    rotated_xy = np.matmul(R, snip[:, :2].T).T
+    return np.concatenate([rotated_xy, np.expand_dims(snip[:, 2], axis=1)], axis=1)
+
 def rotate_snippets(snips, number_of_rotations):
-
-    def rotate_snippet(snip):
-        theta = np.random.uniform(1, 5)
-        c, s = np.cos(theta), np.sin(theta)
-        R = np.array(((c, -s), (s, c)))
-        rotated_xy = np.matmul(R, snip[:, :2].T).T
-        return np.concatenate([rotated_xy, np.expand_dims(snip[:, 2], axis=1)], axis=1)
-
     rotated_snips = []
     for i in range(len(snips)):
         for r in range(number_of_rotations):
-            rotated_snip = rotate_snippet(snips[i, :, :])
+            theta = np.random.uniform(1, 5)
+            rotated_snip = rotate_snippet(snips[i, :, :], theta)
             rotated_snips.append(rotated_snip)
     rotated_snips = np.stack(rotated_snips, axis=0)
     return np.concatenate([rotated_snips, snips], axis=0)
@@ -108,9 +142,10 @@ snippets = get_snippets(pos_smoothened2, 100, 20)
 print(len(snippets))
 snippets = center_snippets(snippets)
 snippets = scale_snippets(snippets)
+snippets = balance_snippets(snippets)
 
-number_of_rotations = 3
-snippets = rotate_snippets(snippets, number_of_rotations)
+#number_of_rotations = 3
+#snippets = rotate_snippets(snippets, number_of_rotations)
 
 print(snippets.shape)
 
