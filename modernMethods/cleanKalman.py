@@ -26,7 +26,7 @@ T = pos.shape[1]
 rolling_media_window_size = 30
 rolling_mean_window_size = 10
 
-num_similar_copies = 10
+num_similar_copies = 15
 
 
 def plot_trajectories(pos):
@@ -63,6 +63,10 @@ def scale_snippets(snips):
     norms = np.linalg.norm(snips, axis=2)
     norms_std = np.std(np.reshape(norms, -1))
     snips = snips / (10*np.sqrt(norms_std))
+    new_norms = np.linalg.norm(snips, axis=2)
+    plt.hist(new_norms)
+    plt.show()
+    print(np.std(new_norms))
     return snips
 
 def balance_snippets(snips):
@@ -74,22 +78,24 @@ def balance_snippets(snips):
         maxi = np.max(snip)
         if maxi > 1.7:
             for _ in range(num_similar_copies):
-                scale = np.random.uniform(0.5, 2, [1, 3])
-                theta = np.random.uniform(2,4)
+                scale = np.random.uniform(0.7, 1.2, [1, 3])
+                theta = np.random.uniform(1, 5)
                 snip = snip * scale
                 snip = rotate_snippet(snip, theta)
                 interesting_snips.append(snip)
                 new_copies += 1
+                #visualize_snippet(snip)
         elif maxi > 1.2:
             for _ in range(num_similar_copies):
-                scale = np.random.uniform(0.8, 3, [1, 3])
-                theta = np.random.uniform(2,4)
+                scale = np.random.uniform(0.7, 1.5, [1, 3])
+                theta = np.random.uniform(1, 5)
                 snip = snip * scale
                 snip = rotate_snippet(snip, theta)
                 interesting_snips.append(snip)
                 new_copies += 1
         else:
-            interesting_snips.append(snip)
+            if np.random.uniform(0, 1) < 0.2:
+                interesting_snips.append(snip)
     print('Number of fast snips')
     print(new_copies)
     print('Number of all snips')
@@ -142,7 +148,7 @@ snippets = get_snippets(pos_smoothened2, 100, 20)
 print(len(snippets))
 snippets = center_snippets(snippets)
 snippets = scale_snippets(snippets)
-snippets = balance_snippets(snippets)
+#snippets = balance_snippets(snippets)
 
 #number_of_rotations = 3
 #snippets = rotate_snippets(snippets, number_of_rotations)

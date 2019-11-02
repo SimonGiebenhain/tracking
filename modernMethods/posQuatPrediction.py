@@ -32,15 +32,21 @@ if not use_colab:
     from vizTracking import visualize_tracking
 
 
-MODEL_NAME = 'LSTM_BIRDS'
-TASK = 'PosQuatPred; '
 
-drop_some_dets = False
+drop_some_dets = True
 add_false_positives = False
 add_noise = False
 NOISE_STD = 0.01
 use_const_pat = False
 generate_data = False
+multi_modal = True
+
+TASK = 'PosQuatPred; '
+MODEL_NAME = 'LSTM_BIRDS'
+
+if multi_modal:
+    MODEL_NAME += '_MoG'
+
 
 if use_colab:
     if use_const_pat:
@@ -82,24 +88,26 @@ N_test = int(N_train/10)
 
 T = 100
 
-fc1_det_dim = 300
-fc2_det_dim = 400
-fc3_det_dim = 400
-fc4_det_dim = 400
-fc5_det_dim = 300
+fc1_det_dim = 50
+fc2_det_dim = 100
+fc3_det_dim = 100
+fc4_det_dim = 200
+fc5_det_dim = 100
 
-fc1_pat_dim = 200
-fc2_pat_dim = 300
-fc3_pat_dim = 300
-fc4_pat_dim = 200
+fc1_pat_dim = 50
+fc2_pat_dim = 100
+fc3_pat_dim = 100
+fc4_pat_dim = 50
 
-hidden_dim = 150
+hidden_dim = 100
 
-fc1_quat_size = 200
-fc2_quat_size = 100
+fc1_quat_size = 50
+fc2_quat_size = 20
 
-fc1_pos_size = 200
-fc2_pos_size = 100
+fc1_pos_size = 50
+fc2_pos_size = 20
+
+n_mixture_components = 3
 
 #fc1_det_dim = 250
 #fc2_det_dim = 300
@@ -111,6 +119,18 @@ fc2_pos_size = 100
 #hidden_dim = 75
 #fc_out_1_size = 30
 
+# TODO: traiing data: ever traj with every pattern, then maybe even add the same ones again with different missing detections etc.
+
+# TODO: incorporate long distance predictions and temporal consistency, is that compatible with the multi-modality
+#       is it good to only predict delta_x since errors don't accumulate, think about how to fix
+#       maybe remove delta again and make snippets shorter
+
+# TODO: only use fast snips, but in many variants
+# TODO: use some stationary but not all
+
+# TODO: do I handle anti-podal paris correctly?
+
+# TODO: predict gaussian, then mixture of gaussians
 
 # TODO: MATLAB: HOW TO REINITIALIZE LOST TRACKS??
 
@@ -152,7 +172,7 @@ def gen_folder_name(task, name):
         short_name = name
     now = datetime.now()
     dt_str = now.strftime("%d.%m.%Y@%H:%M:%S")
-    return short_name + '_' + short_task + '_' + dt_str
+    return 'models/' + short_name + '_' + short_task + '_' + dt_str
 
 
 class TrainingData():
@@ -566,19 +586,28 @@ def qrot(q, v):
 # TODO: vecotrize with qrot() and by shuffling markers while generating them
 def gen_data(N_train, N_test):
 
-    print(N_train)
-    print(N_test)
     if not generate_data:
         ratio = N_train / (N_train + N_test)
         pos = np.load('data/cleaned_kalman_pos_all.npy')
-        #pos_fast = []
         true_N = pos.shape[1]
-        #for n in range(true_N):
-        #    p = pos[:, n, :]
-        #    if np.max(p) > 2:
-        #        pos_fast.append(p)
-        #pos = np.stack(pos_fast, 1)
-        #true_N = pos.shape[1]
+        norms = np.linalg.norm(pos, axis=2)
+        is_moving = np.any(norms > 2, axis=0)
+        num_moving = np.count_nonzero(is_moving)
+        num_static = true_N - num_moving
+
+        moving_pos = pos[:, is_moving, :]
+        static_pos = pos[:, np.logical_not(is_moving), :]
+        static_pos = np.transpose(np.random.permutation(np.transpose(static_pos, [1, 0, 2])), [1, 0, 2])
+        static_pos = static_pos[:, :num_moving, :]
+
+        selected_pos = np.concatenate([moving_pos, static_pos], axis=1)
+        selected_pos = np.transpose(selected_pos, axes=[1, 0, 2])
+        selected_pos = np.random.permutation(selected_pos)
+        pos = np.transpose(selected_pos, [1, 0, 2])
+        true_N = np.shape(pos)[1]
+
+
+
         N_train = ceil(true_N * ratio)
         pos_train = pos[:, :N_train, :]
         pos_test = pos[:, N_train:, :]
@@ -593,6 +622,13 @@ def gen_data(N_train, N_test):
         else:
             pos = pos_data
 
+        if use_colab:
+            patterns = np.load(colab_path_prefix + 'patterns.npy')
+        else:
+            patterns = np.load('data/patterns.npy')
+        patterns = patterns / 10
+        num_positions = N
+        N = N * len(patterns)
 
         quat = np.zeros([T, N, 4], dtype=np.float32)
 
@@ -600,17 +636,12 @@ def gen_data(N_train, N_test):
             quat[:, n, :] = gen_quats(T)
 
 
-        pos_stacked = np.tile(pos, [1, 1, 4])
+        pos_stacked = np.tile(pos, [1, len(patterns), 4])
         if add_false_positives:
-            pos_stacked_fp = np.tile(pos, [1, 1, 5])
+            pos_stacked_fp = np.tile(pos, [1, len(patterns), 5])
         else:
-            pos_stacked_fp = np.tile(pos, [1, 1, 4])
+            pos_stacked_fp = np.tile(pos, [1, len(patterns), 4])
 
-        if use_const_pat:
-            pattern, _, _, _, _ = gen_pattern_constant(N)
-        else:
-            pattern, _, _, _, _ = gen_pattern(N)
-        pattern = pattern / 10
 
         X = np.zeros([T, N, 12])
         if add_false_positives:
@@ -618,9 +649,12 @@ def gen_data(N_train, N_test):
         else:
             X_shuffled = np.zeros([T, N, 12])
 
+        all_patterns = np.zeros([T, N, 4, 3])
+
         for t in range(T):
             for n in range(N):
-                p = pattern[t, n, :, :]
+                p_idx = int(n/num_positions)
+                p = patterns[p_idx, :, :]
                 p_copy = np.copy(p)
 
                 q = Quaternion(quat[t, n, :])
@@ -658,15 +692,127 @@ def gen_data(N_train, N_test):
 
                 rotated_pattern = (q.rotation_matrix @ p.T).T
                 X[t, n, :] = np.reshape(rotated_pattern, -1)
+                all_patterns[t, n, :, :] = p
         X = X + pos_stacked
         X_shuffled = X_shuffled + pos_stacked_fp
 
-        return {'X': X, 'X_shuffled': X_shuffled, 'quat': quat, 'pos': pos, 'pattern': pattern}
+        return {'X': X, 'X_shuffled': X_shuffled, 'quat': quat, 'pos': pos, 'pattern': all_patterns}
 
     if generate_data:
         return (gen_datum(N_train), gen_datum(N_test))
     else:
         return (gen_datum(N_train, pos_train), gen_datum(N_test, pos_test)), N_train, N_test
+
+
+def gen_data_(N_train, N_test):
+
+    print(N_train)
+    print(N_test)
+    if not generate_data:
+        ratio = N_train / (N_train + N_test)
+        pos = np.load('data/cleaned_kalman_pos_all.npy')
+        #pos_fast = []
+        true_N = pos.shape[1]
+        #for n in range(true_N):
+        #    p = pos[:, n, :]
+        #    if np.max(p) > 2:
+        #        pos_fast.append(p)
+        #pos = np.stack(pos_fast, 1)
+        #true_N = pos.shape[1]
+        N_train = ceil(true_N * ratio)
+        pos_train = pos[:, :N_train, :]
+        pos_test = pos[:, N_train:, :]
+        N_test = pos_test.shape[1]
+        print(N_train)
+        print(N_test)
+
+    def gen_datum(N, pos_data=None):
+
+        if generate_data:
+            pos = gen_pos(N)
+        else:
+            pos = pos_data
+
+
+        quat = np.zeros([T, N, 4], dtype=np.float32)
+
+        for n in range(N):
+            quat[:, n, :] = gen_quats(T)
+
+        patterns = np.load('data/patterns.npy')
+        n_pats = len(patterns)
+        pos_stacked = np.tile(pos, [1, n_pats, 4])
+        if add_false_positives:
+            pos_stacked_fp = np.tile(pos, [1, n_pats, 5])
+        else:
+            pos_stacked_fp = np.tile(pos, [1, n_pats, 4])
+
+
+        X = np.zeros([T, N*n_pats, 12])
+        if add_false_positives:
+            X_shuffled = np.zeros([T, n_pats * N, 15])
+        else:
+            X_shuffled = np.zeros([T, n_pats * N, 12])
+        all_patterns = np.zeros([T, n_pats * N, 4, 3])
+        for k in range(n_pats):
+            pat = np.expand_dims(np.expand_dims(patterns[k, :, :], axis=0), axis=0)
+            pattern = np.tile(pat, [T, N, 1, 1])
+            print(pattern.shape)
+            pattern = pattern / 10
+            all_patterns[:, k*N:(k+1)*N, :, :] = pattern
+
+
+            for t in range(T):
+                for n in range(N):
+                    p = pattern[t, n, :, :]
+                    p_copy = np.copy(p)
+
+                    q = Quaternion(quat[t, n, :])
+                    np.random.shuffle(p_copy)
+                    rotated_pattern = (q.rotation_matrix @ p_copy.T).T
+                    if add_false_positives:
+                        rotated_pattern = np.concatenate([rotated_pattern, np.ones([1, 3]) * -1000], axis=0)
+                        if np.random.uniform(0, 1) < 0.1:
+                            if drop_some_dets:
+                                if np.random.uniform(0, 1) < 0.5:
+                                    if np.random.uniform(0, 1) < 0.5:
+                                        rotated_pattern[3, :] = np.ones([1, 3]) * -1000
+                                        rotated_pattern[2, :] = np.random.uniform(-2, 2, [1, 3])
+                                    else:
+                                        rotated_pattern[3, :] = np.random.uniform(-2, 2, [1, 3])
+                                else:
+                                    rotated_pattern[4, :] = np.random.uniform(-2, 2, [1, 3])
+                            else:
+                                rotated_pattern[4, :] = np.random.uniform(-2, 2, [1, 3])
+                        else:
+                            if drop_some_dets and np.random.uniform(0, 1) < 0.5:
+                                rotated_pattern[3, :] = np.array([-1000, -1000, -1000])
+                                if drop_some_dets and np.random.uniform(0, 1) < 0.5:
+                                    rotated_pattern[2, :] = np.array([-1000, -1000, -1000])
+                    else:
+                        if drop_some_dets and np.random.uniform(0, 1) < 0.5:
+                            rotated_pattern[3, :] = np.array([-1000, -1000, -1000])
+                            if drop_some_dets and np.random.uniform(0, 1) < 0.5:
+                                rotated_pattern[2, :] = np.array([-1000, -1000, -1000])
+                    dets = np.reshape(rotated_pattern, -1)
+                    if add_noise:
+                        noise = np.random.normal(0, NOISE_STD, np.shape(dets))
+                        dets = dets + noise
+                    X_shuffled[t, n*k, :] = dets
+
+                    rotated_pattern = (q.rotation_matrix @ p.T).T
+                    X[t, n*k, :] = np.reshape(rotated_pattern, -1)
+        X = X + pos_stacked
+        X_shuffled = X_shuffled + pos_stacked_fp
+
+        return {'X': X, 'X_shuffled': X_shuffled, 'quat': np.tile(quat, [1, n_pats, 1]), 'pos': np.tile(pos, [1, n_pats, 1]), 'pattern': all_patterns}
+
+    if generate_data:
+        return (gen_datum(N_train), gen_datum(N_test))
+    else:
+        data_train = gen_datum(N_train, pos_train)
+        data_test = gen_datum(N_test, pos_test)
+        return (data_train, data_test), data_train['X'].shape[1], data_test['X'].shape[1]
 
 
 def make_detections_relative(dets, pos):
@@ -987,10 +1133,12 @@ def train(data):
 
             pred_markers = pos_truth[:-1, :, :].repeat(1, 1, 4) + pred_delta_markers
             loss_pose = loss_function_pos(pred_markers, marker_truth[1:, :, :])
-            loss_quat = loss_function_quat(pred_quat, quat_truth[1:, :, :])
+            loss_quat = torch.min(loss_function_quat(pred_quat, quat_truth[1:, :, :]),
+                                  loss_function_quat(-pred_quat, quat_truth[1:, :, :]))
             loss_pos = loss_function_pos(pred_delta_pos, delta_pos_truth[1:, :, :])
 
-            loss = 100*loss_pos + loss_quat
+            #loss = 100*loss_pos + loss_quat
+            loss = loss_pose
             loss.backward()
             optimizer.step()
             avg_loss_pose += loss_pose
@@ -1006,9 +1154,10 @@ def train(data):
             pred_quat, pred_delta_pos, pred_delta_markers = model(data.X_test_shuffled[:-1, :, :], data.pattern_test[:-1, :, :, :])
             pred_markers = data.pos_test[:-1, :, :].repeat(1, 1, 4) + pred_delta_markers
             loss_pose = loss_function_pos(pred_markers, data.X_test[1:, :, :])
-            loss_quat = loss_function_quat(pred_quat, data.quat_test[1:, :, :])
+            loss_quat = torch.min(loss_function_quat(pred_quat, data.quat_test[1:, :, :]),
+                                  loss_function_quat(-pred_quat, data.quat_test[1:, :, :]))
             loss_pos = loss_function_pos(pred_delta_pos, data.delta_pos_test[1:, :, :])
-            val_loss = 100*loss_pos + loss_quat
+            val_loss = loss_pose #100*loss_pos + loss_quat
             for param_group in optimizer.param_groups:
                 learning_rate = param_group['lr']
                 print("Epoch: {epoch:2d}, Learning Rate: {learning_rate:1.8f} \n TrainPose: {train_pose:1.6f}, "
@@ -1052,11 +1201,11 @@ def eval(name, data):
             print('fast')
             print(pred_delta_pos[:, n, : ])
 
-            visualize_tracking(pos_preds[:, n, :].detach().numpy(),
-                               quat_preds[:, n, :].detach().numpy(),
-                               data.pos_test[1:, n, :].detach().numpy(),
-                               data.quat_test[1:, n, :].detach().numpy(),
-                               data.X_test[:-1, n, :].numpy(), #data.X_test_shuffled[:-1, n, :].numpy(),
+            visualize_tracking(pos_preds[1:, n, :].detach().numpy(),
+                               quat_preds[1:, n, :].detach().numpy(),
+                               data.pos_test[2:, n, :].detach().numpy(),
+                               data.quat_test[2:, n, :].detach().numpy(),
+                               data.X_test_shuffled[1:-1, n, :].numpy() + np.tile(data.pos_test[:-2, n, :].numpy(), [1, 4]),
                                data.pattern_test[0, n, :].numpy())
 
 
@@ -1085,8 +1234,8 @@ else:
         (train_data, test_data) = gen_data(N_train, N_test)
     data.set_data(train_data, test_data)
     data.save_data(generated_data_dir, 'all')
-    data = TrainingData()
-    data.load_data(generated_data_dir, N_train, N_test, 'all')
+    #data = TrainingData()
+    #data.load_data(generated_data_dir, N_train, N_test, 'all')
     data.convert_to_torch()
 
 gc.collect()
@@ -1094,4 +1243,4 @@ train(data)
 gc.collect()
 if not use_colab:
     eval(name, data)
-    #eval('LSTM_BIRDS_katrin/model_best.npy', data)
+    #eval('LSTM_BIRDS_drop_big/model_best.npy', data)
