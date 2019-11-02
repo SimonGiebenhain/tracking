@@ -1,7 +1,5 @@
 use_colab = False
 
-
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -109,26 +107,13 @@ fc2_pos_size = 20
 
 n_mixture_components = 3
 
-#fc1_det_dim = 250
-#fc2_det_dim = 300
-#fc3_det_dim = 300
-#fc4_det_dim = 250
-#fc1_pat_dim = 200
-#fc2_pat_dim = 250
-#fc3_pat_dim = 150
-#hidden_dim = 75
-#fc_out_1_size = 30
-
-# TODO: traiing data: ever traj with every pattern, then maybe even add the same ones again with different missing detections etc.
+# TODO: data augemntation and shuffle
 
 # TODO: incorporate long distance predictions and temporal consistency, is that compatible with the multi-modality
 #       is it good to only predict delta_x since errors don't accumulate, think about how to fix
 #       maybe remove delta again and make snippets shorter
 
-# TODO: only use fast snips, but in many variants
-# TODO: use some stationary but not all
-
-# TODO: do I handle anti-podal paris correctly?
+# TODO: loss_pos + loss_quat vs. loss_pose auf den Grund gehen!
 
 # TODO: predict gaussian, then mixture of gaussians
 
@@ -136,20 +121,8 @@ n_mixture_components = 3
 
 # TODO: google for MOT specifically instead of trajectory prediction!
 
-# TODO:  be more careful when generating training data from kalman, don't have same traj with differen rotations in train and test
-
 # TODO: use noise model to drop detections
 # TODO: think about noise model for false positives
-
-# TODO: be patient when working with varying patterns, compare custom architecture(may be too slow!) to in-built LSTM
-# TODO: compare LSTM to simple RNN, and GRU, then design custom cell,
-# TODO: experiment with recurrent dropout and batch normalization
-# TODO: peephole lstm
-
-# TODO: at some point figure out good dropout rate, and other hyper parms
-
-# TODO: look at hand notes for more ideas, e.g. multi modal predictions
-# TODO: read some papers for more ideas
 
 
 ####################################################################################
@@ -696,12 +669,21 @@ def gen_data(N_train, N_test):
         X = X + pos_stacked
         X_shuffled = X_shuffled + pos_stacked_fp
 
-        return {'X': X, 'X_shuffled': X_shuffled, 'quat': quat, 'pos': pos, 'pattern': all_patterns}
+        return {'X': X, 'X_shuffled': X_shuffled, 'quat': quat, 'pos': np.tile(pos, [1, len(patterns), 1]), 'pattern': all_patterns}
+
 
     if generate_data:
         return (gen_datum(N_train), gen_datum(N_test))
     else:
-        return (gen_datum(N_train, pos_train), gen_datum(N_test, pos_test)), N_train, N_test
+        train_data = gen_datum(N_train, pos_train)
+        N_train = train_data['X'].shape[1]
+        print('Generated the following training data:')
+        for key in train_data.keys():
+            print(key)
+            print(train_data[key].shape)
+        test_data =  gen_datum(N_test, pos_test)
+        N_test = test_data['X'].shape[1]
+        return (train_data, test_data), N_train, N_test
 
 
 def gen_data_(N_train, N_test):
@@ -1137,8 +1119,8 @@ def train(data):
                                   loss_function_quat(-pred_quat, quat_truth[1:, :, :]))
             loss_pos = loss_function_pos(pred_delta_pos, delta_pos_truth[1:, :, :])
 
-            #loss = 100*loss_pos + loss_quat
-            loss = loss_pose
+            loss = 100*loss_pos + loss_quat
+            #loss = loss_pose
             loss.backward()
             optimizer.step()
             avg_loss_pose += loss_pose
@@ -1157,7 +1139,7 @@ def train(data):
             loss_quat = torch.min(loss_function_quat(pred_quat, data.quat_test[1:, :, :]),
                                   loss_function_quat(-pred_quat, data.quat_test[1:, :, :]))
             loss_pos = loss_function_pos(pred_delta_pos, data.delta_pos_test[1:, :, :])
-            val_loss = loss_pose #100*loss_pos + loss_quat
+            val_loss = 100*loss_pos + loss_quat
             for param_group in optimizer.param_groups:
                 learning_rate = param_group['lr']
                 print("Epoch: {epoch:2d}, Learning Rate: {learning_rate:1.8f} \n TrainPose: {train_pose:1.6f}, "
