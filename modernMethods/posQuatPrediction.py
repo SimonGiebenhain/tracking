@@ -72,7 +72,7 @@ else:
 
 
 BATCH_SIZE = 32
-NUM_EPOCHS = 50
+NUM_EPOCHS = 5
 LEARNING_RATE = 0.001
 STRONG_DROPOUT_RATE = 0.10
 WEAK_DROPOUT_RATE = 0.05
@@ -111,7 +111,11 @@ n_mixture_components = 3
 # Then feed markers in specific order into LSTM
 # But this has to be done inside the LSTM since we need information of the hidden state
 # customLSTm could be slow, maybe could do the same with stacked LSTM
+# This could also act as the correction step!
 
+# TODO: liegt memory leak and testing procedure?
+
+#TODO: pytoch, gen new training data while training, progressively make harder training data, one easy and one hard test set
 #TODO: test wie es funktionieren würde wenn reihenfolge immer gleich
 
 # TODO: make generate quats less extreme!
@@ -1134,28 +1138,30 @@ name = logger.folder_name + '/model_best.npy'
 def train(data):
     data.shuffle()
 
+    data.convert_to_numpy()
+    data.X_train_shuffled = make_detections_relative(data.X_train, data.pos_train)
+    data.X_train = data.X_train[1:, :, :]
+    data.pos_train = data.pos_train[1:, :, :]
+    data.delta_pos_train = data.delta_pos_train[1:, :, :]
+    data.pattern_train = data.pattern_train[1:, :, :]
+    data.quat_train = data.quat_train[1:, :, :]
+
+    data.X_test_shuffled = make_detections_relative(data.X_test, data.pos_test)
+    data.X_test = data.X_test[1:, :, :]
+    data.pos_test = data.pos_test[1:, :, :]
+    data.delta_pos_test = data.delta_pos_test[1:, :, :]
+    data.pattern_test = data.pattern_test[1:, :, :]
+    data.quat_test = data.quat_test[1:, :, :]
+    data.convert_to_torch()
+
     for gci in range(10):
         gc.collect()
+
+
 
     for epoch in range(1, NUM_EPOCHS + 1):
         gc.collect()
         model.train()
-
-        data.convert_to_numpy()
-        data.X_train_shuffled = make_detections_relative(data.X_train, data.pos_train)
-        data.X_train = data.X_train[1:, :, :]
-        data.pos_train = data.pos_train[1:, :, :]
-        data.delta_pos_train = data.delta_pos_train[1:, :, :]
-        data.pattern_train = data.pattern_train[1:, :, :]
-        data.quat_train = data.quat_train[1:, :, :]
-
-        data.X_test_shuffled = make_detections_relative(data.X_test, data.pos_test)
-        data.X_test = data.X_test[1:, :, :]
-        data.pos_test = data.pos_test[1:, :, :]
-        data.delta_pos_test = data.delta_pos_test[1:, :, :]
-        data.pattern_test = data.pattern_test[1:, :, :]
-        data.quat_test = data.quat_test[1:, :, :]
-        data.convert_to_torch()
 
 
         delta_detection_batches = torch.split(data.X_train_shuffled, BATCH_SIZE, 1)
@@ -1168,10 +1174,11 @@ def train(data):
         avg_loss_quat = 0
         avg_loss_pos = 0
         n_batches_per_epoch = len(delta_detection_batches)
-
+        for d in delta_detection_batches:
+            print(d.shape)
         for k, [delta_dets, quat_truth, pos_truth, marker_truth, delta_pos_truth, pattern_batch] in enumerate(
-                zip(delta_detection_batches, quat_truth_batches, pos_truth_batches, detections_truth_batches,
-                    delta_pos_truth_batches, pattern_batches)):
+                zip(delta_detection_batches[:-1], quat_truth_batches[:-1], pos_truth_batches[:-1], detections_truth_batches[:-1],
+                    delta_pos_truth_batches[:-1], pattern_batches[:-1])):
             model.zero_grad()
             gc.collect()
 
