@@ -31,7 +31,7 @@ if not use_colab:
 
 
 
-drop_some_dets = False
+drop_some_dets = True
 add_false_positives = False
 add_noise = False
 NOISE_STD = 0.01
@@ -40,7 +40,7 @@ generate_data = False
 multi_modal = False
 
 TASK = 'PosQuatPred; '
-MODEL_NAME = 'LSTM_BIRDS_ordered_input'
+MODEL_NAME = 'MarkerNet'
 
 if multi_modal:
     MODEL_NAME += '_MoG'
@@ -113,14 +113,18 @@ n_mixture_components = 3
 # customLSTm could be slow, maybe could do the same with stacked LSTM
 # This could also act as the correction step!
 
+
+# TODO incorporate dropped dets into markerNet ground truth!!
+
 # TODO: liegt memory leak and testing procedure?
 
 #TODO: pytoch, gen new training data while training, progressively make harder training data, one easy and one hard test set
-#TODO: test wie es funktionieren würde wenn reihenfolge immer gleich
+
+#TODO: create net which orders markers first
 
 # TODO: make generate quats less extreme!
 
-# TODO predict multiple steps into the future!
+# TODO predict multiple steps into the future!, i.e. how to fill gaps with no information at all?
 # TODO why is memry demand increasing until end of epoch?
 
 # TODO: input absolute, predict relative???
@@ -151,11 +155,11 @@ def normalize_vector(v):
 
 
 def gen_folder_name(task, name):
-    if len(task) > 20:
+    if len(task) > 40:
         short_task = re.sub('[^A-Z]', '', task)
     else:
         short_task = task
-    if len(name) > 20:
+    if len(name) > 40:
         short_name = re.sub('[^A-Z]', '', name)
     else:
         short_name = name
@@ -175,6 +179,7 @@ class TrainingData():
         self.pos_train = None
         self.pattern_train = None
         self.delta_pos_train = None
+        self.marker_ids_train = None
 
         self.X_test = None
         self.X_test_shuffled = None
@@ -182,6 +187,7 @@ class TrainingData():
         self.pos_test = None
         self.pattern_test = None
         self.delta_pos_test = None
+        self.marker_ids_test = None
 
     def shuffle(self):
         N = self.X_train.shape[1]
@@ -195,6 +201,8 @@ class TrainingData():
         self.pos_train = self.pos_train[:, randperm, :]
         print(self.pattern_train.shape)
         self.pattern_train = self.pattern_train[:, randperm, :, :]
+        if self.marker_ids_train is not None:
+            self.marker_ids_train = self.marker_ids_train[:, randperm, :]
         if self.delta_pos_train is not None:
             self.delta_pos_train = self.delta_pos_train[:, randperm, :]
         else:
@@ -207,12 +215,17 @@ class TrainingData():
         self.quat_train = train_data_dict['quat']
         self.pos_train = train_data_dict['pos']
         self.pattern_train = train_data_dict['pattern']
+        if 'marker_ids' in train_data_dict.keys():
+            self.marker_ids_train = train_data_dict['marker_ids']
 
         self.X_test = test_data_dict['X']
         self.X_test_shuffled = test_data_dict['X_shuffled']
         self.quat_test = test_data_dict['quat']
         self.pos_test = test_data_dict['pos']
         self.pattern_test = test_data_dict['pattern']
+        if 'marker_ids' in test_data_dict.keys():
+            self.marker_ids_test = test_data_dict['marker_ids']
+
         self.make_relative()
 
     def make_relative(self):
@@ -228,9 +241,12 @@ class TrainingData():
         self.quat_test = self.quat_test[1:, :, :]
         self.pos_train = self.pos_train[1:, :, :]
         self.pos_test = self.pos_test[1:, :, :]
+        self.marker_ids_train = self.marker_ids_train[1:, :, :]
+        self.marker_ids_test = self.marker_ids_test[1:, :, :]
 
     def load_data(self, dir_name, N_train, N_test, name):
         dname = dir_name + '_' + name
+
         if generate_data:
             postfix = str(N_train) + '.npy'
         else:
@@ -241,6 +257,8 @@ class TrainingData():
         self.pos_train = np.load(dname + '/pos_train' + postfix)
         self.pattern_train = np.load(dname + '/pattern_train' + postfix)
         self.delta_pos_train = np.load(dname + '/delta_pos_train' + postfix)
+        if os.path.isfile(dname + '/marker_ids_train' + postfix):
+            self.marker_ids_train = np.load(dname + '/marker_ids_train' + postfix)
 
         if generate_data:
             postfix = str(N_test) + '.npy'
@@ -252,6 +270,8 @@ class TrainingData():
         self.pos_test = np.load(dname + '/pos_test' + postfix)
         self.pattern_test = np.load(dname + '/pattern_test' + postfix)
         self.delta_pos_test = np.load(dname + '/delta_pos_test' + postfix)
+        if os.path.isfile(dname + '/marker_ids_test' + postfix):
+            self.marker_ids_test = np.load(dname + '/marker_ids_test' + postfix)
 
         print('Loaded data successfully!')
 
@@ -271,6 +291,8 @@ class TrainingData():
         np.save(dname + '/pos_train' + postfix, self.pos_train)
         np.save(dname + '/pattern_train' + postfix, self.pattern_train)
         np.save(dname + '/delta_pos_train' + postfix, self.delta_pos_train)
+        if self.marker_ids_train is not None:
+            np.save(dname + '/marker_ids_train' + postfix, self.marker_ids_train)
 
         N = np.shape(self.X_test)[1]
         np.save(dname + '/X_test' + postfix, self.X_test)
@@ -279,6 +301,8 @@ class TrainingData():
         np.save(dname + '/pos_test' + postfix, self.pos_test)
         np.save(dname + '/pattern_test' + postfix, self.pattern_test)
         np.save(dname+ '/delta_pos_test' + postfix, self.delta_pos_test)
+        if self.marker_ids_test is not None:
+            np.save(dname + '/marker_ids_test' + postfix, self.marker_ids_test)
 
         print('Saved data successfully!')
 
@@ -291,6 +315,8 @@ class TrainingData():
             self.pos_train = torch.from_numpy(self.pos_train).float().cuda()
             self.pattern_train = torch.from_numpy(self.pattern_train).float().cuda()
             self.delta_pos_train = torch.from_numpy(self.delta_pos_train).float().cuda()
+            if self.marker_ids_train is not None:
+                self.marker_ids_train = torch.from_numpy(self.marker_ids_train).float().cuda()
 
             self.X_test = torch.from_numpy(self.X_test).float().cuda()
             self.X_test_shuffled = torch.from_numpy(self.X_test_shuffled).float().cuda()
@@ -298,6 +324,8 @@ class TrainingData():
             self.pos_test = torch.from_numpy(self.pos_test).float().cuda()
             self.pattern_test = torch.from_numpy(self.pattern_test).float().cuda()
             self.delta_pos_test = torch.from_numpy(self.delta_pos_test).float().cuda()
+            if self.marker_ids_test is not None:
+                self.marker_ids_test = torch.from_numpy(self.marker_ids_test).float().cuda()
 
         else:
             self.X_train = torch.from_numpy(self.X_train).float()
@@ -306,6 +334,8 @@ class TrainingData():
             self.pos_train = torch.from_numpy(self.pos_train).float()
             self.pattern_train = torch.from_numpy(self.pattern_train).float()
             self.delta_pos_train = torch.from_numpy(self.delta_pos_train).float()
+            if self.marker_ids_train is not None:
+                self.marker_ids_train = torch.from_numpy(self.marker_ids_train).float()
 
             self.X_test = torch.from_numpy(self.X_test).float()
             self.X_test_shuffled = torch.from_numpy(self.X_test_shuffled).float()
@@ -313,6 +343,8 @@ class TrainingData():
             self.pos_test = torch.from_numpy(self.pos_test).float()
             self.pattern_test = torch.from_numpy(self.pattern_test).float()
             self.delta_pos_test = torch.from_numpy(self.delta_pos_test).float()
+            if self.marker_ids_test is not None:
+                self.marker_ids_test = torch.from_numpy(self.marker_ids_test).float()
 
         print('Converted data to torch format.')
 
@@ -324,6 +356,8 @@ class TrainingData():
         self.pos_train = self.pos_train.numpy()
         self.pattern_train = self.pattern_train.numpy()
         self.delta_pos_train = self.delta_pos_train.numpy()
+        if self.marker_ids_train is not None:
+            self.marker_ids_train = self.marker_ids_train.numpy()
 
         self.X_test = self.X_test.numpy()
         self.X_test_shuffled = self.X_test_shuffled.numpy()
@@ -331,6 +365,8 @@ class TrainingData():
         self.pos_test = self.pos_test.numpy()
         self.pattern_test = self.pattern_test.numpy()
         self.delta_pos_test = self.delta_pos_test.numpy()
+        if self.marker_ids_test is not None:
+            self.marker_ids_test = self.marker_ids_test.numpy()
 
         print('Converted data to numpy format.')
 
@@ -393,6 +429,8 @@ class TrainingLogger():
         else:
             path = self.folder_name
         os.mkdir(path)
+        print('Logging model to:')
+        print(path)
 
     def log_epoch(self, train_pose, train_quat, train_pos, test_pose, test_quat, test_pos, model, lr):
         self.progress_dict['train_pose'].append(train_pose)
@@ -681,14 +719,22 @@ def gen_data(N_train, N_test):
 
         all_patterns = np.zeros([T, N, 4, 3])
 
+        marker_identities = np.zeros([T, N, 4])
+
         for t in range(T):
+            gc.collect()
             for n in range(N):
+
                 p_idx = int(n/(num_positions*augmentation_factor))
                 p = patterns[p_idx, :, :]
                 p_copy = np.copy(p)
 
                 q = Quaternion(quat[t, n, :])
                 np.random.shuffle(p_copy)
+                rnd_perm = np.random.permutation(np.arange(0,4))
+                p_copy = p_copy[rnd_perm, :]
+                marker_identities[t, n, :] = rnd_perm
+
                 rotated_pattern = (q.rotation_matrix @ p_copy.T).T
                 if add_false_positives:
                     rotated_pattern = np.concatenate([rotated_pattern, np.ones([1, 3]) * -1000], axis=0)
@@ -726,13 +772,14 @@ def gen_data(N_train, N_test):
         X = X + pos_stacked
         X_shuffled = X_shuffled + pos_stacked_fp
 
-        return {'X': X, 'X_shuffled': X_shuffled, 'quat': quat, 'pos': pos_stacked[:, :, :3], 'pattern': all_patterns}
+        return {'X': X, 'X_shuffled': X_shuffled, 'quat': quat, 'pos': pos_stacked[:, :, :3], 'pattern': all_patterns, 'marker_ids': marker_identities}
 
 
     if generate_data:
         return (gen_datum(N_train), gen_datum(N_test))
     else:
         train_data = gen_datum(N_train, pos_train)
+        gc.collect()
         N_train = train_data['X'].shape[1]
         print('Generated the following training data:')
         for key in train_data.keys():
@@ -1025,6 +1072,80 @@ class customLSTM(nn.Module):
         return x_quat, x_pos, rotated_pattern
 
 
+class MarkerNet(nn.Module):
+    def __init__(self):
+        super(MarkerNet, self).__init__()
+        if add_false_positives:
+            self.fc1_det = nn.Linear(15, fc1_det_dim)
+        else:
+            self.fc1_det = nn.Linear(12, fc1_det_dim)
+
+        self.fc2_det = nn.Linear(fc1_det_dim, fc2_det_dim)
+        self.fc3_det = nn.Linear(fc2_det_dim, fc3_det_dim)
+        self.fc4_det = nn.Linear(fc3_det_dim, fc4_det_dim)
+
+        self.fc1_pat = nn.Linear(12, fc1_pat_dim)
+        self.fc2_pat = nn.Linear(fc1_pat_dim, fc2_pat_dim)
+        self.fc3_pat = nn.Linear(fc2_pat_dim, fc3_pat_dim)
+
+        self.fc1 = nn.Linear(fc4_det_dim + fc3_pat_dim, 300)
+        self.fc2_marker1 = nn.Linear(300, 100)
+        self.fc2_marker2 = nn.Linear(300, 100)
+        self.fc2_marker3 = nn.Linear(300, 100)
+        self.fc2_marker4 = nn.Linear(300, 100)
+
+
+        #if add_false_positives:
+        #    self.fc3 = nn.Linear(100, 5)
+        #
+        #else:
+        self.fc3_marker1 = nn.Linear(100, 4)
+        self.fc3_marker2 = nn.Linear(100, 4)
+        self.fc3_marker3 = nn.Linear(100, 4)
+        self.fc3_marker4 = nn.Linear(100, 4)
+
+
+        self.weak_dropout = nn.Dropout(p=0.1)
+
+    # TODO concat
+    # TODO maybe only tile pattern now
+    #   make to 4 dim in las dim
+    #   apply softmax
+    #   search for alternative
+    #   think about loss
+    #   train in isolation, then jointly with other model
+    def forward(self, detections, pattern):
+        x = self.weak_dropout(F.relu(self.fc1_det(detections)))
+        x = self.weak_dropout(F.relu(self.fc2_det(x)))
+        x = self.weak_dropout(F.relu(self.fc3_det(x)))
+        x = self.weak_dropout(F.relu(self.fc4_det(x)))
+
+        x_pat = self.weak_dropout(F.relu(self.fc1_pat(pattern.view(T - 1, -1, 12))))
+        x_pat = self.weak_dropout(F.relu(self.fc2_pat(x_pat)))
+        x_pat = self.weak_dropout(F.relu(self.fc3_pat(x_pat)))
+
+        x = torch.cat([x, x_pat], dim=2)
+        x = self.weak_dropout(F.relu(self.fc1(x)))
+
+        x_marker1 = F.relu(self.fc2_marker1(x))
+        x_marker1 = F.relu(self.fc3_marker1(x_marker1))
+        x_marker1 = F.softmax(x_marker1, dim=2)
+
+        x_marker2 = F.relu(self.fc2_marker2(x))
+        x_marker2 = F.relu(self.fc3_marker2(x_marker2))
+        x_marker2 = F.softmax(x_marker2, dim=2)
+
+        x_marker3 = F.relu(self.fc2_marker3(x))
+        x_marker3 = F.relu(self.fc3_marker3(x_marker3))
+        x_marker3 = F.softmax(x_marker3, dim=2)
+
+        x_marker4 = F.relu(self.fc2_marker4(x))
+        x_marker4 = F.relu(self.fc3_marker4(x_marker4))
+        x_marker4 = F.softmax(x_marker4, dim=2)
+
+        return x_marker1, x_marker2, x_marker3, x_marker4
+
+
 class LSTMTracker(nn.Module):
     def __init__(self, hidden_dim):
         super(LSTMTracker, self).__init__()
@@ -1108,7 +1229,8 @@ class LSTMTracker(nn.Module):
 
 
 #model = customLSTM(hidden_dim, bias=True)
-model = LSTMTracker(hidden_dim)
+#model = LSTMTracker(hidden_dim)
+model = MarkerNet()
 if use_colab and torch.cuda.is_available():
     print('USING CUDA DEVICE')
     model.cuda()
@@ -1121,6 +1243,7 @@ if use_colab and torch.cuda.is_available():
 
 loss_function_pos = nn.MSELoss()
 loss_function_quat = nn.L1Loss()
+loss_cross_entropy = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 lr_scheduler_params = {'mode': 'min', 'factor': 0.5, 'patience': 3, 'min_lr': 1e-06, 'cooldown': 4}
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode=lr_scheduler_params['mode'],
@@ -1134,25 +1257,90 @@ hyper_params = HyperParams(N_train, N_test, T, BATCH_SIZE, optimizer, LEARNING_R
 logger = TrainingLogger(MODEL_NAME, TASK, hyper_params)
 name = logger.folder_name + '/model_best.npy'
 
+def train_assigner(data):
+    data.shuffle()
+    for gci in range(10):
+        gc.collect()
+
+    for epoch in range(1, NUM_EPOCHS + 1):
+        gc.collect()
+        model.train()
+
+        delta_detection_batches = torch.split(data.X_train_shuffled, BATCH_SIZE, 1)
+        quat_truth_batches = torch.split(data.quat_train, BATCH_SIZE, 1)
+        pos_truth_batches = torch.split(data.pos_train, BATCH_SIZE, 1)
+        delta_pos_truth_batches = torch.split(data.delta_pos_train, BATCH_SIZE, 1)
+        detections_truth_batches = torch.split(data.X_train, BATCH_SIZE, 1)
+        pattern_batches = torch.split(data.pattern_train, BATCH_SIZE, 1)
+        marker_assignment_batches = torch.split(data.marker_ids_train, BATCH_SIZE, 1)
+        avg_loss = 0
+        n_batches_per_epoch = len(delta_detection_batches)
+        for k, [delta_dets, quat_truth, pos_truth, marker_truth, delta_pos_truth, pattern_batch, marker_ass] in enumerate(
+                zip(delta_detection_batches[:-1], quat_truth_batches[:-1], pos_truth_batches[:-1], detections_truth_batches[:-1],
+                    delta_pos_truth_batches[:-1], pattern_batches[:-1], marker_assignment_batches[:-1])):
+            model.zero_grad()
+            gc.collect()
+
+            marker1, marker2, marker3, marker4 = model(delta_dets[:, :, :], pattern_batch[:, :, :, :])
+            loss =  loss_cross_entropy(marker1.contiguous().view(-1, 4), marker_ass[:, :, 0].long().contiguous().view(-1))
+            loss += loss_cross_entropy(marker2.contiguous().view(-1, 4), marker_ass[:, :, 1].long().contiguous().view(-1))
+            loss += loss_cross_entropy(marker3.contiguous().view(-1, 4), marker_ass[:, :, 2].long().contiguous().view(-1))
+            loss += loss_cross_entropy(marker4.contiguous().view(-1, 4), marker_ass[:, :, 3].long().contiguous().view(-1))
+
+            loss.backward()
+            optimizer.step()
+            avg_loss += loss
+
+        avg_loss /= n_batches_per_epoch
+
+        model.eval()
+        with torch.no_grad():
+            marker1, marker2, marker3, marker4 = model(data.X_test_shuffled[:-1, :, :], data.pattern_test[:-1, :, :, :])
+            loss =  loss_cross_entropy(marker1.contiguous().view(-1, 4), data.marker_ids_test[:, :, 0].long().contiguous().view(-1))
+            loss += loss_cross_entropy(marker2.contiguous().view(-1, 4), data.marker_ids_test[:, :, 1].long().contiguous().view(-1))
+            loss += loss_cross_entropy(marker3.contiguous().view(-1, 4), data.marker_ids_test[:, :, 2].long().contiguous().view(-1))
+            loss += loss_cross_entropy(marker4.contiguous().view(-1, 4), data.marker_ids_test[:, :, 3].long().contiguous().view(-1))
+
+            val_loss = loss
+            for param_group in optimizer.param_groups:
+                learning_rate = param_group['lr']
+                print("Epoch: {epoch:2d}, Learning Rate: {learning_rate:1.8f} \n "
+                      "TrainLoss: {train_loss:1.4f} \t "
+                      "TestLoss: {test_loss:1.6f}".format(
+                    epoch=epoch, learning_rate=learning_rate,
+                    train_loss=avg_loss.data,
+                    test_loss=loss))
+            scheduler.step(val_loss)
+            #logger.log_epoch(avg_loss_pose.data, avg_loss_quat.data, avg_loss_pos.data,
+            #                 loss_pose.data, loss_quat.data, loss_pos.data,
+            #                 model,
+            #                 learning_rate)
+        if use_colab:
+            print('Memory Usage:')
+            print('Allocated:', round(torch.cuda.memory_allocated(0) / 1024 ** 3, 1), 'GB')
+            print('Cached:   ', round(torch.cuda.memory_cached(0) / 1024 ** 3, 1), 'GB')
+
+    #logger.save_log()
+
 
 def train(data):
     data.shuffle()
 
-    data.convert_to_numpy()
-    data.X_train_shuffled = make_detections_relative(data.X_train, data.pos_train)
-    data.X_train = data.X_train[1:, :, :]
-    data.pos_train = data.pos_train[1:, :, :]
-    data.delta_pos_train = data.delta_pos_train[1:, :, :]
-    data.pattern_train = data.pattern_train[1:, :, :]
-    data.quat_train = data.quat_train[1:, :, :]
-
-    data.X_test_shuffled = make_detections_relative(data.X_test, data.pos_test)
-    data.X_test = data.X_test[1:, :, :]
-    data.pos_test = data.pos_test[1:, :, :]
-    data.delta_pos_test = data.delta_pos_test[1:, :, :]
-    data.pattern_test = data.pattern_test[1:, :, :]
-    data.quat_test = data.quat_test[1:, :, :]
-    data.convert_to_torch()
+    #data.convert_to_numpy()
+    #data.X_train_shuffled = make_detections_relative(data.X_train, data.pos_train)
+    #data.X_train = data.X_train[1:, :, :]
+    #data.pos_train = data.pos_train[1:, :, :]
+    #data.delta_pos_train = data.delta_pos_train[1:, :, :]
+    #data.pattern_train = data.pattern_train[1:, :, :]
+    #data.quat_train = data.quat_train[1:, :, :]
+#
+    #data.X_test_shuffled = make_detections_relative(data.X_test, data.pos_test)
+    #data.X_test = data.X_test[1:, :, :]
+    #data.pos_test = data.pos_test[1:, :, :]
+    #data.delta_pos_test = data.delta_pos_test[1:, :, :]
+    #data.pattern_test = data.pattern_test[1:, :, :]
+    #data.quat_test = data.quat_test[1:, :, :]
+    #data.convert_to_torch()
 
     for gci in range(10):
         gc.collect()
@@ -1174,8 +1362,6 @@ def train(data):
         avg_loss_quat = 0
         avg_loss_pos = 0
         n_batches_per_epoch = len(delta_detection_batches)
-        for d in delta_detection_batches:
-            print(d.shape)
         for k, [delta_dets, quat_truth, pos_truth, marker_truth, delta_pos_truth, pattern_batch] in enumerate(
                 zip(delta_detection_batches[:-1], quat_truth_batches[:-1], pos_truth_batches[:-1], detections_truth_batches[:-1],
                     delta_pos_truth_batches[:-1], pattern_batches[:-1])):
@@ -1285,8 +1471,8 @@ else:
     data.convert_to_torch()
 
 gc.collect()
-train(data)
+train_assigner(data)
 gc.collect()
-if not use_colab:
-    eval(name, data)
+#if not use_colab:
+    #eval(name, data)
     #eval('models/LSTM_BIRDS_traj_x_pat/model_best.npy', data)
