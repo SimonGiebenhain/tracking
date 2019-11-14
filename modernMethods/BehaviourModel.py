@@ -1,5 +1,6 @@
 import numpy as np
 from random import shuffle
+
 class MarkovChain():
     def __init__(self, states, transition_list):
         assert len(states) == len(transition_list)
@@ -41,7 +42,7 @@ class MarkovChain():
         return state_history
 
 
-class NoiseModel():
+class NoiseModelFN():
 
     def __init__(self, states, transition_probs, initial_state):
         self.states = states
@@ -109,76 +110,168 @@ class NoiseModel():
 
         return np.stack(marker_visibility, axis=0)
 
+class NoiseModelFP():
+    def __init__(self, states, transition_probs, initial_probs, scale):
+        self.states = states
+        self.P = transition_probs
+        self.init_p = initial_probs
+        self.state = None
+        self.init_state()
+        self.fp_loc = []
+        for i in range(len(self.states)):
+            self.fp_loc.append(None)
+        self.scale = scale
+
+    def do_move(self):
+        p = self.P[self.state]
+        new_state = np.argmax(np.random.multinomial(1, p, 1))
+        self.state = self.states[new_state]
+
+    def init_state(self):
+        self.state = int(np.argmax(np.random.multinomial(1, self.init_p, 1)))
+
+    def wipe_fp_loc(self):
+        self.fp_loc = []
+        for i in range(len(self.states)):
+            self.fp_loc.append(None)
+
+    def sample_FPs(self):
+        if self.state == 0:
+            return []
+        else:
+            FPs = []
+            for loc in self.fp_loc:
+                if loc is not None:
+                    if np.random.uniform(0, 1) < 0.5:
+                        print(loc)
+                        FPs.append(np.random.multivariate_normal(loc, self.scale*np.eye(3), 1))
+            if not FPs:
+                return []
+            else:
+                return np.concatenate(FPs, axis=0)
+
+    def add_loc(self):
+        radius = 100
+        theta = np.random.uniform(0, 3.14)
+        phi = np.random.uniform(0, 2 * 3.14)
+        x = radius * np.sin(theta) * np.cos(phi)
+        y = radius * np.sin(theta) * np.sin(phi)
+        z = radius * np.cos(theta)
+        if np.random.uniform(0, 1) < 0.5:
+            self.fp_loc[0] = np.stack([x, y, z])
+        else:
+            self.fp_loc[1] = np.stack([x, y, z])
+
+    def rollout(self, T):
+        self.init_state()
+        false_positives = []
+
+        for t in range(T):
+            self.do_move()
+            if self.state == 0:
+                self.wipe_fp_loc()
+            elif self.state == 1:
+                n_locs = 0
+                for loc in self.fp_loc:
+                    if loc is not None:
+                        n_locs += 1
+                if n_locs == 0:
+                    self.add_loc()
+
+                if n_locs == 2:
+                    if np.random.uniform(0, 1) < 0.5:
+                        self.fp_loc[0] = None
+                    else:
+                        self.fp_loc[1] = None
+            elif self.state == 2:
+                n_locs = 0
+                for loc in self.fp_loc:
+                    if loc is not None:
+                        n_locs += 1
+                if n_locs == 1:
+                    self.add_loc()
+            else:
+                raise AttributeError('Unexpected state!')
+            false_positives.append(self.sample_FPs())
+        return false_positives
 
 
+noise_model_FP_states = [0, 1, 2]
+noise_model_FP_transition_probs = np.array([[0.8, 0.2, 0], [0.2, 0.6, 0.2], [0, 0.8, 0.2]])
+noise_model_FP_initial_probs = np.array([1, 0, 0])
 
-
+def test_noise_FP_model():
+    nMFP = NoiseModelFP(noise_model_FP_states, noise_model_FP_transition_probs, noise_model_FP_initial_probs, 10)
+    print(nMFP.rollout(100))
 
 noise_model_states = ['all', 'some', 'none']
 noise_model_transition_prob = {'all': [ 0.89, 0.1, 0.01], 'some': [0.02, 0.97, 0.01], 'none': [0.48, 0.48, 0.04]}
 noise_model_initial_state = 'all'
 
-nM = NoiseModel(noise_model_states, noise_model_transition_prob, noise_model_initial_state)
-print(nM.rollout(200))
+def test_noise_model():
+    nM = NoiseModelFN(noise_model_states, noise_model_transition_prob, noise_model_initial_state)
+    print(nM.rollout(200))
 
+test_noise_FP_model()
 
-old_noise_model_states = ['not flying, no wings', 'not flying, wing covers', 'flying, no wings' ,'flying, wing covers']
-
-p_nF_nFW = 0.004
-p_nF_F = 0.002
-p_nF_FW = 0.002
-
-p_nFW_nF = 0.05
-p_nFW_F = 0.002
-p_nFW_FW = 0.002
-
-p_F_nF = 0.01
-p_F_nFW = 0.01
-p_F_FW = 0.03
-
-p_FW_nF = 0.01
-p_FW_nFW = 0.01
-p_FW_F = 0.03
-
-old_noise_model_transition_prob = [[p_nF_nFW, p_nF_F, p_nF_FW],
-                               [p_nFW_nF, p_nFW_F, p_nFW_FW],
-                               [p_F_nF, p_F_nFW, p_F_FW],
-                               [p_FW_nF, p_FW_nFW, p_FW_F]]
-
-behaviour_model_states = ['sitting', 'starting', 'flying', 'landing', 'walking']
-p_sit_start = 0.005
-p_sit_walk = 0.02
-
-p_start_fly = 0.1
-
-p_fly_land = 0.02
-
-p_land_sit = 0.1
-p_land_walk = 0.1
-
-p_walk_sit = 0.05
-p_walk_start = 0.008
-
-behaviour_model_transition_prob = [[p_sit_start, 0, 0, p_sit_walk],
-                                   [0, p_start_fly, 0, 0],
-                                   [0, 0, p_fly_land, 0],
-                                   [p_land_sit, 0, 0, p_land_walk],
-                                   [p_walk_sit, p_walk_start, 0, 0]]
-
-N_ROLLOUTS = 2
-
-mc_behaviour_model = MarkovChain(behaviour_model_states, behaviour_model_transition_prob)
-initial_state = np.tile(np.array([[1, 0, 0, 0, 0]]), [N_ROLLOUTS, 1])
-#mc_behaviour_model.set_state(initial_state)
-#print(mc_behaviour_model.P)
-#print(mc_behaviour_model.sample_rollouts(initial_state, N_ROLLOUTS, 350))
-#mc_noise_model = MarkovChain(noise_model_states, noise_model_transition_prob)
-#print((mc_noise_model.P))
-
-#P = mc_behaviour_model.P
-#state = np.array([1, 0, 0, 0, 0])
-
-#for t in range(100):
-#    state = state @ P
-#    print(t)
-#    print(state)
+#old_noise_model_states = ['not flying, no wings', 'not flying, wing covers', 'flying, no wings' ,'flying, wing covers']
+#
+#p_nF_nFW = 0.004
+#p_nF_F = 0.002
+#p_nF_FW = 0.002
+#
+#p_nFW_nF = 0.05
+#p_nFW_F = 0.002
+#p_nFW_FW = 0.002
+#
+#p_F_nF = 0.01
+#p_F_nFW = 0.01
+#p_F_FW = 0.03
+#
+#p_FW_nF = 0.01
+#p_FW_nFW = 0.01
+#p_FW_F = 0.03
+#
+#old_noise_model_transition_prob = [[p_nF_nFW, p_nF_F, p_nF_FW],
+#                               [p_nFW_nF, p_nFW_F, p_nFW_FW],
+#                               [p_F_nF, p_F_nFW, p_F_FW],
+#                               [p_FW_nF, p_FW_nFW, p_FW_F]]
+#
+#behaviour_model_states = ['sitting', 'starting', 'flying', 'landing', 'walking']
+#p_sit_start = 0.005
+#p_sit_walk = 0.02
+#
+#p_start_fly = 0.1
+#
+#p_fly_land = 0.02
+#
+#p_land_sit = 0.1
+#p_land_walk = 0.1
+#
+#p_walk_sit = 0.05
+#p_walk_start = 0.008
+#
+#behaviour_model_transition_prob = [[p_sit_start, 0, 0, p_sit_walk],
+#                                   [0, p_start_fly, 0, 0],
+#                                   [0, 0, p_fly_land, 0],
+#                                   [p_land_sit, 0, 0, p_land_walk],
+#                                   [p_walk_sit, p_walk_start, 0, 0]]
+#
+#N_ROLLOUTS = 2
+#
+#mc_behaviour_model = MarkovChain(behaviour_model_states, behaviour_model_transition_prob)
+#initial_state = np.tile(np.array([[1, 0, 0, 0, 0]]), [N_ROLLOUTS, 1])
+##mc_behaviour_model.set_state(initial_state)
+##print(mc_behaviour_model.P)
+##print(mc_behaviour_model.sample_rollouts(initial_state, N_ROLLOUTS, 350))
+##mc_noise_model = MarkovChain(noise_model_states, noise_model_transition_prob)
+##print((mc_noise_model.P))
+#
+##P = mc_behaviour_model.P
+##state = np.array([1, 0, 0, 0, 0])
+#
+##for t in range(100):
+##    state = state @ P
+##    print(t)
+##    print(state)
+#

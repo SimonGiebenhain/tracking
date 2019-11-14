@@ -5,9 +5,16 @@ import pandas as pd
 from pyquaternion import Quaternion as Quaternion
 import scipy.io
 
+from BehaviourModel import NoiseModelFN, NoiseModelFP
+
 
 noise_std = 0
-#TODO: noise_FN_model =
+
+noise_model_states = ['all', 'some', 'none']
+noise_model_transition_prob = {'all': [ 0.89, 0.1, 0.01], 'some': [0.02, 0.97, 0.01], 'none': [0.48, 0.48, 0.04]}
+noise_model_initial_state = 'all'
+
+noise_FN_model = NoiseModel(noise_model_states, noise_model_transition_prob, noise_model_initial_state)
 #TODO: noise_FP_model =
 
 
@@ -119,7 +126,7 @@ def generate_quat(t0, t):
     return quats[:, t0:t, :]
 
 
-def simulate_markers(pos, quats, patterns):
+def simulate_markers(pos, quats, visibility, patterns):
     T = pos.shape[1]
     N_birds = pos.shape[0]
     detections = np.zeros([N_birds, T, 4, 3])
@@ -134,12 +141,17 @@ def simulate_markers(pos, quats, patterns):
             rotated_pat = (R @ pat.T).T + p
 
             detections[n, t, :, :] = rotated_pat
+            detections[n, t, np.logical_not(visibility[n, t, :]), :] = np.NaN
 
     scipy.io.savemat('data/matlab/generated_data.mat', dict(D=detections, pos=pos, quat=quats))
     return detections
 
+T = 100
+marker_visibility = np.zeros([10, T, 4])
+for i in range(10):
+    marker_visibility[i, :, :] = noise_FN_model.rollout(T)
 
-pos, t0, t = generate_pos(1000)
+pos, t0, t = generate_pos(T)
 print(pos.shape)
 quats = generate_quat(t0, t)
 print(quats.shape)
@@ -148,5 +160,6 @@ print(quats.shape)
 #quats = np.load('data/quats_all.npy')
 patterns = np.load('data/patterns.npy')
 
-dets = simulate_markers(pos, quats, patterns)
+dets = simulate_markers(pos, quats, marker_visibility, patterns)
+print(dets[0, :, :, 0])
 print(dets.shape)
