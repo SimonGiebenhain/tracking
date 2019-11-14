@@ -67,35 +67,42 @@ switch method
         cost_matrix = pdist2(detected_pattern, (rotMat*whole_pattern')');
         [assignment, ~] = munkers(cost_matrix);
     case 'new'
+        %TODO make this cost of NonAssignemnt smaller!!!
         costNonAssignment = 50;
         
         rotMat = Rot(kalmanFilter.x(2*dim+1:2*dim+4));
         x = kalmanFilter.x;
-           
+        
+        sqDistPattern = squareform(pdist(whole_pattern));
+        anglesPattern = getInternalAngles(whole_pattern);
+        rotatedPattern = (rotMat*whole_pattern')';
+
         lambda = 20;
+        
         nMarkers = size(whole_pattern,1);
         allPerms = perms(1:nMarkers+1);
         cost = zeros(size(allPerms, 1),1);
+        
+        if size(detected_pattern,1) == 3
+               det_pat = [detected_pattern; NaN*ones(1,3); NaN*ones(1,3)];
+           else
+               det_pat = [detected_pattern; NaN*ones(1,3)];
+        end
+        sqDistDetections = squareform(pdist(det_pat));
+
+           
         for iii=1:size(allPerms,1)
            p = allPerms(iii,:);
-           %dets = NaN * zeros(nMarkers, 3);
-           if size(detected_pattern,1) == 3
-               p = p(1:nMarkers);
-               det_pat = [detected_pattern; NaN*ones(1,3); NaN*ones(1,3)];
-               dets = det_pat(p,:);
-           else
-               p = p(1:nMarkers);
-               det_pat = [detected_pattern; NaN*ones(1,3)];
-               dets = det_pat(p,:);
-           end
-           distDetections = pdist(dets);
-           distPattern = pdist(whole_pattern);
-           diff = abs(distDetections - distPattern);
+           p = p(1:nMarkers);
+           dets = det_pat(p,:);
+           %sqDistDetections = squareform(pdist(dets));
+           diff = abs(sqDistDetections(p,p) - sqDistPattern)/2;
            cost(iii) = sum(diff(~isnan(diff)), 'all');
            anglesDetections = getInternalAngles(dets);
-           anglesPattern = getInternalAngles(whole_pattern);
            angleDiff = abs(anglesDetections - anglesPattern);
-           cost(iii) = cost(iii) + lambda * sum(angleDiff(~isnan(angleDiff)), 'all');
+           cost(iii) = cost(iii) + lambda * sum(angleDiff(~isnan(angleDiff)));
+           
+           
            %for in = 1:4
            %    if all(~isnan(dets(in,:)))
            %        x = kalmanFilter.x;
@@ -109,7 +116,7 @@ switch method
            %    end
            %end
            
-           eucDist = (dets - (rotMat*whole_pattern')').^2;
+           eucDist = (dets - rotatedPattern).^2;
            eucDist = reshape( eucDist(~isnan(eucDist)), [], 3);
            cost(iii) = cost(iii) + 1/3*sum(sqrt(sum(eucDist,2)));
            if sum(any(isnan(dets),2)) == 1 || sum(any(isnan(dets),2)) == 2
@@ -182,24 +189,33 @@ function leaving_edges = get_edges(marker)
 end
 
 function angles = getInternalAngles(points)
-    N = size(points, 1);
-    angles = zeros(N, nchoosek(N,2));
-    allPairs = nchoosek(1:N,2);
-    for i = 1:size(angles, 1)
-        for j = 1:size(angles,2)
-            p1 = points(allPairs(j,1),:);
-            p2 = points(allPairs(j,2),:);
-            v1 = p1 - points(i,:);
-            v2 = p2 - points(i,:);
-            angles(i,j) = getAngle(v1, v2);
-        end
+    N = size(points,1);
+    allTriples = nchoosek(1:N, 3); % TODO since only called with 3 or 4 this could be precomputed
+    nTriples = size(allTriples, 1);
+    angles = zeros(3*nTriples);
+    for in = 0:nTriples-1
+        p1 = points(allTriples(in+1,1), :);
+        p2 = points(allTriples(in+1,2), :);
+        p3 = points(allTriples(in+1,3), :);
+        
+        v1 = p2 - p1;
+        v2 = p3 - p1;
+        angles(in*3+2) = atan2(norm(cross(v1,v2)),dot(v1,v2));
+        
+        v1 = p1 - p2;
+        v2 = p3 - p2;
+        angles(in*3+1) = atan2(norm(cross(v1,v2)),dot(v1,v2));
+        
+        v1 = p1 - p3;
+        v2 = p2 p- p3;
+        angles(in*3+3) = atan2(norm(cross(v1,v2)),dot(v1,v2));
     end
 end
 
-function angle = getAngle(v1, v2)
-    vn = cross(v1,v2);
-    normVn = sqrt(sum(vn.^2));
-    angle = atan2(normVn, dot(v1, v2));
-end
+%function angle = getAngle(v1, v2)
+%    vn = cross(v1,v2);
+%    normVn = sqrt(sum(vn.^2));
+%    angle = atan2(normVn, dot(v1, v2));
+%end
 
 end
