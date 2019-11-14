@@ -1,4 +1,4 @@
-function [assignment, c] = match_patterns(whole_pattern, detected_pattern, method, kalmanFilter)
+function [assignment, FPs] = match_patterns(whole_pattern, detected_pattern, kalmanFilter)
 %MATCH_PATTERNS Find corresponing points in two sets of points
 %
 %   assignment = MATCH_PATTERNS(whole_pattern, detected_pattern, 'ML', rotMat)
@@ -23,10 +23,34 @@ function [assignment, c] = match_patterns(whole_pattern, detected_pattern, metho
 %   in both point sets.
 %   The algorithm is very simple and only a first draft.
 
-if ~exist('method', 'var')
-    method = 'edges';
-end
 dim = size(whole_pattern,2);
+
+rotMat = Rot(kalmanFilter.x(2*dim+1:2*dim+4));
+rotatedPattern = (rotMat*whole_pattern')';
+
+FPs = zeros(size(detected_pattern,1),1);
+
+% the rotated pattern also is the expected location of the markers
+% filter some False Positives
+if size(detected_pattern, 1) > 1
+   dists = pdist2(detected_pattern, rotatedPattern);
+   if min(dists, [], 'all') < 10
+      internalD = squareform(pdist(detected_pattern));
+      internalD(internalD == 0) = 100;
+      FPs = min(internalD, [],  2) > 50;
+      if nnz(FPs) >= 1
+        FPs
+      end
+      detected_pattern = detected_pattern(~FPs,:);
+   end
+end
+
+if size(detected_pattern, 1) > 2
+    method = 'new';
+else
+    method = 'ML';
+end
+
 switch method
     case 'edges'
         edges1 = get_edges(whole_pattern);
@@ -63,19 +87,16 @@ switch method
         end
         [assignment, bi_cost] = munkers(cost_matrix);
     case 'ML'
-        rotMat = Rot(kalmanFilter.x(2*dim+1:2*dim+4));
-        cost_matrix = pdist2(detected_pattern, (rotMat*whole_pattern')');
+        
+        cost_matrix = pdist2(detected_pattern, rotatedPattern);
         [assignment, ~] = munkers(cost_matrix);
+        assignment
     case 'new'
         %TODO make this cost of NonAssignemnt smaller!!!
-        costNonAssignment = 50;
-        
-        rotMat = Rot(kalmanFilter.x(2*dim+1:2*dim+4));
-        x = kalmanFilter.x;
-        
+        costNonAssignment = 20;
+                
         sqDistPattern = squareform(pdist(whole_pattern));
-        anglesPattern = getInternalAngles(whole_pattern);
-        rotatedPattern = (rotMat*whole_pattern')';
+        %anglesPattern = getInternalAngles(whole_pattern);
 
         lambda = 20;
         
@@ -89,18 +110,19 @@ switch method
                det_pat = [detected_pattern; NaN*ones(1,3)];
         end
         sqDistDetections = squareform(pdist(det_pat));
+        %anglesDetections = getInternalAngles(det_pat);
 
            
         for iii=1:size(allPerms,1)
            p = allPerms(iii,:);
            p = p(1:nMarkers);
            dets = det_pat(p,:);
-           %sqDistDetections = squareform(pdist(dets));
-           diff = abs(sqDistDetections(p,p) - sqDistPattern)/2;
-           cost(iii) = sum(diff(~isnan(diff)), 'all');
-           anglesDetections = getInternalAngles(dets);
-           angleDiff = abs(anglesDetections - anglesPattern);
-           cost(iii) = cost(iii) + lambda * sum(angleDiff(~isnan(angleDiff)));
+           cost(iii) = mean((sqDistDetections(p,p) - sqDistPattern).^2, 'all', 'omitnan');
+           
+           %TODO include or not?
+           %anglesDetections = getInternalAngles(dets);
+           %angleDiff = abs(anglesDetections - anglesPattern);
+           %cost(iii) = cost(iii) + lambda * sum(angleDiff(~isnan(angleDiff)));
            
            
            %for in = 1:4
@@ -207,7 +229,7 @@ function angles = getInternalAngles(points)
         angles(in*3+1) = atan2(norm(cross(v1,v2)),dot(v1,v2));
         
         v1 = p1 - p3;
-        v2 = p2 p- p3;
+        v2 = p2 - p3;
         angles(in*3+3) = atan2(norm(cross(v1,v2)),dot(v1,v2));
     end
 end

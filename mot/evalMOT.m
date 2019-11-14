@@ -1,6 +1,4 @@
 %% load data
-%load('rawDetections.mat')
-%load('D_labeled.mat')
 load('modernMethods/data/matlab/generated_data.mat')
 size(D)
 N = size(D,1);
@@ -8,7 +6,7 @@ D = permute(D, [2, 1, 3, 4]);
 formattedData = reshape(D, size(D,1), [], 3);
 
 
-%% prepare data
+%% prepare data and get patterns
 initialStates = zeros( N, 3+3+4+4);
 for i = 1:size(initialStates,1)
    initialStates(i,1:3) = pos(i, 1, :);
@@ -17,7 +15,6 @@ for i = 1:size(initialStates,1)
    initialStates(i, 11:14) = zeros(1,4);
 end
 
-%% Get patterns
 allPatterns = read_patterns('tracking/datasets/framework');
 patterns = zeros(10,4,3);
 patternNames = {};
@@ -29,8 +26,9 @@ end
     
 %% test MOT
 quatMotionType = 'brownian';
+profile on
 [estimatedPositions, estimatedQuats] = ownMOT(formattedData, patterns, patternNames ,initialStates, N, pos, quat, quatMotionType);
-
+profile viewer
 %TODO: save results
 
 %% Evaluate tracking performance 
