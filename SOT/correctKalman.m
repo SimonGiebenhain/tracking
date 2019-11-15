@@ -16,7 +16,7 @@ if noKnowledge
     % Find an assignment between the individual markers and the detections
     
 
-    [p, FPs] = match_patterns(pattern, detections - s.x(1:dim)', s);
+    [p, FPs] = match_patterns(pattern, detections - s.x(1:dim)', 'correct', s);
     detections = detections(~FPs, :);
     s.z = reshape(detections, [], 1);
     if size(detections,1) > 2
@@ -41,7 +41,6 @@ if noKnowledge
     % corresponding rows in H and R.
     detectionsIdx = zeros(dim*length(assignment),1);
     lostIdx = zeros(dim*length(lostDet),1);
-    assignment
     for i = 1:dim
         detectionsIdx( (i-1)*length(assignment) + 1: i*length(assignment)) = assignment' + nMarkers*(i-1);
         lostIdx((i-1)*length(lostDet) + 1: i*length(lostDet)) = lostDet';

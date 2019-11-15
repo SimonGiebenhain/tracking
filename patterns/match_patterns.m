@@ -1,4 +1,4 @@
-function [assignment, FPs] = match_patterns(whole_pattern, detected_pattern, kalmanFilter)
+function [assignment, FPs] = match_patterns(whole_pattern, detected_pattern, method, kalmanFilter)
 %MATCH_PATTERNS Find corresponing points in two sets of points
 %
 %   assignment = MATCH_PATTERNS(whole_pattern, detected_pattern, 'ML', rotMat)
@@ -25,30 +25,29 @@ function [assignment, FPs] = match_patterns(whole_pattern, detected_pattern, kal
 
 dim = size(whole_pattern,2);
 
-rotMat = Rot(kalmanFilter.x(2*dim+1:2*dim+4));
-rotatedPattern = (rotMat*whole_pattern')';
+if strcmp(method, 'correct')
+    rotMat = Rot(kalmanFilter.x(2*dim+1:2*dim+4));
+    rotatedPattern = (rotMat*whole_pattern')';
 
-FPs = zeros(size(detected_pattern,1),1);
+    FPs = zeros(size(detected_pattern,1),1);
 
-% the rotated pattern also is the expected location of the markers
-% filter some False Positives
-if size(detected_pattern, 1) > 1
-   dists = pdist2(detected_pattern, rotatedPattern);
-   if min(dists, [], 'all') < 10
-      internalD = squareform(pdist(detected_pattern));
-      internalD(internalD == 0) = 100;
-      FPs = min(internalD, [],  2) > 50;
-      if nnz(FPs) >= 1
-        FPs
-      end
-      detected_pattern = detected_pattern(~FPs,:);
-   end
-end
+    % the rotated pattern also is the expected location of the markers
+    % filter some False Positives
+    if size(detected_pattern, 1) > 1
+       dists = pdist2(detected_pattern, rotatedPattern);
+       if min(dists, [], 'all') < 10
+          internalD = squareform(pdist(detected_pattern));
+          internalD(internalD == 0) = 100;
+          FPs = min(internalD, [],  2) > 50;
+          detected_pattern = detected_pattern(~FPs,:);
+       end
+    end
 
-if size(detected_pattern, 1) > 2
-    method = 'new';
-else
-    method = 'ML';
+    if size(detected_pattern, 1) > 2
+        method = 'new';
+    else
+        method = 'ML';
+    end
 end
 
 switch method
@@ -90,7 +89,6 @@ switch method
         
         cost_matrix = pdist2(detected_pattern, rotatedPattern);
         [assignment, ~] = munkers(cost_matrix);
-        assignment
     case 'new'
         %TODO make this cost of NonAssignemnt smaller!!!
         costNonAssignment = 20;

@@ -14,8 +14,19 @@ noise_model_states = ['all', 'some', 'none']
 noise_model_transition_prob = {'all': [ 0.89, 0.1, 0.01], 'some': [0.02, 0.97, 0.01], 'none': [0.48, 0.48, 0.04]}
 noise_model_initial_state = 'all'
 
-noise_FN_model = NoiseModel(noise_model_states, noise_model_transition_prob, noise_model_initial_state)
-#TODO: noise_FP_model =
+noise_FN_model = NoiseModelFN(noise_model_states, noise_model_transition_prob, noise_model_initial_state)
+
+
+noise_model_FP_states = [0, 1, 2]
+noise_model_FP_transition_probs = np.array([[0.8, 0.2, 0], [0.2, 0.6, 0.2], [0.2, 0.4, 0.4]])
+noise_model_FP_initial_probs = np.array([1, 0, 0])
+fp_scale = 10
+fp_prob = 0.5
+radius = 100
+
+noise_FP_model = NoiseModelFP(noise_model_FP_states, noise_model_FP_transition_probs, noise_model_FP_initial_probs,
+                              fp_scale, fp_prob, radius)
+
 
 
 def plot_trajectories(pos):
@@ -126,10 +137,10 @@ def generate_quat(t0, t):
     return quats[:, t0:t, :]
 
 
-def simulate_markers(pos, quats, visibility, patterns):
+def simulate_markers(pos, quats, visibility, patterns, FPs):
     T = pos.shape[1]
     N_birds = pos.shape[0]
-    detections = np.zeros([N_birds, T, 4, 3])
+    detections = np.zeros([N_birds, T, 6, 3]) * np.NaN
     for t in range(T):
         for n in range(N_birds):
             p = pos[n, t, :]
@@ -140,16 +151,27 @@ def simulate_markers(pos, quats, visibility, patterns):
 
             rotated_pat = (R @ pat.T).T + p
 
-            detections[n, t, :, :] = rotated_pat
-            detections[n, t, np.logical_not(visibility[n, t, :]), :] = np.NaN
+            detections[n, t, :4, :] = rotated_pat
+            non_vis = np.logical_not(visibility[n, t, :])
+            non_vis = np.concatenate([non_vis, np.array([np.True_, np.True_])])
+            detections[n, t, non_vis , :] = np.NaN
+            for i in range(len(FPs[n][t])):
+                fp = FPs[n][t][i,:]
+                detections[n, t, 4+i, :] = fp + p
 
     scipy.io.savemat('data/matlab/generated_data.mat', dict(D=detections, pos=pos, quat=quats))
     return detections
 
-T = 100
+T = 1000
 marker_visibility = np.zeros([10, T, 4])
 for i in range(10):
     marker_visibility[i, :, :] = noise_FN_model.rollout(T)
+
+false_positives = []
+for i in range(10):
+    noise_FP_model = NoiseModelFP(noise_model_FP_states, noise_model_FP_transition_probs, noise_model_FP_initial_probs,
+                                  fp_scale, fp_prob, radius)
+    false_positives.append(noise_FP_model.rollout(T))
 
 pos, t0, t = generate_pos(T)
 print(pos.shape)
@@ -160,6 +182,8 @@ print(quats.shape)
 #quats = np.load('data/quats_all.npy')
 patterns = np.load('data/patterns.npy')
 
-dets = simulate_markers(pos, quats, marker_visibility, patterns)
+dets = simulate_markers(pos, quats, marker_visibility, patterns, false_positives)
 print(dets[0, :, :, 0])
 print(dets.shape)
+
+print(dets[0, 1:10, 5 , :])

@@ -1,7 +1,8 @@
 import numpy as np
 from random import shuffle
 
-class MarkovChain():
+
+class MarkovChain:
     def __init__(self, states, transition_list):
         assert len(states) == len(transition_list)
         P = np.zeros([len(states), len(states)])
@@ -42,7 +43,7 @@ class MarkovChain():
         return state_history
 
 
-class NoiseModelFN():
+class NoiseModelFN:
 
     def __init__(self, states, transition_probs, initial_state):
         self.states = states
@@ -110,8 +111,9 @@ class NoiseModelFN():
 
         return np.stack(marker_visibility, axis=0)
 
-class NoiseModelFP():
-    def __init__(self, states, transition_probs, initial_probs, scale):
+
+class NoiseModelFP:
+    def __init__(self, states, transition_probs, initial_probs, scale, fp_prob, radius):
         self.states = states
         self.P = transition_probs
         self.init_p = initial_probs
@@ -121,6 +123,8 @@ class NoiseModelFP():
         for i in range(len(self.states)):
             self.fp_loc.append(None)
         self.scale = scale
+        self.fp_prob = fp_prob
+        self.radius = radius
 
     def do_move(self):
         p = self.P[self.state]
@@ -142,7 +146,7 @@ class NoiseModelFP():
             FPs = []
             for loc in self.fp_loc:
                 if loc is not None:
-                    if np.random.uniform(0, 1) < 0.5:
+                    if np.random.uniform(0, 1) < self.fp_prob:
                         print(loc)
                         FPs.append(np.random.multivariate_normal(loc, self.scale*np.eye(3), 1))
             if not FPs:
@@ -151,16 +155,17 @@ class NoiseModelFP():
                 return np.concatenate(FPs, axis=0)
 
     def add_loc(self):
-        radius = 100
         theta = np.random.uniform(0, 3.14)
         phi = np.random.uniform(0, 2 * 3.14)
-        x = radius * np.sin(theta) * np.cos(phi)
-        y = radius * np.sin(theta) * np.sin(phi)
-        z = radius * np.cos(theta)
-        if np.random.uniform(0, 1) < 0.5:
-            self.fp_loc[0] = np.stack([x, y, z])
-        else:
-            self.fp_loc[1] = np.stack([x, y, z])
+        x = self.radius * np.sin(theta) * np.cos(phi)
+        y = self.radius * np.sin(theta) * np.sin(phi)
+        z = self.radius * np.cos(theta)
+        empty_locs = []
+        for i,loc in enumerate(self.fp_loc):
+            if loc is None:
+                empty_locs.append(i)
+        idx = np.random.choice(empty_locs)
+        self.fp_loc[idx] = np.stack([x, y, z])
 
     def rollout(self, T):
         self.init_state()
@@ -188,6 +193,9 @@ class NoiseModelFP():
                 for loc in self.fp_loc:
                     if loc is not None:
                         n_locs += 1
+                if n_locs == 0:
+                    self.add_loc()
+                    self.add_loc()
                 if n_locs == 1:
                     self.add_loc()
             else:
@@ -198,10 +206,15 @@ class NoiseModelFP():
 
 noise_model_FP_states = [0, 1, 2]
 noise_model_FP_transition_probs = np.array([[0.8, 0.2, 0], [0.2, 0.6, 0.2], [0, 0.8, 0.2]])
-noise_model_FP_initial_probs = np.array([1, 0, 0])
+noise_model_FP_initial_probs = np.array([0, 0, 1])
+fp_scale = 10
+fp_prob = 0.5
+radius = 150
+
 
 def test_noise_FP_model():
-    nMFP = NoiseModelFP(noise_model_FP_states, noise_model_FP_transition_probs, noise_model_FP_initial_probs, 10)
+    nMFP = NoiseModelFP(noise_model_FP_states, noise_model_FP_transition_probs, noise_model_FP_initial_probs,
+                        fp_scale, fp_prob, radius)
     print(nMFP.rollout(100))
 
 noise_model_states = ['all', 'some', 'none']
@@ -213,6 +226,10 @@ def test_noise_model():
     print(nM.rollout(200))
 
 test_noise_FP_model()
+
+
+
+
 
 #old_noise_model_states = ['not flying, no wings', 'not flying, wing covers', 'flying, no wings' ,'flying, wing covers']
 #

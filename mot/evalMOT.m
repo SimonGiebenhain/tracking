@@ -26,12 +26,10 @@ end
     
 %% test MOT
 quatMotionType = 'brownian';
-profile on
 [estimatedPositions, estimatedQuats] = ownMOT(formattedData, patterns, patternNames ,initialStates, N, pos, quat, quatMotionType);
-profile viewer
 %TODO: save results
 
-%% Evaluate tracking performance 
+%% Evaluate tracking performancoe 
 performanceVisualization(estimatedPositions, pos, estimatedQuats, quat, patterns);
 %%
 t0=1;
