@@ -92,7 +92,6 @@ switch method
         [assignment, c] = munkers(cost_matrix);
         certainty = c;
     case 'new'
-        %TODO make this cost of NonAssignemnt smaller!!!
         costNonAssignment = 10;
                 
         sqDistPattern = squareform(pdist(whole_pattern));
@@ -156,32 +155,33 @@ switch method
         %assignment = assignment(1:nMarkers);
         %assignment = assignment(assignment ~= 5);
     case 'noKnowledge'
-        costNonAssignment = 50;
+        costNonAssignment = 10;
                    
         lambda = 20;
         nMarkers = size(whole_pattern,1);
         allPerms = perms(1:nMarkers);
         cost = zeros(size(allPerms, 1),1);
+        if size(detected_pattern,1) == 3
+            det_pat = [detected_pattern; NaN*ones(1,3)];
+        else
+            det_pat = detected_pattern;
+        end
+
+        anglesPattern = getInternalAngles(whole_pattern);
+        sqDistPattern = squareform(pdist(whole_pattern));
+        sqDistDetections = squareform(pdist(det_pat));
+
+        
         for iii=1:size(allPerms,1)
            p = allPerms(iii,:);
-           %dets = NaN * zeros(nMarkers, 3);
-           if size(detected_pattern,1) == 3
-               p = p(1:nMarkers);
-               det_pat = [detected_pattern; NaN*ones(1,3)];
-               dets = det_pat(p,:);
-           else
-               p = p(1:nMarkers);
-               det_pat = detected_pattern;
-               dets = det_pat(p,:);
-           end
-           distDetections = pdist(dets);
-           distPattern = pdist(whole_pattern);
-           diff = abs(distDetections - distPattern);
-           cost(iii) = sum(diff(~isnan(diff)), 'all');
+           p = p(1:nMarkers);
+           dets = det_pat(p,:);
+           
+           cost(iii) = sqrt(sum((sqDistDetections(p,p) - sqDistPattern).^2, 'all', 'omitnan'));
            anglesDetections = getInternalAngles(dets);
-           anglesPattern = getInternalAngles(whole_pattern);
-           angleDiff = abs(anglesDetections - anglesPattern);
-           cost(iii) = cost(iii) + lambda * sum(angleDiff(~isnan(angleDiff)), 'all');
+           angleDiff = (anglesDetections - anglesPattern).^2;
+           cost(iii) = cost(iii) + lambda * sqrt(sum(angleDiff(~isnan(angleDiff))));
+           
 
            if sum(any(isnan(dets),2)) == 1 || sum(any(isnan(dets),2)) == 2
                 cost(iii) = (cost(iii) + sum(any(isnan(dets),2))* costNonAssignment)/sum(all(~isnan(dets),2));

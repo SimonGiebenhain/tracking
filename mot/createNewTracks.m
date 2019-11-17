@@ -2,17 +2,22 @@ function [tracks, unassignedPatterns] = createNewTracks(detections, unassignedPa
 %CREATENEWTRACKS Summary of this function goes here
 %   Detailed explanation goes here
 
-if length(detections) > 1 && sum(unassignedPatterns) > 0    
+if size(detections, 1) > 1 && sum(unassignedPatterns) > 0    
     dim = size(patterns,3);
-    epsilon = 50;
+    epsilon = 60;
     clustersRaw = clusterUnassignedDetections(detections, epsilon);
     nClusters = 0;
     clusters = {};
     for i=1:length(clustersRaw)
-        %TODO what to do with less than 4 detections
-        if size(clustersRaw{i},1) == 4
-            if size(clustersRaw{i},1) > 4
-                %TODO remove markers
+        if size(clustersRaw{i},1) >= 3
+            while size(clustersRaw{i},1) > 4
+                %TODO split cluster
+                dets = clusterRaw{i};
+                dists = squareform(pdist());
+                addedDists = sum(dists, 2);
+                [~, worstIdx] = max(addedDists);
+                idx = 1:size(dets,1);
+                clustersRaw{i} = dets(idx ~= worstIdx, :);
             end
             clusters{nClusters+1} = clustersRaw{i};
             nClusters = nClusters + 1;
@@ -33,9 +38,8 @@ if length(detections) > 1 && sum(unassignedPatterns) > 0
             assignment = zeros(4,1);
             assignment(p) = 1:length(p);
             pattern = pattern(assignment,:);
+            pattern = pattern(assignment > 0, :);
             dets = clusters{j};
-            %size(dets,1)
-            % TODO augment missing detection
             [R, translation, MSE] = umeyama(pattern', dets');
             costMatrix(i,j) = MSE;
             rotMatsMatrix(i,j,:,:) = R;
@@ -43,7 +47,7 @@ if length(detections) > 1 && sum(unassignedPatterns) > 0
         end
     end
     
-    costOfNonAssignment = 2; %TODO find something reasonable, altough could be very high
+    costOfNonAssignment = 2; 
     [patternToClusterAssignment, stillUnassignedPatterns, ~] = ...
         assignDetectionsToTracks(costMatrix, costOfNonAssignment);
     
