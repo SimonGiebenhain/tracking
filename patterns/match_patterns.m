@@ -1,4 +1,4 @@
-function [assignment, FPs] = match_patterns(whole_pattern, detected_pattern, method, kalmanFilter)
+function [assignment, FPs, certainty] = match_patterns(whole_pattern, detected_pattern, method, kalmanFilter)
 %MATCH_PATTERNS Find corresponing points in two sets of points
 %
 %   assignment = MATCH_PATTERNS(whole_pattern, detected_pattern, 'ML', rotMat)
@@ -33,9 +33,10 @@ if strcmp(method, 'correct')
 
     % the rotated pattern also is the expected location of the markers
     % filter some False Positives
+    
     if size(detected_pattern, 1) > 1
        dists = pdist2(detected_pattern, rotatedPattern);
-       if min(dists, [], 'all') < 10
+       if min(dists, [], 'all') < 20
           internalD = squareform(pdist(detected_pattern));
           internalD(internalD == 0) = 100;
           FPs = min(internalD, [],  2) > 50;
@@ -88,13 +89,14 @@ switch method
     case 'ML'
         
         cost_matrix = pdist2(detected_pattern, rotatedPattern);
-        [assignment, ~] = munkers(cost_matrix);
+        [assignment, c] = munkers(cost_matrix);
+        certainty = c;
     case 'new'
         %TODO make this cost of NonAssignemnt smaller!!!
-        costNonAssignment = 20;
+        costNonAssignment = 10;
                 
         sqDistPattern = squareform(pdist(whole_pattern));
-        %anglesPattern = getInternalAngles(whole_pattern);
+        anglesPattern = getInternalAngles(whole_pattern);
 
         lambda = 20;
         
@@ -115,12 +117,12 @@ switch method
            p = allPerms(iii,:);
            p = p(1:nMarkers);
            dets = det_pat(p,:);
-           cost(iii) = mean((sqDistDetections(p,p) - sqDistPattern).^2, 'all', 'omitnan');
+           cost(iii) = sqrt(sum((sqDistDetections(p,p) - sqDistPattern).^2, 'all', 'omitnan'));
            
            %TODO include or not?
-           %anglesDetections = getInternalAngles(dets);
-           %angleDiff = abs(anglesDetections - anglesPattern);
-           %cost(iii) = cost(iii) + lambda * sum(angleDiff(~isnan(angleDiff)));
+           anglesDetections = getInternalAngles(dets);
+           angleDiff = (anglesDetections - anglesPattern).^2;
+           cost(iii) = cost(iii) + lambda * sqrt(sum(angleDiff(~isnan(angleDiff))));
            
            
            %for in = 1:4
@@ -138,7 +140,7 @@ switch method
            
            eucDist = (dets - rotatedPattern).^2;
            eucDist = reshape( eucDist(~isnan(eucDist)), [], 3);
-           cost(iii) = cost(iii) + 1/3*sum(sqrt(sum(eucDist,2)));
+           cost(iii) = cost(iii) + 1/10*sum(sqrt(sum(eucDist,2)));
            if sum(any(isnan(dets),2)) == 1 || sum(any(isnan(dets),2)) == 2
                 cost(iii) = (cost(iii) + sum(any(isnan(dets),2))* costNonAssignment)/sum(all(~isnan(dets),2));
            elseif sum(any(isnan(dets),2)) == 0
@@ -150,6 +152,7 @@ switch method
         end
         [c, minIdx] = min(cost);
         assignment = allPerms(minIdx,:);
+        certainty = c;
         %assignment = assignment(1:nMarkers);
         %assignment = assignment(assignment ~= 5);
     case 'noKnowledge'
