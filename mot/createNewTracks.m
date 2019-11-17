@@ -2,17 +2,19 @@ function [tracks, unassignedPatterns] = createNewTracks(detections, unassignedPa
 %CREATENEWTRACKS Summary of this function goes here
 %   Detailed explanation goes here
 
-if size(detections, 1) > 1 && sum(unassignedPatterns) > 0    
+if size(detections, 1) > 1 && sum(unassignedPatterns) > 0  
+    fprintf('Creatng new tracks')
     dim = size(patterns,3);
-    epsilon = 60;
+    epsilon = 55;
     clustersRaw = clusterUnassignedDetections(detections, epsilon);
     nClusters = 0;
     clusters = {};
     for i=1:length(clustersRaw)
-        if size(clustersRaw{i},1) >= 3
+        if size(clustersRaw{i},1) > 3
+            size(clustersRaw{i},1)
             while size(clustersRaw{i},1) > 4
                 %TODO split cluster
-                dets = clusterRaw{i};
+                dets = clustersRaw{i};
                 dists = squareform(pdist());
                 addedDists = sum(dists, 2);
                 [~, worstIdx] = max(addedDists);
@@ -37,6 +39,7 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
             p = match_patterns(pattern, clusters{j}, 'noKnowledge');
             assignment = zeros(4,1);
             assignment(p) = 1:length(p);
+            assignment = assignment(1:size(clusters{j},1));
             pattern = pattern(assignment,:);
             pattern = pattern(assignment > 0, :);
             dets = clusters{j};
@@ -47,7 +50,7 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
         end
     end
     
-    costOfNonAssignment = 2; 
+    costOfNonAssignment = 3; 
     [patternToClusterAssignment, stillUnassignedPatterns, ~] = ...
         assignDetectionsToTracks(costMatrix, costOfNonAssignment);
     

@@ -1,4 +1,4 @@
-function [assignment, FPs, certainty] = match_patterns(whole_pattern, detected_pattern, method, kalmanFilter)
+function [assignment, FPs, certainty] = match_patterns(whole_pattern, detected_pattern, method, kalmanFilter, hyperParams)
 %MATCH_PATTERNS Find corresponing points in two sets of points
 %
 %   assignment = MATCH_PATTERNS(whole_pattern, detected_pattern, 'ML', rotMat)
@@ -34,12 +34,12 @@ if strcmp(method, 'correct')
     % the rotated pattern also is the expected location of the markers
     % filter some False Positives
     
-    if size(detected_pattern, 1) > 1
+    if size(detected_pattern, 1) > 1 && hyperParams.doFPFiltering
        dists = pdist2(detected_pattern, rotatedPattern);
-       if min(dists, [], 'all') < 20
+       if min(dists, [], 'all') < hyperParams.whenFPFilter
           internalD = squareform(pdist(detected_pattern));
-          internalD(internalD == 0) = 100;
-          FPs = min(internalD, [],  2) > 50;
+          internalD(internalD == 0) = 10000;
+          FPs = min(internalD, [],  2) > hyperParams.thresholdFPFilter;
           detected_pattern = detected_pattern(~FPs,:);
        end
     end
@@ -91,14 +91,11 @@ switch method
         cost_matrix = pdist2(detected_pattern, rotatedPattern);
         [assignment, c] = munkers(cost_matrix);
         certainty = c;
-    case 'new'
-        costNonAssignment = 10;
-                
+    case 'new'                
         sqDistPattern = squareform(pdist(whole_pattern));
         anglesPattern = getInternalAngles(whole_pattern);
 
-        lambda = 20;
-        
+        lambda = hyperParams.lambda;
         nMarkers = size(whole_pattern,1);
         allPerms = perms(1:nMarkers+1);
         cost = zeros(size(allPerms, 1),1);
@@ -109,8 +106,6 @@ switch method
                det_pat = [detected_pattern; NaN*ones(1,3)];
         end
         sqDistDetections = squareform(pdist(det_pat));
-        %anglesDetections = getInternalAngles(det_pat);
-
            
         for iii=1:size(allPerms,1)
            p = allPerms(iii,:);
@@ -118,10 +113,11 @@ switch method
            dets = det_pat(p,:);
            cost(iii) = sqrt(sum((sqDistDetections(p,p) - sqDistPattern).^2, 'all', 'omitnan'));
            
-           %TODO include or not?
-           anglesDetections = getInternalAngles(dets);
-           angleDiff = (anglesDetections - anglesPattern).^2;
-           cost(iii) = cost(iii) + lambda * sqrt(sum(angleDiff(~isnan(angleDiff))));
+           if lambda > 0
+                anglesDetections = getInternalAngles(dets);
+                angleDiff = (anglesDetections - anglesPattern).^2;
+                cost(iii) = cost(iii) + lambda * sqrt(sum(angleDiff(~isnan(angleDiff))));
+           end
            
            
            %for in = 1:4
@@ -139,9 +135,10 @@ switch method
            
            eucDist = (dets - rotatedPattern).^2;
            eucDist = reshape( eucDist(~isnan(eucDist)), [], 3);
-           cost(iii) = cost(iii) + 1/10*sum(sqrt(sum(eucDist,2)));
-           if sum(any(isnan(dets),2)) == 1 || sum(any(isnan(dets),2)) == 2
-                cost(iii) = (cost(iii) + sum(any(isnan(dets),2))* costNonAssignment)/sum(all(~isnan(dets),2));
+           cost(iii) = cost(iii) + hyperParams.eucDistWeight*sum(sqrt(sum(eucDist,2)));
+
+           if sum(any(isnan(dets),2)) == 1 || sum(any(isnan(dets),2)) == 2 
+               cost(iii) = (cost(iii) + sum(any(isnan(dets),2))* hyperParams.costOfNonAsDtMA)/sum(all(~isnan(dets),2));
            elseif sum(any(isnan(dets),2)) == 0
                 cost(iii) = cost(iii)/sum(all(~isnan(dets),2));
            else
@@ -152,12 +149,10 @@ switch method
         [c, minIdx] = min(cost);
         assignment = allPerms(minIdx,:);
         certainty = c;
-        %assignment = assignment(1:nMarkers);
-        %assignment = assignment(assignment ~= 5);
     case 'noKnowledge'
-        costNonAssignment = 10;
+        costNonAssignment = 50;
                    
-        lambda = 20;
+        lambda = 10;
         nMarkers = size(whole_pattern,1);
         allPerms = perms(1:nMarkers);
         cost = zeros(size(allPerms, 1),1);
