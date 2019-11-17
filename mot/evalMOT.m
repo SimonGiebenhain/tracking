@@ -1,5 +1,8 @@
 %% load data
-load('modernMethods/data/matlab/generated_data.mat')
+dataDirs = {'generated_data.mat'};
+curDataName = dataDirs{1,1};
+path = ['modernMethods/data/matlab/', curDataName];
+load(path)
 size(D)
 N = size(D,1);
 D = permute(D, [2, 1, 3, 4]);
@@ -26,11 +29,18 @@ end
     
 %% test MOT
 quatMotionType = 'brownian';
-[estimatedPositions, estimatedQuats] = ownMOT(formattedData, patterns, patternNames ,initialStates, N, pos, quat, quatMotionType);
+[estimatedPositions, estimatedQuats, markerAssignemnts, falsePositives] = ownMOT(formattedData, patterns, patternNames ,initialStates, N, pos, quat, quatMotionType);
 %TODO: save results
 
-%% Evaluate tracking performancoe 
-performanceVisualization(estimatedPositions, pos, estimatedQuats, quat, patterns);
+%% Evaluate tracking performance 
+totalError = performanceVisualization(estimatedPositions, pos, estimatedQuats, quat, patterns);
+avgErrorPerBird = mean(totalError, 2);
+avgError = mean(totalError, 'all');
+
+%% Save results
+mkdir('resultsKF')
+save(['resultsKF/', curDataName], 'estimatedPositions', 'estimatedQuats', 'markerAssignemnts', 'falsePositives')
+
 %%
-t0=1;
-vizRes(formattedData(t0:end,:,:), patterns, estimatedPositions(:,t0:end,:), estimatedQuats(:,t0:end,:), 1, pos(:, t0:end, :), quat(:, t0:end, :))
+%t0=1;
+%vizRes(formattedData(t0:end,:,:), patterns, estimatedPositions(:,t0:end,:), estimatedQuats(:,t0:end,:), 1, pos(:, t0:end, :), quat(:, t0:end, :))

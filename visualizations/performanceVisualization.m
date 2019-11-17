@@ -1,4 +1,4 @@
-function performanceVisualization(estimatedPositions, positions, estimatedQuats, quats, patterns)
+function totalError = performanceVisualization(estimatedPositions, positions, estimatedQuats, quats, patterns)
 %PERFORMANCEVISUALIZATION Visualize tracking errors of postion and
 %orientation for each object to track
 %   This function is not finished yet!
