@@ -7,42 +7,42 @@ import scipy.io
 
 from BehaviourModel import NoiseModelFN, NoiseModelFP
 
-FN_transitions = [{'all': [ 0.2, 0.5, 0.3], 'some': [0.1, 0.4, 0.5], 'none': [0.1, 0.3, 0.6]},
-                  {'all': [ 0.2, 0.5, 0.3], 'some': [0.1, 0.4, 0.5], 'none': [0.1, 0.3, 0.6]},
-                  {'all': [ 0.2, 0.5, 0.3], 'some': [0.1, 0.4, 0.5], 'none': [0.1, 0.3, 0.6]},
-                  {'all': [ 0.2, 0.5, 0.3], 'some': [0.1, 0.4, 0.5], 'none': [0.1, 0.3, 0.6]},
-                  {'all': [ 0.2, 0.5, 0.3], 'some': [0.1, 0.4, 0.5], 'none': [0.1, 0.3, 0.6]},
-                  {'all': [ 0.2, 0.5, 0.3], 'some': [0.1, 0.4, 0.5], 'none': [0.1, 0.3, 0.6]},
-                  {'all': [ 0.2, 0.5, 0.3], 'some': [0.1, 0.4, 0.5], 'none': [0.1, 0.3, 0.6]},
-                  {'all': [ 0.2, 0.5, 0.3], 'some': [0.1, 0.4, 0.5], 'none': [0.1, 0.3, 0.6]},
-                  {'all': [ 0.2, 0.5, 0.3], 'some': [0.1, 0.4, 0.5], 'none': [0.1, 0.3, 0.6]},
-                  {'all': [ 0.2, 0.5, 0.3], 'some': [0.1, 0.4, 0.5], 'none': [0.1, 0.3, 0.6]}]
+FN_transitions = [{'all': [0.95, 0.04, 0.01], 'some': [0.16, 0.83, 0.01], 'none': [0.66, 0.30, 0.04]},
+                  {'all': [0.93, 0.06, 0.01], 'some': [0.14, 0.85, 0.01], 'none': [0.61, 0.35, 0.04]},
+                  {'all': [0.91, 0.08, 0.01], 'some': [0.12, 0.87, 0.01], 'none': [0.56, 0.40, 0.04]},
+                  {'all': [0.89, 0.10, 0.01], 'some': [0.10, 0.89, 0.01], 'none': [0.51, 0.45, 0.04]},
+                  {'all': [0.88, 0.10, 0.02], 'some': [0.08, 0.91, 0.01], 'none': [0.48, 0.48, 0.04]},
+                  {'all': [0.87, 0.11, 0.02], 'some': [0.08, 0.91, 0.01], 'none': [0.48, 0.48, 0.04]},
+                  {'all': [0.87, 0.11, 0.02], 'some': [0.06, 0.92, 0.02], 'none': [0.48, 0.48, 0.04]},
+                  {'all': [0.87, 0.11, 0.02], 'some': [0.06, 0.92, 0.02], 'none': [0.48, 0.48, 0.04]},
+                  {'all': [0.85, 0.13, 0.02], 'some': [0.06, 0.90, 0.04], 'none': [0.48, 0.48, 0.04]},
+                  {'all': [0.85, 0.13, 0.02], 'some': [0.04, 0.92, 0.04], 'none': [0.48, 0.48, 0.04]}]
 
-FN_p1s = [[0.1, 0.2], [0.1, 0.2], [0.1, 0.2], [0.1, 0.2], [0.1, 0.2], [0.1, 0.2], [0.1, 0.2], [0.1, 0.2], [0.1, 0.2], [0.1, 0.2]]
-FN_p2s = [[0.35, 0.6], [0.35, 0.6], [0.35, 0.6], [0.35, 0.6], [0.35, 0.6], [0.35, 0.6], [0.35, 0.6], [0.35, 0.6], [0.35, 0.6], [0.35, 0.6]]
-FN_p3s = [[0.6, 0.85], [0.6, 0.85], [0.6, 0.85], [0.6, 0.85], [0.6, 0.85], [0.6, 0.85], [0.6, 0.85], [0.6, 0.85], [0.6, 0.85], [0.6, 0.85]]
-FN_p4s = [[0.8, 0.95], [0.8, 0.95], [0.8, 0.95], [0.8, 0.95], [0.8, 0.95], [0.8, 0.95], [0.8, 0.95], [0.8, 0.95], [0.8, 0.95], [0.8, 0.95]]
+FN_p1s = [[0.01, 0.05], [0.05, 0.10], [0.10, 0.15], [0.1, 0.2], [0.10, 0.20], [0.10, 0.20], [0.10, 0.20], [0.10, 0.20], [0.15, 0.25], [0.15, 0.25]]
+FN_p2s = [[0.05, 0.25], [0.10, 0.25], [0.15, 0.35], [0.2, 0.4], [0.25, 0.50], [0.30, 0.55], [0.35, 0.60], [0.35, 0.60], [0.40, 0.60], [0.45, 0.65]]
+FN_p3s = [[0.25, 0.45], [0.35, 0.45], [0.45, 0.60], [0.4, 0.6], [0.50, 0.70], [0.55, 0.75], [0.60, 0.80], [0.60, 0.85], [0.65, 0.80], [0.65, 0.85]]
+FN_p4s = [[0.45, 0.75], [0.55, 0.75], [0.60, 0.80], [0.6, 0.8], [0.70, 0.85], [0.75, 0.90], [0.80, 0.90], [0.80, 0.95], [0.80, 0.95], [0.80, 0.95]]
 
 
-FP_transitions = [[[0.5, 0.3, 0.2], [0.1, 0.8, 0.1], [0.4, 0.1, 0.5]],
-                  [[0.5, 0.3, 0.2], [0.1, 0.8, 0.1], [0.4, 0.1, 0.5]],
-                  [[0.5, 0.3, 0.2], [0.1, 0.8, 0.1], [0.4, 0.1, 0.5]],
-                  [[0.5, 0.3, 0.2], [0.1, 0.8, 0.1], [0.4, 0.1, 0.5]],
-                  [[0.5, 0.3, 0.2], [0.1, 0.8, 0.1], [0.4, 0.1, 0.5]],
-                  [[0.5, 0.3, 0.2], [0.1, 0.8, 0.1], [0.4, 0.1, 0.5]],
-                  [[0.5, 0.3, 0.2], [0.1, 0.8, 0.1], [0.4, 0.1, 0.5]],
-                  [[0.5, 0.3, 0.2], [0.1, 0.8, 0.1], [0.4, 0.1, 0.5]],
-                  [[0.5, 0.3, 0.2], [0.1, 0.8, 0.1], [0.4, 0.1, 0.5]],
-                  [[0.5, 0.3, 0.2], [0.1, 0.8, 0.1], [0.4, 0.1, 0.5]]]
+FP_transitions = [[[0.9, 0.1, 0.0], [0.7, 0.2, 0.1], [0.7, 0.2, 0.1]],
+                  [[0.8, 0.1, 0.1], [0.7, 0.2, 0.1], [0.7, 0.2, 0.1]],
+                  [[0.7, 0.2, 0.1], [0.6, 0.3, 0.1], [0.6, 0.2, 0.2]],
+                  [[0.7, 0.2, 0.1], [0.6, 0.2, 0.2], [0.5, 0.2, 0.3]],
+                  [[0.7, 0.2, 0.1], [0.5, 0.3, 0.2], [0.4, 0.2, 0.4]],
+                  [[0.6, 0.2, 0.2], [0.4, 0.4, 0.2], [0.4, 0.2, 0.4]],
+                  [[0.6, 0.2, 0.2], [0.4, 0.4, 0.2], [0.3, 0.2, 0.5]],
+                  [[0.6, 0.2, 0.2], [0.3, 0.5, 0.2], [0.3, 0.2, 0.5]],
+                  [[0.5, 0.3, 0.2], [0.3, 0.5, 0.2], [0.3, 0.2, 0.5]],
+                  [[0.4, 0.4, 0.2], [0.3, 0.5, 0.2], [0.3, 0.2, 0.5]]]
 
-FP_probs = [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]
-FP_scales = [10, 10, 10, 10, 10, 10, 10, 10, 10, 10]
-FP_radiuses = [100, 100, 100, 100, 100, 100, 100, 100, 100, 100]
+FP_probs = [0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8]
+FP_scales = [8.5, 9, 9.5, 10, 10.5, 11, 11.5, 12, 12.5, 13]
+FP_radiuses = [125, 120, 115, 110, 105, 100, 95, 90, 85, 80]
 
 #TODO: implement gaussian noise on markers
 Noise_scales = [10, 10, 10, 10, 10, 10, 10, 10, 10, 10]
 
-noise_std = 0
+noise_scale = 0
 
 #TODO: loop over all settings, create different .mat-file for every setting
 
@@ -75,7 +75,7 @@ def plot_trajectories(pos):
         plt.plot(traj, c=colors[k, :])
 
 
-def generate_pos(length):
+def generate_pos():
     rolling_media_window_size = 40
     rolling_mean_window_size = 10
 
@@ -89,7 +89,7 @@ def generate_pos(length):
         posZ = pkl.load(fin)
 
     pos = np.stack([posX, posY, posZ], axis=2)
-    np.save('data/pos_all.npy', pos)
+    #np.save('data/pos_all.npy', pos)
     n_objects = pos.shape[0]
     T = pos.shape[1]
 
@@ -104,31 +104,51 @@ def generate_pos(length):
             rolling_mean_window_size).mean().to_numpy()[rolling_mean_window_size-1:, :]
 
     pos = pos_smoothened2
-    print(pos.shape)
     bad_frames = np.any(np.isnan(pos[:, :, 0]), axis=0)
-
-    seq_found = False
-    t0 = 1500
-    t = 1500
-    while not seq_found:
-        if t >= len(bad_frames):
-            break
+    intervals = []
+    cur_interval_left = 0
+    cur_interval_length = 0
+    for t in range(0, len(bad_frames)):
         if not bad_frames[t]:
-            t += 1
-            if t - t0 == length:
-                break
+            cur_interval_length += 1
+            if cur_interval_left == -1:
+                cur_interval_left = t
+        elif cur_interval_length > 200:
+            intervals.append((cur_interval_left, t-1))
+            cur_interval_left = -1
+            cur_interval_length = 0
         else:
-            t0 = t+1
-            t +=1
-    if not t - t0 == length:
-        print('Failed to find anything')
-        return None
-    print(t0)
-    print(t)
-    return pos[:, t0:t, :], t0, t
+            cur_interval_left = -1
+            cur_interval_length = 0
+    if cur_interval_length > 200:
+        intervals.append( (cur_interval_left, len(bad_frames)-1))
+    print(intervals)
+
+    #seq_found = False
+    #t0 = 1500
+    #t = 1500
+    #while not seq_found:
+    #    if t >= len(bad_frames):
+    #        break
+    #    if not bad_frames[t]:
+    #        t += 1
+    #        if t - t0 == length:
+    #            break
+    #    else:
+    #        t0 = t+1
+    #        t +=1
+    #if not t - t0 == length:
+    #    print('Failed to find anything')
+    #    return None
+    #print(t0)
+    #print(t)
+    posIntervals = []
+    for interval in intervals:
+        posIntervals.append(pos[:, interval[0]:interval[1]+1, :])
+    return posIntervals, intervals
 
 
-def generate_quat(t0, t):
+def generate_quat(intervals):
     rolling_media_window_size = 20
     rolling_mean_window_size = 10
 
@@ -146,8 +166,8 @@ def generate_quat(t0, t):
     n_objects = quats.shape[0]
     T = quats.shape[1]
 
-    plt.subplot(121)
-    plot_trajectories(quats)
+    #plt.subplot(121)
+    #plot_trajectories(quats)
 
     quats_smoothened = np.zeros([n_objects, T - rolling_media_window_size + 1, 4])
     for k in range(n_objects):
@@ -161,22 +181,26 @@ def generate_quat(t0, t):
             rolling_mean_window_size).mean().to_numpy()[rolling_mean_window_size - 1:, :]
 
 
-    plt.subplot(122)
-    plot_trajectories(quats_smoothened2)
-    plt.show()
+    #plt.subplot(122)
+    #plot_trajectories(quats_smoothened2)
+    #plt.show()
 
 
     # normalize quats, as they should be
     quats_norm = np.linalg.norm(quats, axis=2)
     quats = quats / np.expand_dims(quats_norm, axis=2)
-    np.save('data/quats_all.npy',quats)
+    #np.save('data/quats_all.npy',quats)
 
-    plot_trajectories(quats)
-    plt.show()
-    return quats[:, t0:t, :]
+    #plot_trajectories(quats)
+    #plt.show()
+
+    quatIntervals = []
+    for interval in intervals:
+        quatIntervals.append(quats[:, interval[0]:interval[1]+1, :])
+    return quatIntervals
 
 
-def simulate_markers(pos, quats, visibility, patterns, FPs):
+def simulate_markers(pos, quats, visibility, patterns, FPs, scale):
     T = pos.shape[1]
     N_birds = pos.shape[0]
     detections = np.zeros([N_birds, T, 6, 3]) * np.NaN
@@ -190,7 +214,7 @@ def simulate_markers(pos, quats, visibility, patterns, FPs):
 
             rotated_pat = (R @ pat.T).T + p
 
-            detections[n, t, :4, :] = rotated_pat
+            detections[n, t, :4, :] = rotated_pat + np.random.normal(0, scale, [4, 3])
             non_vis = np.logical_not(visibility[n, t, :])
             non_vis = np.concatenate([non_vis, np.array([np.True_, np.True_])])
             detections[n, t, non_vis , :] = np.NaN
@@ -198,10 +222,10 @@ def simulate_markers(pos, quats, visibility, patterns, FPs):
                 fp = FPs[n][t][i,:]
                 detections[n, t, 4+i, :] = fp + p
 
-    scipy.io.savemat('data/matlab/generated_data.mat', dict(D=detections, pos=pos, quat=quats))
+    #scipy.io.savemat('data/matlab/generated_data.mat', dict(D=detections, pos=pos, quat=quats))
     return detections
 
-T = 1000
+T = 20000
 marker_visibility = np.zeros([10, T, 4])
 for i in range(10):
     marker_visibility[i, :, :] = noise_FN_model.rollout(T)
@@ -212,17 +236,32 @@ for i in range(10):
                                   fp_scale, fp_prob, radius)
     false_positives.append(noise_FP_model.rollout(T))
 
-pos, t0, t = generate_pos(T)
-print(pos.shape)
-quats = generate_quat(t0, t)
-print(quats.shape)
+posIntervals, intervals = generate_pos()
+for pos in posIntervals:
+    print(pos.shape)
+quatIntervals = generate_quat(intervals)
+for quat in quatIntervals:
+    print(quat.shape)
 
-#pos = np.load('data/pos_all.npy')
-#quats = np.load('data/quats_all.npy')
 patterns = np.load('data/patterns.npy')
 
-dets = simulate_markers(pos, quats, marker_visibility, patterns, false_positives)
-print(dets[0, :, :, 0])
-print(dets.shape)
+marker_vis_intervals = []
+fp_intervals =[]
+for interval in intervals:
+    marker_vis_intervals.append(marker_visibility[:, interval[0]:interval[1]+1, :])
+    fp_interval = []
+    for i in range(10):
+        fp_interval.append(false_positives[i][interval[0]:interval[1]+1])
+    fp_intervals.append(fp_interval)
+detIntervals = []
 
-print(dets[0, 1:10, 5 , :])
+for i in range(len(intervals)):
+    detIntervals.append(simulate_markers(posIntervals[i], quatIntervals[i], marker_vis_intervals[i], patterns, fp_intervals[i], noise_scale))
+
+for dets in detIntervals:
+    print(dets.shape)
+#dets = simulate_markers(pos, quats, marker_visibility, patterns, false_positives, noise_scale)
+#print(dets[0, :, :, 0])
+#print(dets.shape)
+
+#print(dets[0, 1:10, 5 , :])

@@ -151,7 +151,7 @@ class NoiseModelFP:
             for loc in self.fp_loc:
                 if loc is not None:
                     if np.random.uniform(0, 1) < self.fp_prob:
-                        print(loc)
+                        #print(loc)
                         FPs.append(np.random.multivariate_normal(loc, self.scale*np.eye(3), 1))
             if not FPs:
                 return []
@@ -234,7 +234,7 @@ def test_noise_model():
     nM = NoiseModelFN(noise_model_states, noise_model_transition_prob, noise_model_initial_state, p1, p2, p3, p4)
     print(nM.rollout(200))
 
-test_noise_model()
+#test_noise_model()
 
 
 
