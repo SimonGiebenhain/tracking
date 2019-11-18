@@ -45,11 +45,15 @@ class MarkovChain:
 
 class NoiseModelFN:
 
-    def __init__(self, states, transition_probs, initial_state):
+    def __init__(self, states, transition_probs, initial_state, p1, p2, p3, p4):
         self.states = states
         self.transition_probs = transition_probs
         self.state = initial_state
         self.wipe_markers()
+        self.p1 = p1
+        self.p2 = p2
+        self.p3 = p3
+        self.p4 = p4
 
     def do_move(self):
         p = self.transition_probs[self.state]
@@ -61,10 +65,10 @@ class NoiseModelFN:
         self.marker_states = [None, None, None, None]
 
     def init_markers(self):
-        p1 = np.random.uniform(0.01, 0.05)
-        p2 = np.random.uniform(0.05, 0.1)
-        p3 = np.random.uniform(0.2, 0.5)
-        p4 = np.random.uniform(0.5, 0.7)
+        p1 = np.random.uniform(self.p1[0], self.p1[1])
+        p2 = np.random.uniform(self.p2[0], self.p2[1])
+        p3 = np.random.uniform(self.p3[0], self.p3[1])
+        p4 = np.random.uniform(self.p4[0], self.p4[1])
         p_vals = [p1, p2, p3, p4]
         shuffle(p_vals)
         self.marker_ps = p_vals
@@ -86,10 +90,10 @@ class NoiseModelFN:
 
             for i in range(len(self.marker_ps)):
                 if self.marker_states[i] == 'hidden':
-                    if np.random.uniform(0, 1) < self.marker_ps[i]:
+                    if np.random.uniform(0, 1) < 1 - self.marker_ps[i]:
                         self.marker_states[i] = 'visible'
                 else:
-                    if np.random.uniform(0, 1) < (1 - self.marker_ps[i]) / 10:
+                    if np.random.uniform(0, 1) < self.marker_ps[i]:
                         self.marker_states[i] = 'hidden'
 
             ret = np.zeros([4])
@@ -217,15 +221,20 @@ def test_noise_FP_model():
                         fp_scale, fp_prob, radius)
     print(nMFP.rollout(100))
 
+
+p1 = [0.1, 0.2]
+p2 = [0.35, 0.6]
+p3 = [0.6, 0.85]
+p4 = [0.8, 0.95]
 noise_model_states = ['all', 'some', 'none']
 noise_model_transition_prob = {'all': [ 0.89, 0.1, 0.01], 'some': [0.02, 0.97, 0.01], 'none': [0.48, 0.48, 0.04]}
 noise_model_initial_state = 'all'
 
 def test_noise_model():
-    nM = NoiseModelFN(noise_model_states, noise_model_transition_prob, noise_model_initial_state)
+    nM = NoiseModelFN(noise_model_states, noise_model_transition_prob, noise_model_initial_state, p1, p2, p3, p4)
     print(nM.rollout(200))
 
-test_noise_FP_model()
+test_noise_model()
 
 
 

@@ -7,21 +7,60 @@ import scipy.io
 
 from BehaviourModel import NoiseModelFN, NoiseModelFP
 
+FN_transitions = [{'all': [ 0.2, 0.5, 0.3], 'some': [0.1, 0.4, 0.5], 'none': [0.1, 0.3, 0.6]},
+                  {'all': [ 0.2, 0.5, 0.3], 'some': [0.1, 0.4, 0.5], 'none': [0.1, 0.3, 0.6]},
+                  {'all': [ 0.2, 0.5, 0.3], 'some': [0.1, 0.4, 0.5], 'none': [0.1, 0.3, 0.6]},
+                  {'all': [ 0.2, 0.5, 0.3], 'some': [0.1, 0.4, 0.5], 'none': [0.1, 0.3, 0.6]},
+                  {'all': [ 0.2, 0.5, 0.3], 'some': [0.1, 0.4, 0.5], 'none': [0.1, 0.3, 0.6]},
+                  {'all': [ 0.2, 0.5, 0.3], 'some': [0.1, 0.4, 0.5], 'none': [0.1, 0.3, 0.6]},
+                  {'all': [ 0.2, 0.5, 0.3], 'some': [0.1, 0.4, 0.5], 'none': [0.1, 0.3, 0.6]},
+                  {'all': [ 0.2, 0.5, 0.3], 'some': [0.1, 0.4, 0.5], 'none': [0.1, 0.3, 0.6]},
+                  {'all': [ 0.2, 0.5, 0.3], 'some': [0.1, 0.4, 0.5], 'none': [0.1, 0.3, 0.6]},
+                  {'all': [ 0.2, 0.5, 0.3], 'some': [0.1, 0.4, 0.5], 'none': [0.1, 0.3, 0.6]}]
+
+FN_p1s = [[0.1, 0.2], [0.1, 0.2], [0.1, 0.2], [0.1, 0.2], [0.1, 0.2], [0.1, 0.2], [0.1, 0.2], [0.1, 0.2], [0.1, 0.2], [0.1, 0.2]]
+FN_p2s = [[0.35, 0.6], [0.35, 0.6], [0.35, 0.6], [0.35, 0.6], [0.35, 0.6], [0.35, 0.6], [0.35, 0.6], [0.35, 0.6], [0.35, 0.6], [0.35, 0.6]]
+FN_p3s = [[0.6, 0.85], [0.6, 0.85], [0.6, 0.85], [0.6, 0.85], [0.6, 0.85], [0.6, 0.85], [0.6, 0.85], [0.6, 0.85], [0.6, 0.85], [0.6, 0.85]]
+FN_p4s = [[0.8, 0.95], [0.8, 0.95], [0.8, 0.95], [0.8, 0.95], [0.8, 0.95], [0.8, 0.95], [0.8, 0.95], [0.8, 0.95], [0.8, 0.95], [0.8, 0.95]]
+
+
+FP_transitions = [[[0.5, 0.3, 0.2], [0.1, 0.8, 0.1], [0.4, 0.1, 0.5]],
+                  [[0.5, 0.3, 0.2], [0.1, 0.8, 0.1], [0.4, 0.1, 0.5]],
+                  [[0.5, 0.3, 0.2], [0.1, 0.8, 0.1], [0.4, 0.1, 0.5]],
+                  [[0.5, 0.3, 0.2], [0.1, 0.8, 0.1], [0.4, 0.1, 0.5]],
+                  [[0.5, 0.3, 0.2], [0.1, 0.8, 0.1], [0.4, 0.1, 0.5]],
+                  [[0.5, 0.3, 0.2], [0.1, 0.8, 0.1], [0.4, 0.1, 0.5]],
+                  [[0.5, 0.3, 0.2], [0.1, 0.8, 0.1], [0.4, 0.1, 0.5]],
+                  [[0.5, 0.3, 0.2], [0.1, 0.8, 0.1], [0.4, 0.1, 0.5]],
+                  [[0.5, 0.3, 0.2], [0.1, 0.8, 0.1], [0.4, 0.1, 0.5]],
+                  [[0.5, 0.3, 0.2], [0.1, 0.8, 0.1], [0.4, 0.1, 0.5]]]
+
+FP_probs = [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]
+FP_scales = [10, 10, 10, 10, 10, 10, 10, 10, 10, 10]
+FP_radiuses = [100, 100, 100, 100, 100, 100, 100, 100, 100, 100]
+
+#TODO: implement gaussian noise on markers
+Noise_scales = [10, 10, 10, 10, 10, 10, 10, 10, 10, 10]
 
 noise_std = 0
 
-noise_model_states = ['all', 'some', 'none']
-noise_model_transition_prob = {'all': [ 0.89, 0.1, 0.01], 'some': [0.02, 0.97, 0.01], 'none': [0.48, 0.48, 0.04]}
-noise_model_initial_state = 'all'
+#TODO: loop over all settings, create different .mat-file for every setting
 
-noise_FN_model = NoiseModelFN(noise_model_states, noise_model_transition_prob, noise_model_initial_state)
+noise_model_states = ['all', 'some', 'none']
+noise_model_transition_prob = {'all': [ 0.2, 0.5, 0.3], 'some': [0.1, 0.4, 0.5], 'none': [0.1, 0.3, 0.6]}
+noise_model_initial_state = 'all'
+p1 = [0.1, 0.2]
+p2 = [0.35, 0.6]
+p3 = [0.6, 0.85]
+p4 = [0.8, 0.95]
+noise_FN_model = NoiseModelFN(noise_model_states, noise_model_transition_prob, noise_model_initial_state, p1, p2, p3, p4)
 
 
 noise_model_FP_states = [0, 1, 2]
-noise_model_FP_transition_probs = np.array([[0.8, 0.2, 0], [0.2, 0.6, 0.2], [0.2, 0.4, 0.4]])
+noise_model_FP_transition_probs = np.array([[0.5, 0.3, 0.2], [0.1, 0.8, 0.1], [0.4, 0.1, 0.5]])
 noise_model_FP_initial_probs = np.array([1, 0, 0])
 fp_scale = 10
-fp_prob = 0.5
+fp_prob = 0.6
 radius = 100
 
 noise_FP_model = NoiseModelFP(noise_model_FP_states, noise_model_FP_transition_probs, noise_model_FP_initial_probs,
