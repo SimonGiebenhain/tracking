@@ -228,11 +228,11 @@ for i in range(len(noise_scales)):
                                      fp_scale, fp_prob, radius)
 
     marker_visibility = np.zeros([10, T, 4])
-    for i in range(10):
-        marker_visibility[i, :, :] = noise_FN_model.rollout(T)
+    for j in range(10):
+        marker_visibility[j, :, :] = noise_FN_model.rollout(T)
 
     false_positives = []
-    for i in range(10):
+    for j in range(10):
         noise_FP_model = NoiseModelFP(noise_model_FP_states, noise_model_FP_transition_probs, noise_model_FP_initial_probs,
                                       fp_scale, fp_prob, radius)
         false_positives.append(noise_FP_model.rollout(T))
@@ -245,19 +245,20 @@ for i in range(len(noise_scales)):
     for interval in intervals:
         marker_vis_intervals.append(marker_visibility[:, interval[0]:interval[1]+1, :])
         fp_interval = []
-        for i in range(10):
-            fp_interval.append(false_positives[i][interval[0]:interval[1]+1])
+        for j in range(10):
+            fp_interval.append(false_positives[j][interval[0]:interval[1]+1])
         fp_intervals.append(fp_interval)
     detIntervals = []
 
-    for i in range(len(intervals)):
-        detIntervals.append(simulate_markers(posIntervals[i], quatIntervals[i], marker_vis_intervals[i], patterns, fp_intervals[i], noise_scale))
+    for j in range(len(intervals)):
+        detIntervals.append(simulate_markers(posIntervals[j], quatIntervals[j], marker_vis_intervals[j], patterns, fp_intervals[j], noise_scales[j]))
 
     data_dict = {}
 
-    for i,dets in enumerate(detIntervals):
-        data_dict['D' + str(i)] = dets
-        data_dict['pos' + str(i)] = posIntervals[i]
-        data_dict['quat' + str(i)] = quatIntervals[i]
+    for j, dets in enumerate(detIntervals):
+        data_dict['D' + str(j)] = dets
+        data_dict['pos' + str(j)] = posIntervals[j]
+        data_dict['quat' + str(j)] = quatIntervals[j]
 
-    scipy.io.savemat('data/matlab/data_difficulty_' + str(i) + '.mat', data_dict)
+    path = 'data/matlab/data_difficulty_' + str(i) + '.mat'
+    scipy.io.savemat(path, data_dict)
