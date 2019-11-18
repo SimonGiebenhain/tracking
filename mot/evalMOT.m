@@ -40,14 +40,77 @@ hyperParamsSimplePatternMatching = stdHyperParams;
 hyperParamsSimplePatternMatching.simplePatternMatching = 1;
 
 HYPERS = {hyperParamsNone, hyperParamsAll, hyperParamsNoFPFiltering, hyperParamsNoAdaptiveNoise, hyperParamsNoAngles, hyperParamsSimplePatternMatching};
+%%
+allPatterns = read_patterns('tracking/datasets/framework');
+patterns = zeros(10,4,3);
+patternNames = {};
+for i=1:length(allPatterns)
+    patterns(i,:,:) = allPatterns(i).pattern;
+    patternNames{i} = allPatterns(i).name;
+end
 
+RESULTS = cell(size(testNames,2), 10);
+ERRORS = zeros(size(testNames,2), 10, 4);
+NNZ = zeros(size(testNames,2), 10, 4);
+
+dataDirs = cell(10,1);
+for i=0:9
+   dataDirs{i+1} = strcat('data_difficulty_', string(i));
+end
+for k=1:size(testNames,2)
+    for i=0:9
+        curDataName = dataDirs{i+1};
+        path = strcat('modernMethods/data/matlab/', curDataName, '.mat');
+        load(path);
+        clearvars resultStruct;
+        resultStruct.name = strcat(testNames{k}, '_', 'Difficulty', string(i));
+        for q=0:3
+            eval(strcat('D = ', 'D', string(q), ';'));
+            eval(strcat('pos = ', 'pos', string(q), ';'));
+            eval(strcat('quat = ', 'quat', string(q), ';'));
+            
+            resultStruct.(strcat('D', string(q))) = D;
+            resultStruct.(strcat('pos', string(q))) = pos;
+            resultStruct.(strcat('quat', string(q))) = quat;
+
+            N = size(D,1);
+            D = permute(D, [2, 1, 3, 4]);
+            formattedData = reshape(D, size(D,1), [], 3);
+            initialStates = zeros( N, 3+3+4+4);
+            for j = 1:size(initialStates,1)
+                initialStates(j,1:3) = pos(j, 1, :);
+                initialStates(j,4:6) = zeros(1,3);
+                initialStates(j,7:10) = quat(j, 1, :);
+                initialStates(j, 11:14) = zeros(1,4);
+            end
+
+            hyperParams = HYPERS{k};
+            quatMotionType = 'brownian';
+            [estimatedPositions, estimatedQuats, markerAssignemnts, falsePositives] = ownMOT(formattedData, patterns, patternNames ,initialStates, N, pos, quat, quatMotionType, hyperParams);
+            resultStruct.(strcat('estPos', string(q))) = estimatedPositions;
+            resultStruct.(strcat('estQuat', string(q))) = estimatedQuats;
+            resultStruct.(strcat('markerAssignment', string(q))) = markerAssignemnts;
+            resultStruct.(strcat('falsePositives', string(q))) = falsePositives;
+            %TODOsave(['resultsKF/', curDataName,'_', testNames{k}, '.mat'], 'estimatedPositions', 'estimatedQuats', 'markerAssignemnts', 'falsePositives')
+        
+            totalError = performanceVisualization(estimatedPositions, pos, estimatedQuats, quat, patterns, 0);
+            numFPs = nnz(isnan(totalError))
+            NNZ(k,i+1,q+1) = numFPs;
+            avgErr = mean(totalError, 'all', 'omitnan')
+            ERRORS(k,i+1,q+1) = avgErr;
+            resultStruct.numFPs = numFPs;
+            resultStruct.avgError = avgErr;
+        end
+        %RESULTS(i+1,k) = resultStruct;
+    end
+end
+
+%save('resultsKF/allResults.mat', 'RESULTS')
 
 %% load data
-dataDirs = {'generated_data'};
-curDataName = dataDirs{1,1};
-path = ['modernMethods/data/matlab/', curDataName, '.mat'];
-load(path)
-size(D)
+path = 'modernMethods/data/matlab/generated_data.mat';
+load(path);
+size(D);
 N = size(D,1);
 D = permute(D, [2, 1, 3, 4]);
 formattedData = reshape(D, size(D,1), [], 3);
