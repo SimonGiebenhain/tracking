@@ -1,4 +1,4 @@
-function [assignment, FPs, certainty] = match_patterns(whole_pattern, detected_pattern, method, kalmanFilter, hyperParams)
+function [assignment, FPs, certainty, method] = match_patterns(whole_pattern, detected_pattern, method, kalmanFilter, hyperParams)
 %MATCH_PATTERNS Find corresponing points in two sets of points
 %
 %   assignment = MATCH_PATTERNS(whole_pattern, detected_pattern, 'ML', rotMat)
@@ -47,6 +47,10 @@ if strcmp(method, 'correct')
     if size(detected_pattern, 1) > 2
         method = 'new';
     else
+        method = 'ML';
+    end
+    
+    if hyperParams.simplePatternMatching == 1
         method = 'ML';
     end
 end

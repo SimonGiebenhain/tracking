@@ -15,7 +15,7 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
             while size(clustersRaw{i},1) > 4
                 %TODO split cluster
                 dets = clustersRaw{i};
-                dists = squareform(pdist());
+                dists = squareform(pdist(dets));
                 addedDists = sum(dists, 2);
                 [~, worstIdx] = max(addedDists);
                 idx = 1:size(dets,1);
