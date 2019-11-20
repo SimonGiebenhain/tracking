@@ -72,8 +72,8 @@ else:
 
 
 BATCH_SIZE = 32
-NUM_EPOCHS = 5
-LEARNING_RATE = 0.001
+NUM_EPOCHS = 15
+LEARNING_RATE = 0.001 # TODO 0.001
 STRONG_DROPOUT_RATE = 0.10
 WEAK_DROPOUT_RATE = 0.05
 
@@ -113,8 +113,11 @@ n_mixture_components = 3
 # customLSTm could be slow, maybe could do the same with stacked LSTM
 # This could also act as the correction step!
 
+# TODO: incorporate quat and pos in MarkerNet architecture!
 
 # TODO incorporate dropped dets into markerNet ground truth!!
+
+# TODO: deepsort? is there such a thing?
 
 # TODO: liegt memory leak and testing procedure?
 
@@ -316,7 +319,7 @@ class TrainingData():
             self.pattern_train = torch.from_numpy(self.pattern_train).float().cuda()
             self.delta_pos_train = torch.from_numpy(self.delta_pos_train).float().cuda()
             if self.marker_ids_train is not None:
-                self.marker_ids_train = torch.from_numpy(self.marker_ids_train).float().cuda()
+                self.marker_ids_train = torch.from_numpy(self.marker_ids_train).uint8().cuda()
 
             self.X_test = torch.from_numpy(self.X_test).float().cuda()
             self.X_test_shuffled = torch.from_numpy(self.X_test_shuffled).float().cuda()
@@ -325,7 +328,7 @@ class TrainingData():
             self.pattern_test = torch.from_numpy(self.pattern_test).float().cuda()
             self.delta_pos_test = torch.from_numpy(self.delta_pos_test).float().cuda()
             if self.marker_ids_test is not None:
-                self.marker_ids_test = torch.from_numpy(self.marker_ids_test).float().cuda()
+                self.marker_ids_test = torch.from_numpy(self.marker_ids_test).uint8().cuda()
 
         else:
             self.X_train = torch.from_numpy(self.X_train).float()
@@ -335,7 +338,7 @@ class TrainingData():
             self.pattern_train = torch.from_numpy(self.pattern_train).float()
             self.delta_pos_train = torch.from_numpy(self.delta_pos_train).float()
             if self.marker_ids_train is not None:
-                self.marker_ids_train = torch.from_numpy(self.marker_ids_train).float()
+                self.marker_ids_train = torch.from_numpy(self.marker_ids_train).uint8()
 
             self.X_test = torch.from_numpy(self.X_test).float()
             self.X_test_shuffled = torch.from_numpy(self.X_test_shuffled).float()
@@ -344,7 +347,7 @@ class TrainingData():
             self.pattern_test = torch.from_numpy(self.pattern_test).float()
             self.delta_pos_test = torch.from_numpy(self.delta_pos_test).float()
             if self.marker_ids_test is not None:
-                self.marker_ids_test = torch.from_numpy(self.marker_ids_test).float()
+                self.marker_ids_test = torch.from_numpy(self.marker_ids_test).uint8()
 
         print('Converted data to torch format.')
 
@@ -632,6 +635,7 @@ def qrot(q, v):
     uuv = torch.cross(qvec, uv, dim=1)
     return (v + 2 * (q[:, :1] * uv + uuv)).view(original_shape)
 
+
 def rotate_snippet(snip, theta):
     #theta = np.random.uniform(1, 5)
     c, s = np.cos(theta), np.sin(theta)
@@ -733,7 +737,7 @@ def gen_data(N_train, N_test):
                 np.random.shuffle(p_copy)
                 rnd_perm = np.random.permutation(np.arange(0,4))
                 p_copy = p_copy[rnd_perm, :]
-                marker_identities[t, n, :] = rnd_perm
+                marker_identities[t, n, :] = rnd_perm[rnd_perm]
 
                 rotated_pattern = (q.rotation_matrix @ p_copy.T).T
                 if add_false_positives:
@@ -758,8 +762,10 @@ def gen_data(N_train, N_test):
                 else:
                     if drop_some_dets and np.random.uniform(0, 1) < 0.5:
                         rotated_pattern[3, :] = np.array([-1000, -1000, -1000])
+                        marker_identities[t, n, rnd_perm[3]] = 4
                         if drop_some_dets and np.random.uniform(0, 1) < 0.5:
                             rotated_pattern[2, :] = np.array([-1000, -1000, -1000])
+                            marker_identities[t, n, rnd_perm[2]] = 4
                 dets = np.reshape(rotated_pattern, -1)
                 if add_noise:
                     noise = np.random.normal(0, NOISE_STD, np.shape(dets))
@@ -1072,9 +1078,9 @@ class customLSTM(nn.Module):
         return x_quat, x_pos, rotated_pattern
 
 
-class MarkerNet(nn.Module):
+class MarkerNetOld(nn.Module):
     def __init__(self):
-        super(MarkerNet, self).__init__()
+        super(MarkerNetOld, self).__init__()
         if add_false_positives:
             self.fc1_det = nn.Linear(15, fc1_det_dim)
         else:
@@ -1129,21 +1135,120 @@ class MarkerNet(nn.Module):
 
         x_marker1 = F.relu(self.fc2_marker1(x))
         x_marker1 = F.relu(self.fc3_marker1(x_marker1))
-        x_marker1 = F.softmax(x_marker1, dim=2)
+        #x_marker1 = F.softmax(x_marker1, dim=2)
 
         x_marker2 = F.relu(self.fc2_marker2(x))
         x_marker2 = F.relu(self.fc3_marker2(x_marker2))
-        x_marker2 = F.softmax(x_marker2, dim=2)
+        #x_marker2 = F.softmax(x_marker2, dim=2)
 
         x_marker3 = F.relu(self.fc2_marker3(x))
         x_marker3 = F.relu(self.fc3_marker3(x_marker3))
-        x_marker3 = F.softmax(x_marker3, dim=2)
+        #x_marker3 = F.softmax(x_marker3, dim=2)
 
         x_marker4 = F.relu(self.fc2_marker4(x))
         x_marker4 = F.relu(self.fc3_marker4(x_marker4))
-        x_marker4 = F.softmax(x_marker4, dim=2)
+        #x_marker4 = F.softmax(x_marker4, dim=2)
 
         return x_marker1, x_marker2, x_marker3, x_marker4
+
+
+class BirdPoseTracker(nn.Module):
+    def __init__(self, hidden_dim):
+        super(BirdPoseTracker, self).__init__()
+        self.hidden_dim = hidden_dim
+        if add_false_positives:
+            self.fc1_det = nn.Linear(15, fc1_det_dim)
+        else:
+            self.fc1_det = nn.Linear(12, fc1_det_dim)
+        self.fc2_det = nn.Linear(fc1_det_dim, fc2_det_dim)
+        self.fc3_det = nn.Linear(fc2_det_dim, fc3_det_dim)
+        #self.fc4_det = nn.Linear(fc3_det_dim, fc4_det_dim)
+        #self.fc5_det = nn.Linear(fc4_det_dim, fc5_det_dim)
+
+        if not use_const_pat:
+            self.fc1_pat = nn.Linear(12, fc1_pat_dim)
+            self.fc2_pat = nn.Linear(fc1_pat_dim, fc2_pat_dim)
+            #self.fc3_pat = nn.Linear(fc2_pat_dim, fc3_pat_dim)
+            #self.fc4_pat = nn.Linear(fc3_pat_dim, fc4_pat_dim)
+
+
+        if use_const_pat:
+            self.lstm = nn.LSTM(fc3_det_dim, hidden_dim)
+        else:
+            self.lstm = nn.LSTM(fc3_det_dim + fc2_pat_dim, hidden_dim)
+
+        self.hidden2out1 = nn.Linear(hidden_dim, 500)
+        self.hidden2out2 = nn.Linear(500, 200)
+
+        self.hidden2quat1 = nn.Linear(200, 100)
+        self.hidden2quat2 = nn.Linear(100, 4)
+
+        self.hidden2pos1 = nn.Linear(200, 50)
+        self.hidden2pos2 = nn.Linear(50, 3)
+
+        self.hidden2m11 = nn.Linear(200, 100)
+        self.hidden2m12 = nn.Linear(100, 5)
+        self.hidden2m21 = nn.Linear(200, 100)
+        self.hidden2m22 = nn.Linear(100, 5)
+        self.hidden2m31 = nn.Linear(200, 100)
+        self.hidden2m32 = nn.Linear(100, 5)
+        self.hidden2m41 = nn.Linear(200, 100)
+        self.hidden2m42 = nn.Linear(100, 5)
+
+        self.strong_dropout = nn.Dropout(p=STRONG_DROPOUT_RATE)
+        self.weak_dropout = nn.Dropout(p=WEAK_DROPOUT_RATE)
+
+    def forward(self, detections, patterns):
+        marker1 = patterns[:, :, 0, :].contiguous()
+        marker2 = patterns[:, :, 1, :].contiguous()
+        marker3 = patterns[:, :, 2, :].contiguous()
+        marker4 = patterns[:, :, 3, :].contiguous()
+
+        x = self.weak_dropout(F.relu(self.fc1_det(detections)))
+        x = self.strong_dropout(F.relu(self.fc2_det(x)))
+        x = self.strong_dropout(F.relu(self.fc3_det(x)))
+        #x = self.strong_dropout(F.relu(self.fc4_det(x)))
+        #x = self.strong_dropout(F.relu(self.fc5_det(x)))
+
+        if not use_const_pat:
+            x_pat = self.weak_dropout(F.relu(self.fc1_pat(patterns.view(T - 3, -1, 12))))
+            x_pat = self.strong_dropout(F.relu(self.fc2_pat(x_pat)))
+            #x_pat = self.strong_dropout(F.relu(self.fc3_pat(x_pat)))
+            #x_pat = self.strong_dropout(F.relu(self.fc4_pat(x_pat)))
+            x = torch.cat([x, x_pat], dim=2)
+
+        x, _ = self.lstm(x)
+        x = self.strong_dropout(F.relu(self.hidden2out1(x)))
+        x = self.weak_dropout(F.relu(self.hidden2out2(x)))
+
+        m1 = self.weak_dropout(F.relu(self.hidden2m11(x)))
+        m1 = self.hidden2m12(m1)
+        m2 = self.weak_dropout(F.relu(self.hidden2m21(x)))
+        m2 = self.hidden2m22(m2)
+        m3 = self.weak_dropout(F.relu(self.hidden2m31(x)))
+        m3 = self.hidden2m32(m3)
+        m4 = self.weak_dropout(F.relu(self.hidden2m41(x)))
+        m4 = self.hidden2m42(m4)
+
+        x_quat = self.weak_dropout(F.relu(self.hidden2quat1(x)))
+        x_quat = self.hidden2quat2(x_quat)
+
+        x_pos = self.weak_dropout(F.relu(self.hidden2pos1(x)))
+        x_pos = self.hidden2pos2(x_pos)
+
+        quat_norm = torch.sqrt(torch.sum(torch.pow(x_quat, 2, ), dim=2))
+        x_quat = x_quat / torch.unsqueeze(quat_norm, dim=2)
+
+        rotated_marker1 = qrot(x_quat, marker1) + x_pos
+        rotated_marker2 = qrot(x_quat, marker2) + x_pos
+        rotated_marker3 = qrot(x_quat, marker3) + x_pos
+        rotated_marker4 = qrot(x_quat, marker4) + x_pos
+        rotated_pattern = torch.cat([rotated_marker1,
+                                     rotated_marker2,
+                                     rotated_marker3,
+                                     rotated_marker4], dim=2)
+
+        return x_quat, x_pos, rotated_pattern, m1, m2, m3, m4
 
 
 class LSTMTracker(nn.Module):
@@ -1230,7 +1335,8 @@ class LSTMTracker(nn.Module):
 
 #model = customLSTM(hidden_dim, bias=True)
 #model = LSTMTracker(hidden_dim)
-model = MarkerNet()
+#model = MarkerNet()
+model = BirdPoseTracker(hidden_dim)
 if use_colab and torch.cuda.is_available():
     print('USING CUDA DEVICE')
     model.cuda()
@@ -1273,43 +1379,75 @@ def train_assigner(data):
         detections_truth_batches = torch.split(data.X_train, BATCH_SIZE, 1)
         pattern_batches = torch.split(data.pattern_train, BATCH_SIZE, 1)
         marker_assignment_batches = torch.split(data.marker_ids_train, BATCH_SIZE, 1)
-        avg_loss = 0
+        avg_loss_class = 0
+        avg_loss_pose = 0
+        avg_loss_quat = 0
+        avg_loss_pos = 0
         n_batches_per_epoch = len(delta_detection_batches)
         for k, [delta_dets, quat_truth, pos_truth, marker_truth, delta_pos_truth, pattern_batch, marker_ass] in enumerate(
                 zip(delta_detection_batches[:-1], quat_truth_batches[:-1], pos_truth_batches[:-1], detections_truth_batches[:-1],
                     delta_pos_truth_batches[:-1], pattern_batches[:-1], marker_assignment_batches[:-1])):
+
             model.zero_grad()
             gc.collect()
 
-            marker1, marker2, marker3, marker4 = model(delta_dets[:, :, :], pattern_batch[:, :, :, :])
-            loss =  loss_cross_entropy(marker1.contiguous().view(-1, 4), marker_ass[:, :, 0].long().contiguous().view(-1))
-            loss += loss_cross_entropy(marker2.contiguous().view(-1, 4), marker_ass[:, :, 1].long().contiguous().view(-1))
-            loss += loss_cross_entropy(marker3.contiguous().view(-1, 4), marker_ass[:, :, 2].long().contiguous().view(-1))
-            loss += loss_cross_entropy(marker4.contiguous().view(-1, 4), marker_ass[:, :, 3].long().contiguous().view(-1))
+            pred_quat, pred_delta_pos, pred_delta_markers, marker1, marker2, marker3, marker4 = model(delta_dets[:, :, :], pattern_batch[:, :, :, :])
+            loss_class =  loss_cross_entropy(marker1.contiguous().view(-1, 4), marker_ass[:, :, 0].contiguous().view(-1))
+            loss_class += loss_cross_entropy(marker2.contiguous().view(-1, 4), marker_ass[:, :, 1].contiguous().view(-1))
+            loss_class += loss_cross_entropy(marker3.contiguous().view(-1, 4), marker_ass[:, :, 2].contiguous().view(-1))
+            loss_class += loss_cross_entropy(marker4.contiguous().view(-1, 4), marker_ass[:, :, 3].contiguous().view(-1))
+
+            loss_class = lambda_classification * loss
+
+            pred_markers = pos_truth[:-1, :, :].repeat(1, 1, 4) + pred_delta_markers
+            loss_pose = loss_function_pos(pred_markers, marker_truth[1:, :, :])
+            loss_quat = torch.min(loss_function_quat(pred_quat, quat_truth[1:, :, :]),
+                                  loss_function_quat(-pred_quat, quat_truth[1:, :, :]))
+            loss_pos = loss_function_pos(pred_delta_pos, delta_pos_truth[1:, :, :])
+
+            loss = 100 * loss_pos + loss_quat + loss_class
 
             loss.backward()
             optimizer.step()
-            avg_loss += loss
 
-        avg_loss /= n_batches_per_epoch
+            avg_loss_pose += loss_pose
+            avg_loss_quat += loss_quat
+            avg_loss_pos += loss_pos
+            avg_loss_class += loss_class
+
+        avg_loss_pose /= n_batches_per_epoch
+        avg_loss_quat /= n_batches_per_epoch
+        avg_loss_pos /= n_batches_per_epoch
+        avg_loss_class /= n_batches_per_epoch
 
         model.eval()
         with torch.no_grad():
-            marker1, marker2, marker3, marker4 = model(data.X_test_shuffled[:-1, :, :], data.pattern_test[:-1, :, :, :])
-            loss =  loss_cross_entropy(marker1.contiguous().view(-1, 4), data.marker_ids_test[:, :, 0].long().contiguous().view(-1))
-            loss += loss_cross_entropy(marker2.contiguous().view(-1, 4), data.marker_ids_test[:, :, 1].long().contiguous().view(-1))
-            loss += loss_cross_entropy(marker3.contiguous().view(-1, 4), data.marker_ids_test[:, :, 2].long().contiguous().view(-1))
-            loss += loss_cross_entropy(marker4.contiguous().view(-1, 4), data.marker_ids_test[:, :, 3].long().contiguous().view(-1))
+            pred_quat, pred_delta_pos, pred_delta_markers, marker1, marker2, marker3, marker4 = model(data.X_test_shuffled[:-1, :, :],
+                                                                  data.pattern_test[:-1, :, :, :])
+            loss_class = loss_cross_entropy(marker1.contiguous().view(-1, 4),
+                                            data.marker_ids_test[:, :, 0].long().contiguous().view(-1))
+            loss_class += loss_cross_entropy(marker2.contiguous().view(-1, 4),
+                                             data.marker_ids_test[:, :, 1].long().contiguous().view(-1))
+            loss_class += loss_cross_entropy(marker3.contiguous().view(-1, 4),
+                                             data.marker_ids_test[:, :, 2].long().contiguous().view(-1))
+            loss_class += loss_cross_entropy(marker4.contiguous().view(-1, 4),
+                                             data.marker_ids_test[:, :, 3].long().contiguous().view(-1))
 
-            val_loss = loss
+            pred_markers = data.pos_test[:-1, :, :].repeat(1, 1, 4) + pred_delta_markers
+            loss_pose = loss_function_pos(pred_markers, data.X_test[1:, :, :])
+            loss_quat = torch.min(loss_function_quat(pred_quat, data.quat_test[1:, :, :]),
+                                  loss_function_quat(-pred_quat, data.quat_test[1:, :, :]))
+            loss_pos = loss_function_pos(pred_delta_pos, data.delta_pos_test[1:, :, :])
+            val_loss = lambda_classifiction * loss_class + 100 * loss_pos + loss_quat
+
             for param_group in optimizer.param_groups:
                 learning_rate = param_group['lr']
-                print("Epoch: {epoch:2d}, Learning Rate: {learning_rate:1.8f} \n "
-                      "TrainLoss: {train_loss:1.4f} \t "
-                      "TestLoss: {test_loss:1.6f}".format(
+                print("Epoch: {epoch:2d}, Learning Rate: {learning_rate:1.8f} \n TrainClass: {train_class:1.6f}, "
+                      "TrainQuat: {train_quat:1.4f}  TrainPos: {train_pos:1.6f} \t "
+                      "TestClass: {test_class:1.6f}, TestQuat: {test_quat:1.4f}, TestPos: {test_pos:1.6f}".format(
                     epoch=epoch, learning_rate=learning_rate,
-                    train_loss=avg_loss.data,
-                    test_loss=loss))
+                    train_class=avg_loss_class.data, train_quat=avg_loss_quat.data, train_pos=avg_loss_pos.data,
+                    test_class=loss_class, test_quat=loss_quat, test_pos=loss_pos.data))
             scheduler.step(val_loss)
             #logger.log_epoch(avg_loss_pose.data, avg_loss_quat.data, avg_loss_pos.data,
             #                 loss_pose.data, loss_quat.data, loss_pos.data,
@@ -1460,14 +1598,14 @@ if use_colab:
 
 else:
     data = TrainingData()
-    #if not generate_data:
-    #    (train_data, test_data), N_train, N_test = gen_data(N_train, N_test)
-    #else:
-    #    (train_data, test_data) = gen_data(N_train, N_test)
-    #data.set_data(train_data, test_data)
-    #data.save_data(generated_data_dir, 'all')
+    if not generate_data:
+        (train_data, test_data), N_train, N_test = gen_data(N_train, N_test)
+    else:
+        (train_data, test_data) = gen_data(N_train, N_test)
+    data.set_data(train_data, test_data)
+    data.save_data(generated_data_dir, 'all')
     #data = TrainingData()
-    data.load_data(generated_data_dir, N_train, N_test, 'all')
+    #data.load_data(generated_data_dir, N_train, N_test, 'all')
     data.convert_to_torch()
 
 gc.collect()
