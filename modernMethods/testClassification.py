@@ -39,14 +39,22 @@ def gen_datum2():
 
 
 N = 50*100
-data = np.zeros([N, 4, 3])
+data = np.zeros([N, 4, 4])
 classes = np.zeros([N, 4])
 for i in range(N):
     datum = gen_datum()
-    perm = np.random.permutation(np.arange(0,4))
+    perm = np.random.permutation(np.arange(0, 4))
     classes[i, :] = perm[perm]
-    datum = datum[perm, :]
-    data[i, :, :] = datum
+    isMissing = 1
+    if np.random.uniform(0, 1) < 0.5:
+        classes[i, perm[3]] = 4
+        datum = datum[perm, :]
+        datum[3, :] = 0
+        isMissing = 0
+    else:
+        datum = datum[perm, :]
+    data[i, :, :3] = datum
+    data[i, :, 3] = isMissing
 
 X_train = torch.from_numpy(np.reshape(data, [N, -1])).float()
 Y_train = torch.from_numpy(classes).type(torch.LongTensor)
@@ -54,12 +62,12 @@ Y_train = torch.from_numpy(classes).type(torch.LongTensor)
 class simpleNet(nn.Module):
     def __init__(self):
         super(simpleNet, self).__init__()
-        self.layer1 = nn.Linear(12, 20)
+        self.layer1 = nn.Linear(16, 20)
         self.layer2 = nn.Linear(20, 50)
-        self.out1 = nn.Linear(50, 4)
-        self.out2 = nn.Linear(50, 4)
-        self.out3 = nn.Linear(50, 4)
-        self.out4 = nn.Linear(50, 4)
+        self.out1 = nn.Linear(50, 5)
+        self.out2 = nn.Linear(50, 5)
+        self.out3 = nn.Linear(50, 5)
+        self.out4 = nn.Linear(50, 5)
 
 
     def forward(self, detections):
@@ -79,7 +87,7 @@ net.float()
 optimizer = torch.optim.Adam(net.parameters())
 
 def train(X_train, Y_train):
-    for epoch in range(10):
+    for epoch in range(100):
         net.train()
         x_batches = torch.split(X_train, 50, 0)
         y_batches = torch.split(Y_train, 50, 0)
