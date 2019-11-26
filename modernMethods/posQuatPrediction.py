@@ -699,7 +699,7 @@ def gen_data(N_train, N_test):
 
     def gen_datum(N, pos_data=None):
         #TODO make this a bit bigger
-        augmentation_factor = 1
+        augmentation_factor = 5
 
         if generate_data:
             pos = gen_pos(N)
@@ -1397,18 +1397,18 @@ class SOTTracker(nn.Module):
         #    self.lstm_prediction = nn.LSTM(fc3_det_dim + fc2_pat_dim, hidden_dim)
 
         if use_const_pat:
-            self.lstm_correction = nn.LSTM(fc3_det_dim, hidden_dim)
+            self.lstm = nn.LSTM(fc3_det_dim, hidden_dim)
         else:
-            self.lstm_correction = nn.LSTM(fc3_det_dim + fc2_pat_dim, hidden_dim)
+            self.lstm = nn.LSTM(fc3_det_dim + fc2_pat_dim, hidden_dim)
 
-        #self.hidden2out1_prediction = nn.Linear(hidden_dim, 500)
-        #self.hidden2out2_prediction = nn.Linear(500, 200)
+        self.hidden2out1_prediction = nn.Linear(hidden_dim, 500)
+        self.hidden2out2_prediction = nn.Linear(500, 200)
 
-        #self.hidden2quat1_prediction = nn.Linear(200, 100)
-        #self.hidden2quat2_prediction = nn.Linear(100, 4)
+        self.hidden2quat1_prediction = nn.Linear(200, 100)
+        self.hidden2quat2_prediction = nn.Linear(100, 4)
 
-        #self.hidden2pos1_prediction = nn.Linear(200, 50)
-        #self.hidden2pos2_prediction = nn.Linear(50, 3)
+        self.hidden2pos1_prediction = nn.Linear(200, 50)
+        self.hidden2pos2_prediction = nn.Linear(50, 3)
 
         self.hidden2out1_correction = nn.Linear(hidden_dim, 500)
         self.hidden2out2_correction = nn.Linear(500, 200)
@@ -1450,12 +1450,13 @@ class SOTTracker(nn.Module):
 
         #x_prediction, _ = self.lstm_prediction(x)
         #x_correction, _ = self.lstm_correction(torch.cat([x_prediction[:, :, :], x[:, :, :]], dim=2))
-        x_correction, _ = self.lstm_correction(x)
-        #x_prediction = self.strong_dropout(F.relu(self.hidden2out1_prediction(x_prediction)))
-        #x_prediction = self.weak_dropout(F.relu(self.hidden2out2_prediction(x_prediction)))
+        x, _ = self.lstm(x)
 
-        x_correction = self.strong_dropout(F.relu(self.hidden2out1_correction(x_correction)))
-        x_correction = self.weak_dropout(F.relu(self.hidden2out2_correction(x_correction)))
+        x_prediction = self.strong_dropout(F.relu(self.hidden2out1_prediction(x)))
+        x_prediction = self.weak_dropout(F.relu(self.hidden2out2_prediction(x)))
+
+        x_correction = self.strong_dropout(F.relu(self.hidden2out1_correction(x)))
+        x_correction = self.weak_dropout(F.relu(self.hidden2out2_correction(x)))
 
         #m1 = self.weak_dropout(F.relu(self.hidden2m11(x)))
         #m1 = self.hidden2m12(m1)
@@ -1466,20 +1467,20 @@ class SOTTracker(nn.Module):
         #m4 = self.weak_dropout(F.relu(self.hidden2m41(x)))
         #m4 = self.hidden2m42(m4)
 
-        #x_quat_prediction = self.weak_dropout(F.relu(self.hidden2quat1_prediction(x_prediction)))
-        #x_quat_prediction = self.hidden2quat2_prediction(x_quat_prediction)
+        x_quat_prediction = self.weak_dropout(F.relu(self.hidden2quat1_prediction(x_prediction)))
+        x_quat_prediction = self.hidden2quat2_prediction(x_quat_prediction)
 
         x_quat_correction = self.weak_dropout(F.relu(self.hidden2quat1_correction(x_correction)))
         x_quat_correction = self.hidden2quat2_correction(x_quat_correction)
 
-        #x_pos_prediction = self.weak_dropout(F.relu(self.hidden2pos1_prediction(x_prediction)))
-        #x_pos_prediction = self.hidden2pos2_prediction(x_pos_prediction)
+        x_pos_prediction = self.weak_dropout(F.relu(self.hidden2pos1_prediction(x_prediction)))
+        x_pos_prediction = self.hidden2pos2_prediction(x_pos_prediction)
 
         x_pos_correction = self.weak_dropout(F.relu(self.hidden2pos1_correction(x_correction)))
         x_pos_correction = self.hidden2pos2_correction(x_pos_correction)
 
-        #quat_norm_prediction = torch.sqrt(torch.sum(torch.pow(x_quat_prediction, 2, ), dim=2))
-        #x_quat_prediction = x_quat_prediction / torch.unsqueeze(quat_norm_prediction, dim=2)
+        quat_norm_prediction = torch.sqrt(torch.sum(torch.pow(x_quat_prediction, 2, ), dim=2))
+        x_quat_prediction = x_quat_prediction / torch.unsqueeze(quat_norm_prediction, dim=2)
 
         quat_norm_correction = torch.sqrt(torch.sum(torch.pow(x_quat_correction, 2, ), dim=2))
         x_quat_correction = x_quat_correction / torch.unsqueeze(quat_norm_correction, dim=2)
@@ -1493,7 +1494,7 @@ class SOTTracker(nn.Module):
         #                             rotated_marker3,
         #                             rotated_marker4], dim=2)
 
-        return x_quat_correction, x_pos_correction #x_quat_prediction, x_pos_prediction, x_quat_correction, x_pos_correction#rotated_pattern, m1, m2, m3, m4
+        return x_quat_prediction, x_pos_prediction, x_quat_correction, x_pos_correction#rotated_pattern, m1, m2, m3, m4
 
 
 #model = customLSTM(hidden_dim, bias=True)
@@ -1633,13 +1634,6 @@ def train_sot_tracker(data):
     for epoch in range(1, NUM_EPOCHS + 1):
         gc.collect()
         model.train()
-        #X_train = data.X_train_shuffled
-        #X_test = data.X_test_shuffled
-        #max_values_train = np.max(np.abs(X_train), axis=[0, 1])
-        #max_values_test = np.max(np.abs(X_test), axis=[0, 1])
-        #max_values = np.maximum(max_values_train, max_values_test)
-        #X_train = X_train / np.expand_dims(max_values, axis=[0,1])
-        #X_test = X_test / np.expand_dims(max_values, axis=[0,1])
 
 
         #delta_detection_batches = torch.split(data.delta_X_train_shuffled[:,:,:], BATCH_SIZE, 1)
@@ -1666,7 +1660,7 @@ def train_sot_tracker(data):
             model.zero_grad()
             gc.collect()
 
-            corr_quat, corr_pos = model(dets[:, :, :], pattern_batch[:, :, :, :])
+            pred_quat, pred_delta_pos, corr_quat, corr_pos = model(dets[:, :, :], pattern_batch[:, :, :, :])
             #loss_class =  loss_cross_entropy(marker1.contiguous().view(-1, 5), marker_ass[0:-1, :, 0].contiguous().view(-1))
             #loss_class += loss_cross_entropy(marker2.contiguous().view(-1, 5), marker_ass[0:-1, :, 1].contiguous().view(-1))
             #loss_class += loss_cross_entropy(marker3.contiguous().view(-1, 5), marker_ass[0:-1, :, 2].contiguous().view(-1))
@@ -1674,30 +1668,30 @@ def train_sot_tracker(data):
 
             #pred_markers = pos_truth[:-1, :, :].repeat(1, 1, 4) + pred_delta_markers
             #loss_pose_p = loss_function_pos(pred_markers, marker_truth[1:, :, :])
-            #loss_quat_pred = torch.min(loss_function_quat(pred_quat, quat_truth[1:, :, :]),
-            #                      loss_function_quat(-pred_quat, quat_truth[1:, :, :]))
-            #loss_pos_pred = loss_function_pos(pred_delta_pos, delta_pos_truth[1:, :, :])
+            loss_quat_pred = torch.min(loss_function_quat(pred_quat[:-1, :, :], quat_truth[1:, :, :]),
+                                  loss_function_quat(-pred_quat[:-1, :, :], quat_truth[1:, :, :]))
+            loss_pos_pred = loss_function_pos(pred_delta_pos[:-1, :, :], delta_pos_truth[:, :, :])
 
             loss_quat_corr = torch.min(loss_function_quat(corr_quat, quat_truth[:, :, :]),
                                   loss_function_quat(-corr_quat, quat_truth[:, :, :]))
             loss_pos_corr = loss_function_pos(corr_pos, pos_truth[:, :, :])
 
-            loss = loss_quat_corr + loss_pos_corr
+            loss = loss_quat_corr + 100*loss_pos_corr + loss_quat_pred + 100*loss_pos_pred
             #loss = lambda_pos * loss_pos_pred + lambda_quat * loss_quat_pred + loss_pos_corr.item() + loss_quat_corr.item() #+ lambda_classification * loss_class
 
             loss.backward()
             optimizer.step()
 
             #avg_loss_pose += loss_pose.item()
-            #avg_loss_quat_pred += loss_quat_pred.item()
-            #avg_loss_pos_pred += loss_pos_pred.item()
+            avg_loss_quat_pred += loss_quat_pred.item()
+            avg_loss_pos_pred += loss_pos_pred.item()
             avg_loss_quat_corr += loss_quat_corr.item()
             avg_loss_pos_corr += loss_pos_corr.item()
             #avg_loss_class += loss_class.item()
 
         #avg_loss_pose /= n_batches_per_epoch
-        #avg_loss_quat_pred /= n_batches_per_epoch
-        #avg_loss_pos_pred /= n_batches_per_epoch
+        avg_loss_quat_pred /= n_batches_per_epoch
+        avg_loss_pos_pred /= n_batches_per_epoch
         avg_loss_quat_corr /= n_batches_per_epoch
         avg_loss_pos_corr /= n_batches_per_epoch
         #avg_loss_class /= n_batches_per_epoch
@@ -1706,7 +1700,7 @@ def train_sot_tracker(data):
         with torch.no_grad():
             #pred_quat, pred_delta_pos, pred_delta_markers, marker1, marker2, marker3, marker4 = model(data.X_test_shuffled[:-1, :, :],
             #                                                      data.pattern_test[:-1, :, :, :])
-            corr_quat, corr_pos = model(data.X_test_shuffled[:, :, :], data.pattern_test[:, :, :, :])
+            pred_quat, pred_delta_pos, corr_quat, corr_pos = model(data.X_test_shuffled[:, :, :], data.pattern_test[:, :, :, :])
 
             #loss_class = loss_cross_entropy(marker1.contiguous().view(-1, 5),
             #                                data.marker_ids_test[0:-1, :, 0].contiguous().view(-1))
@@ -1719,32 +1713,34 @@ def train_sot_tracker(data):
 
             #pred_markers = data.pos_test[:-1, :, :].repeat(1, 1, 4) + pred_delta_markers
             #loss_pose = loss_function_pos(pred_markers, data.X_test[1:, :, :])
-            #loss_quat_pred = torch.min(loss_function_quat(pred_quat, data.quat_test[1:, :, :]),
-            #                      loss_function_quat(-pred_quat, data.quat_test[1:, :, :]))
-            #loss_pos_pred = loss_function_pos(pred_delta_pos, data.delta_pos_test[1:, :, :])
+            loss_quat_pred = torch.min(loss_function_quat(pred_quat[:-1, :, :], data.quat_test[1:, :, :]),
+                                  loss_function_quat(-pred_quat[:-1, :, :], data.quat_test[1:, :, :]))
+            loss_pos_pred = loss_function_pos(pred_delta_pos[:-1, :, :], data.delta_pos_test[:, :, :])
 
             loss_quat_corr = torch.min(loss_function_quat(corr_quat, data.quat_test[:, :, :]),
                                   loss_function_quat(-corr_quat, data.quat_test[:, :, :]))
             loss_pos_corr = loss_function_pos(corr_pos, data.pos_test[:, :, :])
             #val_loss = lambda_classification * loss_class.item() + \
 
-            val_loss  = loss_quat_corr + loss_pos_corr#lambda_pos * loss_pos_pred.item() + lambda_quat * loss_quat_pred.item() + loss_pos_corr.item() + loss_pos_corr.item()
+            val_loss  = loss_quat_corr + 100*loss_pos_corr + 100*loss_pos_pred.item() + loss_quat_pred.item()# + loss_pos_corr.item() + loss_pos_corr.item()
             for param_group in optimizer.param_groups:
                 learning_rate = param_group['lr']
-                #print("Epoch: {epoch:2d}, Learning Rate: {learning_rate:1.8f} \n TrainPosCorr: {train_pos_corr:1.6f}, "
-                #      "TrainQuatCorr: {train_quat_corr:1.4f}  TrainPosPred: {train_pos_pred:1.6f}  TrainQuatPred: {train_quat_pred:1.6f} \t , "
-                #      "TestPosCorr: {test_pos_corr:1.6f} TestQuatCorr: {test_quat_corr:1.4f}  TestPosPred: {test_pos_pred:1.6f}  TestQuatPred: {test_quat_pred:1.6f}".format(
-                #    epoch=epoch, learning_rate=learning_rate,
-                #    train_pos_corr=avg_loss_pos_corr, train_quat_corr=avg_loss_quat_corr, train_pos_pred=avg_loss_pos_pred, train_quat_pred=avg_loss_quat_pred,
-                #    test_pos_corr=loss_pos_corr, test_quat_corr=loss_quat_corr,
-                #    test_pos_pred=loss_pos_pred, test_quat_pred=loss_quat_pred))
                 print("Epoch: {epoch:2d}, Learning Rate: {learning_rate:1.8f} \n TrainPosCorr: {train_pos_corr:1.6f}, "
-                      "TrainQuatCorr: {train_quat_corr:1.4f}   \t , "
-                      "TestPosCorr: {test_pos_corr:1.6f} TestQuatCorr: {test_quat_corr:1.4f}  ".format(
+                      "TrainQuatCorr: {train_quat_corr:1.4f}  TrainPosPred: {train_pos_pred:1.6f}  TrainQuatPred: {train_quat_pred:1.6f} \t , "
+                      "TestPosCorr: {test_pos_corr:1.6f} TestQuatCorr: {test_quat_corr:1.4f}  TestPosPred: {test_pos_pred:1.6f}  TestQuatPred: {test_quat_pred:1.6f}".format(
                     epoch=epoch, learning_rate=learning_rate,
-                    train_pos_corr=avg_loss_pos_corr, train_quat_corr=avg_loss_quat_corr,
-                    test_pos_corr=loss_pos_corr, test_quat_corr=loss_quat_corr))
+                    train_pos_corr=avg_loss_pos_corr, train_quat_corr=avg_loss_quat_corr, train_pos_pred=avg_loss_pos_pred, train_quat_pred=avg_loss_quat_pred,
+                    test_pos_corr=loss_pos_corr, test_quat_corr=loss_quat_corr,
+                    test_pos_pred=loss_pos_pred, test_quat_pred=loss_quat_pred))
+                #print("Epoch: {epoch:2d}, Learning Rate: {learning_rate:1.8f} \n TrainPosCorr: {train_pos_corr:1.6f}, "
+                #      "TrainQuatCorr: {train_quat_corr:1.4f}   \t , "
+                #      "TestPosCorr: {test_pos_corr:1.6f} TestQuatCorr: {test_quat_corr:1.4f}  ".format(
+                #    epoch=epoch, learning_rate=learning_rate,
+                #    train_pos_corr=avg_loss_pos_corr, train_quat_corr=avg_loss_quat_corr,
+                #    test_pos_corr=loss_pos_corr, test_quat_corr=loss_quat_corr))
             scheduler.step(val_loss)
+            #avg_loss_pose = -1
+            #loss_pose = -1
             #logger.log_epoch(avg_loss_pose, avg_loss_quat, avg_loss_pos,
             #                 loss_pose, loss_quat, loss_pos,
             #                 model,
@@ -1913,6 +1909,3 @@ gc.collect()
 #if not use_colab:
     #eval(name, data)
     #eval('models/PoseNet_first', data)
-
-
-#TODO: do all in one net, normalize positions and delta_positions separateley
