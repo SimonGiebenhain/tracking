@@ -40,7 +40,7 @@ generate_data = False
 multi_modal = False
 
 TASK = 'PosQuatPred; '
-MODEL_NAME = 'PoseNet'
+MODEL_NAME = 'SOTNet'
 
 if multi_modal:
     MODEL_NAME += '_MoG'
@@ -116,24 +116,20 @@ n_mixture_components = 3
 # customLSTm could be slow, maybe could do the same with stacked LSTM
 # This could also act as the correction step!
 
-# TODO: incorporate quat and pos in MarkerNet architecture!
+# old TODO: incorporate quat and pos in MarkerNet architecture!
 
-# TODO incorporate dropped dets into markerNet ground truth!!
+# old TODO incorporate dropped dets into markerNet ground truth!!
 
-# TODO: deepsort? is there such a thing?
+# old TODO: deepsort? is there such a thing?
 
-# TODO: liegt memory leak and testing procedure?
+# TODO: input absolute, predict relative???
+
+#TODO: use noise models and quats from KF to generate more realistic data
 
 #TODO: pytoch, gen new training data while training, progressively make harder training data, one easy and one hard test set
 
-#TODO: create net which orders markers first
-
-# TODO: make generate quats less extreme!
-
 # TODO predict multiple steps into the future!, i.e. how to fill gaps with no information at all?
-# TODO why is memry demand increasing until end of epoch?
 
-# TODO: input absolute, predict relative???
 
 # TODO: incorporate long distance predictions and temporal consistency, is that compatible with the multi-modality
 #       is it good to only predict delta_x since errors don't accumulate, think about how to fix
@@ -142,13 +138,6 @@ n_mixture_components = 3
 # TODO: loss_pos + loss_quat vs. loss_pose auf den Grund gehen!
 
 # TODO: predict gaussian, then mixture of gaussians
-
-# TODO: MATLAB: HOW TO REINITIALIZE LOST TRACKS??
-
-# TODO: google for MOT specifically instead of trajectory prediction!
-
-# TODO: use noise model to drop detections
-# TODO: think about noise model for false positives
 
 
 ####################################################################################
@@ -172,6 +161,7 @@ def gen_folder_name(task, name):
     now = datetime.now()
     dt_str = now.strftime("%d.%m.%Y@%H:%M:%S")
     return 'models/' + short_name + '_' + short_task + '_' + dt_str
+
 
 
 class TrainingData():
@@ -211,9 +201,10 @@ class TrainingData():
             self.marker_ids_train = self.marker_ids_train[:, randperm, :]
         if self.delta_pos_train is not None:
             self.delta_pos_train = self.delta_pos_train[:, randperm, :]
+        if self.delta_X_train_shuffled is not None:
+            self.delta_X_train_shuffled = self.delta_X_train_shuffled[:, randperm, :]
         else:
             print('Haalp')
-
 
     def set_data(self, train_data_dict, test_data_dict):
         self.X_train = train_data_dict['X']
@@ -235,20 +226,20 @@ class TrainingData():
         self.make_relative()
 
     def make_relative(self):
-        self.X_train_shuffled = make_detections_relative(self.X_train_shuffled, self.pos_train)
-        self.X_test_shuffled = make_detections_relative(self.X_test_shuffled, self.pos_test)
+        self.delta_X_train_shuffled = make_detections_relative(self.X_train_shuffled, self.pos_train)
+        self.delta_X_test_shuffled = make_detections_relative(self.X_test_shuffled, self.pos_test)
         self.delta_pos_train = make_pos_relative(self.pos_train)
         self.delta_pos_test = make_pos_relative(self.pos_test)
-        self.pattern_train = self.pattern_train[1:, :, :]
-        self.pattern_test = self.pattern_test[1:, :, :]
-        self.X_train = self.X_train[1:, :, :]
-        self.X_test = self.X_test[1:, :, :]
-        self.quat_train = self.quat_train[1:, :, :]
-        self.quat_test = self.quat_test[1:, :, :]
-        self.pos_train = self.pos_train[1:, :, :]
-        self.pos_test = self.pos_test[1:, :, :]
-        self.marker_ids_train = self.marker_ids_train[1:, :, :]
-        self.marker_ids_test = self.marker_ids_test[1:, :, :]
+        #self.pattern_train = self.pattern_train[1:, :, :]
+        #self.pattern_test = self.pattern_test[1:, :, :]
+        #self.X_train = self.X_train[1:, :, :]
+        #self.X_test = self.X_test[1:, :, :]
+        #self.quat_train = self.quat_train[1:, :, :]
+        #self.quat_test = self.quat_test[1:, :, :]
+        #self.pos_train = self.pos_train[1:, :, :]
+        #self.pos_test = self.pos_test[1:, :, :]
+        #self.marker_ids_train = self.marker_ids_train[1:, :, :]
+        #self.marker_ids_test = self.marker_ids_test[1:, :, :]
 
     def load_data(self, dir_name, N_train, N_test, name):
         dname = dir_name + '_' + name
@@ -262,7 +253,6 @@ class TrainingData():
         self.quat_train = np.load(dname + '/quat_train' + postfix)
         self.pos_train = np.load(dname + '/pos_train' + postfix)
         self.pattern_train = np.load(dname + '/pattern_train' + postfix)
-        self.delta_pos_train = np.load(dname + '/delta_pos_train' + postfix)
         if os.path.isfile(dname + '/marker_ids_train' + postfix):
             self.marker_ids_train = np.load(dname + '/marker_ids_train' + postfix)
 
@@ -275,11 +265,12 @@ class TrainingData():
         self.quat_test = np.load(dname + '/quat_test' + postfix)
         self.pos_test = np.load(dname + '/pos_test' + postfix)
         self.pattern_test = np.load(dname + '/pattern_test' + postfix)
-        self.delta_pos_test = np.load(dname + '/delta_pos_test' + postfix)
         if os.path.isfile(dname + '/marker_ids_test' + postfix):
             self.marker_ids_test = np.load(dname + '/marker_ids_test' + postfix)
 
         print('Loaded data successfully!')
+        self.make_relative()
+        print('computed delta values!')
 
     def save_data(self, dir_name, name):
         dname = dir_name + '_' + name
@@ -296,7 +287,6 @@ class TrainingData():
         np.save(dname + '/quat_train' + postfix, self.quat_train)
         np.save(dname + '/pos_train' + postfix, self.pos_train)
         np.save(dname + '/pattern_train' + postfix, self.pattern_train)
-        np.save(dname + '/delta_pos_train' + postfix, self.delta_pos_train)
         if self.marker_ids_train is not None:
             np.save(dname + '/marker_ids_train' + postfix, self.marker_ids_train)
 
@@ -306,7 +296,6 @@ class TrainingData():
         np.save(dname + '/quat_test' + postfix, self.quat_test)
         np.save(dname + '/pos_test' + postfix, self.pos_test)
         np.save(dname + '/pattern_test' + postfix, self.pattern_test)
-        np.save(dname+ '/delta_pos_test' + postfix, self.delta_pos_test)
         if self.marker_ids_test is not None:
             np.save(dname + '/marker_ids_test' + postfix, self.marker_ids_test)
 
@@ -317,6 +306,7 @@ class TrainingData():
         if use_colab:
             self.X_train = torch.from_numpy(self.X_train).float().cuda()
             self.X_train_shuffled = torch.from_numpy(self.X_train_shuffled).float().cuda()
+            self.delta_X_train_shuffled = torch.from_numpy(self.delta_X_train_shuffled).float().cuda()
             self.quat_train = torch.from_numpy(self.quat_train).float().cuda()
             self.pos_train = torch.from_numpy(self.pos_train).float().cuda()
             self.pattern_train = torch.from_numpy(self.pattern_train).float().cuda()
@@ -326,6 +316,7 @@ class TrainingData():
 
             self.X_test = torch.from_numpy(self.X_test).float().cuda()
             self.X_test_shuffled = torch.from_numpy(self.X_test_shuffled).float().cuda()
+            self.delta_X_test_shuffled = torch.from_numpy(self.delta_X_test_shuffled).float().cuda()
             self.quat_test = torch.from_numpy(self.quat_test).float().cuda()
             self.pos_test = torch.from_numpy(self.pos_test).float().cuda()
             self.pattern_test = torch.from_numpy(self.pattern_test).float().cuda()
@@ -336,6 +327,7 @@ class TrainingData():
         else:
             self.X_train = torch.from_numpy(self.X_train).float()
             self.X_train_shuffled = torch.from_numpy(self.X_train_shuffled).float()
+            self.delta_X_train_shuffled = torch.from_numpy(self.delta_X_train_shuffled).float()
             self.quat_train = torch.from_numpy(self.quat_train).float()
             self.pos_train = torch.from_numpy(self.pos_train).float()
             self.pattern_train = torch.from_numpy(self.pattern_train).float()
@@ -345,6 +337,7 @@ class TrainingData():
 
             self.X_test = torch.from_numpy(self.X_test).float()
             self.X_test_shuffled = torch.from_numpy(self.X_test_shuffled).float()
+            self.delta_X_test_shuffled = torch.from_numpy(self.delta_X_test_shuffled).float()
             self.quat_test = torch.from_numpy(self.quat_test).float()
             self.pos_test = torch.from_numpy(self.pos_test).float()
             self.pattern_test = torch.from_numpy(self.pattern_test).float()
@@ -358,6 +351,7 @@ class TrainingData():
         self.is_numpy = True
         self.X_train = self.X_train.numpy()
         self.X_train_shuffled = self.X_train_shuffled.numpy()
+        self.delta_X_train_shuffled = self.delta_X_train_shuffled.numpy()
         self.quat_train = self.quat_train.numpy()
         self.pos_train = self.pos_train.numpy()
         self.pattern_train = self.pattern_train.numpy()
@@ -367,6 +361,7 @@ class TrainingData():
 
         self.X_test = self.X_test.numpy()
         self.X_test_shuffled = self.X_test_shuffled.numpy()
+        self.delta_X_test_shuffled = self.delta_X_test_shuffled.numpy()
         self.quat_test = self.quat_test.numpy()
         self.pos_test = self.pos_test.numpy()
         self.pattern_test = self.pattern_test.numpy()
@@ -375,6 +370,29 @@ class TrainingData():
             self.marker_ids_test = self.marker_ids_test.numpy()
 
         print('Converted data to numpy format.')
+
+    # normalize X_train and X_test and pos_train, pos_test such that x,y,z cooredinated lie within [-1,1].
+    # Also normalize delta versions such that x,y,z coordinated liw within [-1,1]
+    def normalize(self):
+        detection_scale = np.maximum(np.max(np.abs(self.pos_train), axis=(0,1)),
+                                     np.max(np.abs(self.pos_test), axis=(0,1)))
+        detection_scale = np.expand_dims(np.expand_dims(detection_scale, 0), 0)
+        self.X_train = self.X_train / np.tile(detection_scale, [1, 1, 4])
+        self.X_test = self.X_test / np.tile(detection_scale, [1, 1, 4])
+        self.X_train_shuffled = self.X_train_shuffled / np.tile(np.concatenate([detection_scale, np.ones([1,1,1])], axis=2), [1, 1, 4])
+        self.X_test_shuffled = self.X_test_shuffled / np.tile(np.concatenate([detection_scale, np.ones([1,1,1])], axis=2), [1, 1, 4])
+        self.pattern_train = self.pattern_train / np.expand_dims(detection_scale, 0)
+        self.pattern_test = self.pattern_test / np.expand_dims(detection_scale, 0)
+        self.pos_train = self.pos_train / detection_scale
+        self.pos_test = self.pos_test / detection_scale
+
+        delta_scale = np.maximum(np.max(np.abs(self.delta_pos_train), axis=(0,1)),
+                                 np.max(np.abs(self.delta_pos_test), axis=(0,1)))
+        delta_scale = np.expand_dims(np.expand_dims(delta_scale, 0), 0)
+        self.delta_pos_train = self.delta_pos_train / delta_scale
+        self.delta_pos_test = self.delta_pos_test / delta_scale
+        self.delta_X_train_shuffled = self.delta_X_train_shuffled / np.tile(np.concatenate([delta_scale, np.ones([1,1,1])], axis=2), [1, 1, 4])
+        self.delta_X_test_shuffled = self.delta_X_test_shuffled / np.tile(np.concatenate([delta_scale, np.ones([1,1,1])], axis=2), [1, 1, 4])
 
 
 
@@ -411,6 +429,7 @@ class HyperParams():
         description = description + 'Loss type: \t ' + self.loss_type + '\n'
         description = description + 'Comments: \t ' + self.comments + '\n'
         return description
+
 
 
 class TrainingLogger():
@@ -484,6 +503,7 @@ class TrainingLogger():
                     plt.plot(training_progress[:, k], c=c_test, label=key)
             plt.legend()
             plt.savefig(self.folder_name + '/training_progress.png', format='png')
+
 
 
 def gen_pattern_constant(N):
@@ -679,7 +699,7 @@ def gen_data(N_train, N_test):
 
     def gen_datum(N, pos_data=None):
         #TODO make this a bit bigger
-        augmentation_factor = 5
+        augmentation_factor = 1
 
         if generate_data:
             pos = gen_pos(N)
@@ -1359,14 +1379,14 @@ class SOTTracker(nn.Module):
         if add_false_positives:
             self.fc1_det = nn.Linear(20, fc1_det_dim)
         else:
-            self.fc1_det = nn.Linear(12, fc1_det_dim)
+            self.fc1_det = nn.Linear(16, fc1_det_dim)
         self.fc2_det = nn.Linear(fc1_det_dim, fc2_det_dim)
         self.fc3_det = nn.Linear(fc2_det_dim, fc3_det_dim)
         # self.fc4_det = nn.Linear(fc3_det_dim, fc4_det_dim)
         # self.fc5_det = nn.Linear(fc4_det_dim, fc5_det_dim)
 
         if not use_const_pat:
-            self.fc1_pat = nn.Linear(12, fc1_pat_dim)
+            self.fc1_pat = nn.Linear(16, fc1_pat_dim)
             self.fc2_pat = nn.Linear(fc1_pat_dim, fc2_pat_dim)
             # self.fc3_pat = nn.Linear(fc2_pat_dim, fc3_pat_dim)
             # self.fc4_pat = nn.Linear(fc3_pat_dim, fc4_pat_dim)
@@ -1622,7 +1642,8 @@ def train_sot_tracker(data):
         #X_test = X_test / np.expand_dims(max_values, axis=[0,1])
 
 
-        delta_detection_batches = torch.split(data.X_train_shuffled[:,:,:], BATCH_SIZE, 1)
+        #delta_detection_batches = torch.split(data.delta_X_train_shuffled[:,:,:], BATCH_SIZE, 1)
+        detection_batches = torch.split(data.X_train_shuffled, BATCH_SIZE, 1)
         quat_truth_batches = torch.split(data.quat_train[:,:,:], BATCH_SIZE, 1)
         pos_truth_batches = torch.split(data.pos_train[:,:,:], BATCH_SIZE, 1)
         delta_pos_truth_batches = torch.split(data.delta_pos_train[:,:,:], BATCH_SIZE, 1)
@@ -1635,17 +1656,17 @@ def train_sot_tracker(data):
         avg_loss_pos_pred = 0
         avg_loss_quat_corr = 0
         avg_loss_pos_corr = 0
-        n_batches_per_epoch = len(delta_detection_batches)
+        n_batches_per_epoch = len(detection_batches)
         #for k, [delta_dets, quat_truth, pos_truth, marker_truth, delta_pos_truth, pattern_batch, marker_ass] in enumerate(
         #        zip(delta_detection_batches[:-1], quat_truth_batches[:-1], pos_truth_batches[:-1], detections_truth_batches[:-1],
         #            delta_pos_truth_batches[:-1], pattern_batches[:-1], marker_assignment_batches[:-1])):
-        for k, [delta_dets, quat_truth, pos_truth, marker_truth, delta_pos_truth, pattern_batch] in enumerate(
-                zip(delta_detection_batches[:-1], quat_truth_batches[:-1], pos_truth_batches[:-1], detections_truth_batches[:-1], delta_pos_truth_batches[:-1], pattern_batches[:-1])):
+        for k, [dets, quat_truth, pos_truth, marker_truth, delta_pos_truth, pattern_batch] in enumerate(
+                zip(detection_batches[:-1], quat_truth_batches[:-1], pos_truth_batches[:-1], detections_truth_batches[:-1], delta_pos_truth_batches[:-1], pattern_batches[:-1])):
 
             model.zero_grad()
             gc.collect()
 
-            corr_quat, corr_pos = model(marker_truth[:, :, :], pattern_batch[:, :, :, :])
+            corr_quat, corr_pos = model(dets[:, :, :], pattern_batch[:, :, :, :])
             #loss_class =  loss_cross_entropy(marker1.contiguous().view(-1, 5), marker_ass[0:-1, :, 0].contiguous().view(-1))
             #loss_class += loss_cross_entropy(marker2.contiguous().view(-1, 5), marker_ass[0:-1, :, 1].contiguous().view(-1))
             #loss_class += loss_cross_entropy(marker3.contiguous().view(-1, 5), marker_ass[0:-1, :, 2].contiguous().view(-1))
@@ -1685,9 +1706,7 @@ def train_sot_tracker(data):
         with torch.no_grad():
             #pred_quat, pred_delta_pos, pred_delta_markers, marker1, marker2, marker3, marker4 = model(data.X_test_shuffled[:-1, :, :],
             #                                                      data.pattern_test[:-1, :, :, :])
-            corr_quat, corr_pos = model(
-                data.X_test[:, :, :],
-                data.pattern_test[:, :, :, :])
+            corr_quat, corr_pos = model(data.X_test_shuffled[:, :, :], data.pattern_test[:, :, :, :])
 
             #loss_class = loss_cross_entropy(marker1.contiguous().view(-1, 5),
             #                                data.marker_ids_test[0:-1, :, 0].contiguous().view(-1))
@@ -1885,6 +1904,7 @@ else:
     #data.save_data(generated_data_dir, 'all')
     #data = TrainingData()
     data.load_data(generated_data_dir, N_train, N_test, 'all')
+    data.normalize()
     data.convert_to_torch()
 
 gc.collect()
@@ -1895,5 +1915,4 @@ gc.collect()
     #eval('models/PoseNet_first', data)
 
 
-#TODO: get non-delta X_shuffles as well, normalize, train as "correction" network
 #TODO: do all in one net, normalize positions and delta_positions separateley
