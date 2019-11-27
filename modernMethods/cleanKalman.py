@@ -3,27 +3,21 @@ import pandas as pd
 from matplotlib import pyplot as plt
 from viz import visualize
 import pickle as pkl
+from scipy import io
 
 
 # TODO: apply kalamnFIlter to complete sequence
 # TODO: make use of second dataset
 
 path = 'data/'
-with open(path + 'all_positionsX.pkl', 'rb') as fin:
-    posX = pkl.load(fin)
-with open(path + 'all_positionsY.pkl', 'rb') as fin:
-    posY = pkl.load(fin)
-with open(path + 'all_positionsZ.pkl', 'rb') as fin:
-    posZ = pkl.load(fin)
-
-pos = np.stack([posX, posY, posZ], axis=2)
-np.save('data/pos_all.npy', pos)
-#pos = np.load('data/pos.npy')
+data = io.loadmat('data/KF_MOT_results.mat')
+pos = data['estimatedPositions']
+quats = data['estimatedQuats']
 colors = np.load('data/colors.npy')
 n_objects = pos.shape[0]
 T = pos.shape[1]
 
-rolling_media_window_size = 30
+rolling_median_window_size = 20
 rolling_mean_window_size = 10
 
 num_similar_copies = 15
@@ -35,14 +29,17 @@ def plot_trajectories(pos):
         plt.plot(traj, c=colors[k, :])
 
 
-def get_snippets(pos, length, interval):
+def get_snippets(pos, quats, length, interval):
     snippets = []
+    quat_snippets = []
     for k in range(n_objects):
         traj = pos[k, :, :]
+        qtraj = quats[k, :, :]
         T = traj.shape[0]
         r_bnd = T - length
         for t in range(0, r_bnd, interval):
             tr = traj[t:t+length, :]
+            qtr = qtraj[t:t+length, :]
             if not np.any(np.isnan(tr)):
                 tr_norm = np.linalg.norm(tr, axis=1)
                 diff = tr_norm[1:] - tr_norm[:-1]
@@ -50,9 +47,10 @@ def get_snippets(pos, length, interval):
                     print('Big Jump encountered!')
                 else:
                     snippets.append(tr)
+                    quat_snippets.append(qtr)
             else:
                 print('NaN encountered!')
-    return np.stack(snippets, axis=0)
+    return np.stack(snippets, axis=0), np.stack(quat_snippets, axis=0)
 
 
 def center_snippets(snips):
@@ -125,37 +123,42 @@ def rotate_snippets(snips, number_of_rotations):
     rotated_snips = np.stack(rotated_snips, axis=0)
     return np.concatenate([rotated_snips, snips], axis=0)
 
-def save_as_training_data(snips):
+def save_as_training_data(snips, quat_snips):
     snips = np.transpose(snips, [1, 0, 2])
+    quat_snips = np.transpose(quat_snips, [1, 0, 2])
     np.save('data/cleaned_kalman_pos_all.npy', snips)
+    np.save('data/cleaned_kalman_quat_all.npy', quat_snips)
+
 
 
 plt.subplot(121)
 plot_trajectories(pos)
-pos_smoothened = np.zeros([n_objects, T - rolling_media_window_size + 1, 3])
+pos_smoothened = np.zeros([n_objects, T - rolling_median_window_size + 1, 3])
+quats_smoothened = np.zeros([n_objects, T - rolling_median_window_size + 1, 4])
 for k in range(n_objects):
-    pos_smoothened[k, :, :] = pd.DataFrame(pos[k, :, :]).rolling(rolling_media_window_size).median().to_numpy()[29:, :]
+    pos_smoothened[k, :, :] = pd.DataFrame(pos[k, :, :]).rolling(rolling_median_window_size).median().to_numpy()[rolling_median_window_size - 1:, :]
+    quats_smoothened[k, :, :] = pd.DataFrame(quats[k, :, :]).rolling(rolling_median_window_size).median().to_numpy()[rolling_median_window_size - 1:, :]
 
-pos_smoothened2 = np.zeros([n_objects,T - rolling_media_window_size + 1 - rolling_mean_window_size + 1, 3])
+pos_smoothened2 = np.zeros([n_objects, T - rolling_median_window_size + 1 - rolling_mean_window_size + 1, 3])
+quats_smoothened2 = np.zeros([n_objects, T - rolling_median_window_size + 1 - rolling_mean_window_size + 1, 4])
+
 for k in range(n_objects):
-    pos_smoothened2[k, :, :] = pd.DataFrame(pos_smoothened[k, :, :]).rolling(rolling_mean_window_size).mean().to_numpy()[9:, :]
+    pos_smoothened2[k, :, :] = pd.DataFrame(pos_smoothened[k, :, :]).rolling(rolling_mean_window_size).mean().to_numpy()[rolling_mean_window_size-1:, :]
+    quats_smoothened2[k, :, :] = pd.DataFrame(quats_smoothened[k, :, :]).rolling(rolling_mean_window_size).mean().to_numpy()[rolling_mean_window_size-1:, :]
+
 plt.subplot(122)
 plot_trajectories(pos_smoothened2)
 plt.show()
 
 
-snippets = get_snippets(pos_smoothened2, 100, 20)
-print(len(snippets))
+snippets, quat_snippets = get_snippets(pos_smoothened2, quats_smoothened2, 100, 20)
 snippets = center_snippets(snippets)
 snippets = scale_snippets(snippets)
-#snippets = balance_snippets(snippets)
-
-#number_of_rotations = 3
-#snippets = rotate_snippets(snippets, number_of_rotations)
 
 print(snippets.shape)
+print(quat_snippets.shape)
 
-save_as_training_data(snippets)
+save_as_training_data(snippets, quat_snippets)
 
 # TODO: could also mirror
 
