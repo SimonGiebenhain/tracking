@@ -29,12 +29,14 @@ from pyquaternion import Quaternion as Quaternion
 if not use_colab:
     from vizTracking import visualize_tracking
 
+    from BehaviourModel import NoiseModelFN
+
 
 
 drop_some_dets = True
 add_false_positives = False
-add_noise = False
-NOISE_STD = 0.01
+add_noise = True
+NOISE_STD = 0.0001
 use_const_pat = True
 generate_data = False
 multi_modal = False
@@ -659,6 +661,13 @@ def qrot(q, v):
     uuv = torch.cross(qvec, uv, dim=1)
     return (v + 2 * (q[:, :1] * uv + uuv)).view(original_shape)
 
+def rotate_quats(quats, theta):
+    q = Quaternion(axis=[0, 0, 1], angle=theta)
+    rotated_quats = []
+    for quat in quats:
+        qq = Quaternion(quat)
+        rotated_quats.append((qq * q).elements)
+    return rotated_quats
 
 def rotate_snippet(snip, theta):
     #theta = np.random.uniform(1, 5)
@@ -669,83 +678,111 @@ def rotate_snippet(snip, theta):
 
 # TODO: vecotrize with qrot() and by shuffling markers while generating them
 def gen_data(N_train, N_test):
+    p1 = [0.1, 0.2]
+    p2 = [0.35, 0.6]
+    p3 = [0.6, 0.85]
+    p4 = [0.8, 0.95]
+    noise_model_states = ['all', 'some', 'none']
+    noise_model_transition_prob = {'all': [0.89, 0.1, 0.01], 'some': [0.02, 0.97, 0.01], 'none': [0.48, 0.48, 0.04]}
+    noise_model_initial_state = 'all'
+
+    nM = NoiseModelFN(noise_model_states, noise_model_transition_prob, noise_model_initial_state, p1, p2, p3, p4)
 
     if not generate_data:
         ratio = N_train / (N_train + N_test)
         pos = np.load('data/cleaned_kalman_pos_all.npy')
+        quats = np.load('data/cleaned_kalman_quat_all.npy')
         true_N = pos.shape[1]
         norms = np.linalg.norm(pos, axis=2)
-        is_moving = np.any(norms > 2, axis=0)
+        is_moving = np.any(norms > 0.8, axis=0)
         num_moving = np.count_nonzero(is_moving)
+        print('Num moving')
+        print(num_moving)
         num_static = true_N - num_moving
+        print('Num static')
+        print(num_static)
 
         moving_pos = pos[:, is_moving, :]
+        moving_quats = quats[:, is_moving, :]
         static_pos = pos[:, np.logical_not(is_moving), :]
+        static_quats = quats[:, np.logical_not(is_moving), :]
         static_pos = np.transpose(np.random.permutation(np.transpose(static_pos, [1, 0, 2])), [1, 0, 2])
+        static_quats = np.transpose(np.random.permutation(np.transpose(static_quats, [1, 0, 2])), [1, 0, 2])
         static_pos = static_pos[:, :num_moving, :]
+        static_quats = static_quats[:, :num_moving, :]
+
 
         selected_pos = np.concatenate([moving_pos, static_pos], axis=1)
+        selected_quats = np.concatenate([moving_quats, static_quats], axis=1)
         selected_pos = np.transpose(selected_pos, axes=[1, 0, 2])
+        selected_quats = np.transpose(selected_quats, axes=[1, 0, 2])
         selected_pos = np.random.permutation(selected_pos)
+        selected_quats = np.random.permutation(selected_quats)
         pos = np.transpose(selected_pos, [1, 0, 2])
+        quats = np.transpose(selected_quats, [1, 0, 2])
         true_N = np.shape(pos)[1]
 
         N_train = ceil(true_N * ratio)
         pos_train = pos[:, :N_train, :]
+        quats_train = quats[:, :N_train, :]
         pos_test = pos[:, N_train:, :]
+        quats_test = quats[:, N_train:, :]
         N_test = pos_test.shape[1]
+        print('N Train')
         print(N_train)
+        print('N test')
         print(N_test)
 
-    def gen_datum(N, pos_data=None):
-        #TODO make this a bit bigger
-        augmentation_factor = 5
-
-        if generate_data:
-            pos = gen_pos(N)
-        else:
-            pos = pos_data
-
-        augmented_pos = []
-        for n in range(pos.shape[1]):
-            snip = pos[:, n, :]
-            for k in range(augmentation_factor):
-                scale = np.random.uniform(0.8, 1.2, [1, 3])
-                theta = np.random.uniform(1, 5)
-                snip = snip * scale
-                snip = rotate_snippet(snip, theta)
-                augmented_pos.append(snip)
-
-        pos = np.stack(augmented_pos, axis=1)
-
-
+    def gen_datum(N, pos_data=None, quats_data=None):
         if use_colab:
             patterns = np.load(colab_path_prefix + 'patterns.npy')
         else:
             patterns = np.load('data/patterns.npy')
-
         patterns = patterns / 10
-        num_positions = N
-        N = N * len(patterns) * augmentation_factor
 
-        quat = np.zeros([T, N, 4], dtype=np.float32)
+        if generate_data:
+            pos = gen_pos(N)
 
-        for n in range(N):
-            quat[:, n, :] = gen_quats(T)
+            quats = np.zeros([T, N, 4], dtype=np.float32)
 
-        pos_stacked = np.tile(pos, [1, len(patterns), 4])
-        zero_pos_shape = [0,0,0]
-        zero_pos_shape[0] = pos.shape[0]
-        zero_pos_shape[1] = pos.shape[1]
-        zero_pos_shape[2] = 1;
-        zero_pos = np.zeros(zero_pos_shape)
-        if add_false_positives:
-            pos_stacked_fp = np.tile(pos, [1, len(patterns), 5])
+            for n in range(N):
+                quats[:, n, :] = gen_quats(T)
         else:
-            pos_stacked_fp = np.tile(np.concatenate([pos, zero_pos], axis=2), [1, len(patterns), 4])
+            augmentation_factor = 10
 
+            pos = pos_data
+            quats = quats_data
+
+            augmented_pos = []
+            augmented_quats = []
+            for n in range(pos.shape[1]):
+                snip = pos[:, n, :]
+                qsnip = quats[:, n, :]
+                for k in range(augmentation_factor):
+                    scale = np.random.uniform(0.8, 1.1, [1, 3])
+                    theta = np.random.uniform(0, 6)
+                    snippy = snip * scale
+                    snippy = rotate_snippet(snippy, theta)
+                    qsnippy = rotate_quats(qsnip, theta)
+                    augmented_pos.append(snippy)
+                    augmented_quats.append(qsnippy)
+
+
+            pos = np.stack(augmented_pos, axis=1)
+            quats = np.stack(augmented_quats, axis=1)
+            num_positions = N
+            N = N * len(patterns) * augmentation_factor
+
+
+        #zero_pos_shape = [0,0,0]
+        #zero_pos_shape[0] = pos.shape[0]
+        #zero_pos_shape[1] = pos.shape[1]
+        #zero_pos_shape[2] = 1;
+        #zero_pos = np.zeros(zero_pos_shape)
 
         X = np.zeros([T, N, 12])
+        print('Gnerating data with size:')
+        print(X.shape)
         if add_false_positives:
             X_shuffled = np.zeros([T, N, 20])
         else:
@@ -755,14 +792,16 @@ def gen_data(N_train, N_test):
 
         marker_identities = np.zeros([T, N, 4])
 
-        for t in range(T):
+        for n in range(N):
             gc.collect()
-            for n in range(N):
+            if drop_some_dets:
+                marker_visibility = nM.rollout(T) > 0
+            for t in range(T):
 
                 p_idx = int(n/(num_positions*augmentation_factor))
                 p = patterns[p_idx, :, :]
                 p_copy = np.copy(p)
-                q = Quaternion(quat[t, n, :])
+                q = Quaternion(quats[t, int(n/len(patterns)), :])
                 rnd_perm = np.random.permutation(np.arange(0,4))
                 p_copy = p_copy[rnd_perm, :]
                 marker_identities[t, n, :] = rnd_perm[rnd_perm]
@@ -770,33 +809,40 @@ def gen_data(N_train, N_test):
                 rotated_pattern = (q.rotation_matrix @ p_copy.T).T
                 isMissing = np.zeros([4])
                 if add_false_positives:
-                    rotated_pattern = np.concatenate([rotated_pattern, np.ones([1, 3]) * 0], axis=0)
-                    if np.random.uniform(0, 1) < 0.1:
-                        if drop_some_dets:
-                            if np.random.uniform(0, 1) < 0.5:
-                                if np.random.uniform(0, 1) < 0.5:
-                                    rotated_pattern[3, :] = np.ones([1, 3]) * 0
-                                    rotated_pattern[2, :] = np.random.uniform(-2, 2, [1, 3])
-                                else:
-                                    rotated_pattern[3, :] = np.random.uniform(-2, 2, [1, 3])
-                            else:
-                                rotated_pattern[4, :] = np.random.uniform(-2, 2, [1, 3])
-                        else:
-                            rotated_pattern[4, :] = np.random.uniform(-2, 2, [1, 3])
-                    else:
-                        if drop_some_dets and np.random.uniform(0, 1) < 0.5:
-                            rotated_pattern[3, :] = np.array([0, 0, 0])
-                            if drop_some_dets and np.random.uniform(0, 1) < 0.5:
-                                rotated_pattern[2, :] = np.array([0, 0, 0])
+                    raise ValueError('ADD FALSE POSITIVES IS NOT YET SUPPORTED')
+                    #rotated_pattern = np.concatenate([rotated_pattern, np.ones([1, 3]) * 0], axis=0)
+                    #if np.random.uniform(0, 1) < 0.1:
+                    #    if drop_some_dets:
+                    #        if np.random.uniform(0, 1) < 0.5:
+                    #            if np.random.uniform(0, 1) < 0.5:
+                    #                rotated_pattern[3, :] = np.ones([1, 3]) * 0
+                    #                rotated_pattern[2, :] = np.random.uniform(-2, 2, [1, 3])
+                    #            else:
+                    #                rotated_pattern[3, :] = np.random.uniform(-2, 2, [1, 3])
+                    #        else:
+                    #            rotated_pattern[4, :] = np.random.uniform(-2, 2, [1, 3])
+                    #    else:
+                    #        rotated_pattern[4, :] = np.random.uniform(-2, 2, [1, 3])
+                    #else:
+                    #    if drop_some_dets and np.random.uniform(0, 1) < 0.5:
+                    #        rotated_pattern[3, :] = np.array([0, 0, 0])
+                    #        if drop_some_dets and np.random.uniform(0, 1) < 0.5:
+                    #            rotated_pattern[2, :] = np.array([0, 0, 0])
                 else:
-                    if drop_some_dets and np.random.uniform(0, 1) < 0.5:
-                        rotated_pattern[3, :] = np.array([0, 0, 0])
-                        marker_identities[t, n, rnd_perm[3]] = 4
-                        isMissing[rnd_perm[3]] = 1
-                        if drop_some_dets and np.random.uniform(0, 1) < 0.5:
-                            rotated_pattern[2, :] = np.array([0, 0, 0])
-                            marker_identities[t, n, rnd_perm[2]] = 4
-                            isMissing[rnd_perm[2]] = 1
+                    if drop_some_dets:
+                        rotated_pattern[rnd_perm[np.logical_not(marker_visibility[t, :])], :] = 0
+                        #print(rotated_pattern)
+                        marker_identities[t, n, rnd_perm[np.where(marker_visibility[t, :] < 1)]] = 4
+                        isMissing[rnd_perm[np.where(marker_visibility[t, :] < 1)]] = 1
+                        #print(isMissing)
+                    #if drop_some_dets and np.random.uniform(0, 1) < 0.5:
+                    #    rotated_pattern[3, :] = np.array([0, 0, 0])
+                    #    marker_identities[t, n, rnd_perm[3]] = 4
+                    #    isMissing[rnd_perm[3]] = 1
+                    #    if drop_some_dets and np.random.uniform(0, 1) < 0.5:
+                    #        rotated_pattern[2, :] = np.array([0, 0, 0])
+                    #        marker_identities[t, n, rnd_perm[2]] = 4
+                    #        isMissing[rnd_perm[2]] = 1
                 rotated_pattern_aug = np.zeros([4,4])
                 rotated_pattern_aug[:, :3] = rotated_pattern
                 rotated_pattern_aug[:, 3] = isMissing
@@ -805,27 +851,33 @@ def gen_data(N_train, N_test):
                     noise = np.random.normal(0, NOISE_STD, np.shape(dets))
                     dets = dets + noise
                 X_shuffled[t, n, :] = dets
+                #print(X_shuffled.dtype)
 
                 rotated_pattern = (q.rotation_matrix @ p.T).T
                 X[t, n, :] = np.reshape(rotated_pattern, -1)
                 all_patterns[t, n, :, :] = p
-        X = X + pos_stacked
-        X_shuffled = X_shuffled + pos_stacked_fp
+        #TODO replace 4 with correct value
+        print(X.shape)
+        print(X_shuffled.shape)
+        X = X + np.tile(pos, [1, len(patterns), 4])
+        zero_pos = np.zeros([pos.shape[0], pos.shape[1], 1])
+        pos_aug = np.concatenate([pos, zero_pos], axis=2)
+        X_shuffled = X_shuffled + np.tile(pos_aug, [1, len(patterns), 4])
 
-        return {'X': X, 'X_shuffled': X_shuffled, 'quat': quat, 'pos': pos_stacked[:, :, :3], 'pattern': all_patterns, 'marker_ids': marker_identities}
+        return {'X': X, 'X_shuffled': X_shuffled, 'quat': quats, 'pos': np.tile(pos, [1, len(patterns), 1]), 'pattern': all_patterns, 'marker_ids': marker_identities}
 
 
     if generate_data:
         return (gen_datum(N_train), gen_datum(N_test))
     else:
-        train_data = gen_datum(N_train, pos_train)
+        train_data = gen_datum(N_train, pos_train, quats_train)
         gc.collect()
         N_train = train_data['X'].shape[1]
         print('Generated the following training data:')
         for key in train_data.keys():
             print(key)
             print(train_data[key].shape)
-        test_data =  gen_datum(N_test, pos_test)
+        test_data =  gen_datum(N_test, pos_test, quats_test)
         N_test = test_data['X'].shape[1]
         return (train_data, test_data), N_train, N_test
 
@@ -945,7 +997,7 @@ def make_detections_relative(dets, pos):
     zero_pos_shape = [0, 0, 0]
     zero_pos_shape[0] = pos.shape[0]
     zero_pos_shape[1] = pos.shape[1]
-    zero_pos_shape[2] = 1;
+    zero_pos_shape[2] = 1
     zero_pos = np.zeros(zero_pos_shape)
     tiled_pos = np.tile(np.concatenate([pos, zero_pos], axis=2), [1, 1, 4])
     return dets[1:, :, :] - tiled_pos[:-1, :, :]
@@ -1382,7 +1434,7 @@ class SOTTracker(nn.Module):
             self.fc1_det = nn.Linear(16, fc1_det_dim)
         self.fc2_det = nn.Linear(fc1_det_dim, fc2_det_dim)
         self.fc3_det = nn.Linear(fc2_det_dim, fc3_det_dim)
-        # self.fc4_det = nn.Linear(fc3_det_dim, fc4_det_dim)
+        #self.fc4_det = nn.Linear(fc3_det_dim, fc4_det_dim)
         # self.fc5_det = nn.Linear(fc4_det_dim, fc5_det_dim)
 
         if not use_const_pat:
@@ -1892,14 +1944,14 @@ if use_colab:
 
 else:
     data = TrainingData()
-    #if not generate_data:
-    #    (train_data, test_data), N_train, N_test = gen_data(N_train, N_test)
-    #else:
-    #   (train_data, test_data) = gen_data(N_train, N_test)
-    #data.set_data(train_data, test_data)
-    #data.save_data(generated_data_dir, 'all')
+    if not generate_data:
+        (train_data, test_data), N_train, N_test = gen_data(N_train, N_test)
+    else:
+       (train_data, test_data) = gen_data(N_train, N_test)
+    data.set_data(train_data, test_data)
+    data.save_data(generated_data_dir, 'all')
     #data = TrainingData()
-    data.load_data(generated_data_dir, N_train, N_test, 'all')
+    #data.load_data(generated_data_dir, N_train, N_test, 'all')
     data.normalize()
     data.convert_to_torch()
 
