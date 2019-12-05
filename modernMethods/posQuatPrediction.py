@@ -1,4 +1,4 @@
-use_colab = False
+use_colab = True
 
 import torch
 import torch.nn as nn
@@ -15,14 +15,16 @@ from datetime import datetime
 
 from math import ceil
 
-
 import matplotlib.pyplot as plt
+
 colab_path_prefix = '/content/gdrive/My Drive/'
 if use_colab:
     from google.colab import drive
+
     drive.mount('/content/gdrive')
 
     import sys
+
     sys.path.append(colab_path_prefix + 'pyquaternion')
 from pyquaternion import Quaternion as Quaternion
 
@@ -31,13 +33,11 @@ if not use_colab:
 
     from BehaviourModel import NoiseModelFN
 
-
-
 drop_some_dets = True
 add_false_positives = False
-add_noise = True
-NOISE_STD = 0.0001
-use_const_pat = True
+add_noise = False
+NOISE_STD = 0.000001
+use_const_pat = False
 generate_data = False
 multi_modal = False
 
@@ -47,18 +47,17 @@ MODEL_NAME = 'SOTNet'
 if multi_modal:
     MODEL_NAME += '_MoG'
 
-
 if use_colab:
     if use_const_pat:
-      generated_data_dir = colab_path_prefix + 'generated_data' + '_const_pat'
+        generated_data_dir = colab_path_prefix + 'generated_data' + '_const_pat'
     else:
-      generated_data_dir = colab_path_prefix + 'generated_data'
+        generated_data_dir = colab_path_prefix + 'generated_data'
 
 else:
     if use_const_pat:
-      generated_data_dir = 'generated_data' + '_const_pat'
+        generated_data_dir = 'generated_data' + '_const_pat'
     else:
-      generated_data_dir = 'generated_data'
+        generated_data_dir = 'generated_data'
 
 if drop_some_dets:
     TASK += 'Drop some detections; '
@@ -71,14 +70,12 @@ if use_const_pat:
 else:
     TASK += 'ChangingPattern; '
 
-
-
-BATCH_SIZE = 50
-NUM_EPOCHS = 25
-LEARNING_RATE = 0.001 # TODO 0.001
+BATCH_SIZE = 64
+NUM_EPOCHS = 50
+LEARNING_RATE = 0.0001
 STRONG_DROPOUT_RATE = 0.10
 WEAK_DROPOUT_RATE = 0.05
-lambda_classification = 1/10
+lambda_classification = 1 / 10
 lambda_pos = 100
 lambda_quat = 1
 
@@ -86,14 +83,14 @@ CHECKPOINT_INTERVAL = 10
 save_model_every_interval = False
 save_best_model = True
 
-N_train = 600*BATCH_SIZE
-N_test = int(N_train/10)
+N_train = 600 * BATCH_SIZE
+N_test = int(N_train / 10)
 
 T = 100
 
-fc1_det_dim = 100
-fc2_det_dim = 150
-fc3_det_dim = 200
+fc1_det_dim = 200
+fc2_det_dim = 250
+fc3_det_dim = 300
 fc4_det_dim = 200
 fc5_det_dim = 100
 
@@ -112,6 +109,7 @@ fc2_pos_size = 20
 
 n_mixture_components = 3
 
+
 # intermediate network which predicts marker identity
 # Then feed markers in specific order into LSTM
 # But this has to be done inside the LSTM since we need information of the hidden state
@@ -126,9 +124,9 @@ n_mixture_components = 3
 
 # TODO: input absolute, predict relative???
 
-#TODO: use noise models and quats from KF to generate more realistic data
+# TODO: use noise models and quats from KF to generate more realistic data
 
-#TODO: pytoch, gen new training data while training, progressively make harder training data, one easy and one hard test set
+# TODO: pytoch, gen new training data while training, progressively make harder training data, one easy and one hard test set
 
 # TODO predict multiple steps into the future!, i.e. how to fill gaps with no information at all?
 
@@ -163,7 +161,6 @@ def gen_folder_name(task, name):
     now = datetime.now()
     dt_str = now.strftime("%d.%m.%Y@%H:%M:%S")
     return 'models/' + short_name + '_' + short_task + '_' + dt_str
-
 
 
 class TrainingData():
@@ -203,7 +200,7 @@ class TrainingData():
             self.marker_ids_train = self.marker_ids_train[:, randperm, :]
         if self.delta_pos_train is not None:
             self.delta_pos_train = self.delta_pos_train[:, randperm, :]
-        if self.delta_X_train_shuffled is not None:
+        if hasattr(self, 'delta_X_train_shuffled') and self.delta_X_train_shuffled is not None:
             self.delta_X_train_shuffled = self.delta_X_train_shuffled[:, randperm, :]
         else:
             print('Haalp')
@@ -232,16 +229,16 @@ class TrainingData():
         self.delta_X_test_shuffled = make_detections_relative(self.X_test_shuffled, self.pos_test)
         self.delta_pos_train = make_pos_relative(self.pos_train)
         self.delta_pos_test = make_pos_relative(self.pos_test)
-        #self.pattern_train = self.pattern_train[1:, :, :]
-        #self.pattern_test = self.pattern_test[1:, :, :]
-        #self.X_train = self.X_train[1:, :, :]
-        #self.X_test = self.X_test[1:, :, :]
-        #self.quat_train = self.quat_train[1:, :, :]
-        #self.quat_test = self.quat_test[1:, :, :]
-        #self.pos_train = self.pos_train[1:, :, :]
-        #self.pos_test = self.pos_test[1:, :, :]
-        #self.marker_ids_train = self.marker_ids_train[1:, :, :]
-        #self.marker_ids_test = self.marker_ids_test[1:, :, :]
+        # self.pattern_train = self.pattern_train[1:, :, :]
+        # self.pattern_test = self.pattern_test[1:, :, :]
+        # self.X_train = self.X_train[1:, :, :]
+        # self.X_test = self.X_test[1:, :, :]
+        # self.quat_train = self.quat_train[1:, :, :]
+        # self.quat_test = self.quat_test[1:, :, :]
+        # self.pos_train = self.pos_train[1:, :, :]
+        # self.pos_test = self.pos_test[1:, :, :]
+        # self.marker_ids_train = self.marker_ids_train[1:, :, :]
+        # self.marker_ids_test = self.marker_ids_test[1:, :, :]
 
     def load_data(self, dir_name, N_train, N_test, name):
         dname = dir_name + '_' + name
@@ -271,8 +268,8 @@ class TrainingData():
             self.marker_ids_test = np.load(dname + '/marker_ids_test' + postfix)
 
         print('Loaded data successfully!')
-        self.make_relative()
-        print('computed delta values!')
+        # self.make_relative()
+        # print('computed delta values!')
 
     def save_data(self, dir_name, name):
         dname = dir_name + '_' + name
@@ -308,42 +305,50 @@ class TrainingData():
         if use_colab:
             self.X_train = torch.from_numpy(self.X_train).float().cuda()
             self.X_train_shuffled = torch.from_numpy(self.X_train_shuffled).float().cuda()
-            self.delta_X_train_shuffled = torch.from_numpy(self.delta_X_train_shuffled).float().cuda()
+            if hasattr(self, 'delta_X_train_shuffled'):
+                self.delta_X_train_shuffled = torch.from_numpy(self.delta_X_train_shuffled).float().cuda()
             self.quat_train = torch.from_numpy(self.quat_train).float().cuda()
             self.pos_train = torch.from_numpy(self.pos_train).float().cuda()
             self.pattern_train = torch.from_numpy(self.pattern_train).float().cuda()
-            self.delta_pos_train = torch.from_numpy(self.delta_pos_train).float().cuda()
+            if hasattr(self, 'delta_pos_train') and self.delta_pos_train is not None:
+                self.delta_pos_train = torch.from_numpy(self.delta_pos_train).float().cuda()
             if self.marker_ids_train is not None:
                 self.marker_ids_train = torch.from_numpy(self.marker_ids_train).type(torch.LongTensor).cuda()
 
             self.X_test = torch.from_numpy(self.X_test).float().cuda()
             self.X_test_shuffled = torch.from_numpy(self.X_test_shuffled).float().cuda()
-            self.delta_X_test_shuffled = torch.from_numpy(self.delta_X_test_shuffled).float().cuda()
+            if hasattr(self, 'delta_X_test_shuffled'):
+                self.delta_X_test_shuffled = torch.from_numpy(self.delta_X_test_shuffled).float().cuda()
             self.quat_test = torch.from_numpy(self.quat_test).float().cuda()
             self.pos_test = torch.from_numpy(self.pos_test).float().cuda()
             self.pattern_test = torch.from_numpy(self.pattern_test).float().cuda()
-            self.delta_pos_test = torch.from_numpy(self.delta_pos_test).float().cuda()
+            if hasattr(self, 'delta_pos_test') and self.delta_pos_test is not None:
+                self.delta_pos_test = torch.from_numpy(self.delta_pos_test).float().cuda()
             if self.marker_ids_test is not None:
                 self.marker_ids_test = torch.from_numpy(self.marker_ids_test).type(torch.LongTensor).cuda()
 
         else:
             self.X_train = torch.from_numpy(self.X_train).float()
             self.X_train_shuffled = torch.from_numpy(self.X_train_shuffled).float()
-            self.delta_X_train_shuffled = torch.from_numpy(self.delta_X_train_shuffled).float()
+            if hasattr(self, 'delta_X_train_shuffled'):
+                self.delta_X_train_shuffled = torch.from_numpy(self.delta_X_train_shuffled).float()
             self.quat_train = torch.from_numpy(self.quat_train).float()
             self.pos_train = torch.from_numpy(self.pos_train).float()
             self.pattern_train = torch.from_numpy(self.pattern_train).float()
-            self.delta_pos_train = torch.from_numpy(self.delta_pos_train).float()
+            if hasattr(self, 'delta_pos_train') and self.delta_pos_train is not None:
+                self.delta_pos_train = torch.from_numpy(self.delta_pos_train).float()
             if self.marker_ids_train is not None:
                 self.marker_ids_train = torch.from_numpy(self.marker_ids_train).type(torch.LongTensor)
 
             self.X_test = torch.from_numpy(self.X_test).float()
             self.X_test_shuffled = torch.from_numpy(self.X_test_shuffled).float()
-            self.delta_X_test_shuffled = torch.from_numpy(self.delta_X_test_shuffled).float()
+            if hasattr(self, 'delta_X_test_shuffled'):
+                self.delta_X_test_shuffled = torch.from_numpy(self.delta_X_test_shuffled).float()
             self.quat_test = torch.from_numpy(self.quat_test).float()
             self.pos_test = torch.from_numpy(self.pos_test).float()
             self.pattern_test = torch.from_numpy(self.pattern_test).float()
-            self.delta_pos_test = torch.from_numpy(self.delta_pos_test).float()
+            if hasattr(self, 'delta_pos_test') and self.delta_pos_test is not None:
+                self.delta_pos_test = torch.from_numpy(self.delta_pos_test).float()
             if self.marker_ids_test is not None:
                 self.marker_ids_test = torch.from_numpy(self.marker_ids_test).type(torch.LongTensor)
 
@@ -376,26 +381,29 @@ class TrainingData():
     # normalize X_train and X_test and pos_train, pos_test such that x,y,z cooredinated lie within [-1,1].
     # Also normalize delta versions such that x,y,z coordinated liw within [-1,1]
     def normalize(self):
-        detection_scale = np.maximum(np.max(np.abs(self.pos_train), axis=(0,1)),
-                                     np.max(np.abs(self.pos_test), axis=(0,1)))
+        detection_scale = np.maximum(np.max(np.abs(self.pos_train), axis=(0, 1)),
+                                     np.max(np.abs(self.pos_test), axis=(0, 1)))
         detection_scale = np.expand_dims(np.expand_dims(detection_scale, 0), 0)
         self.X_train = self.X_train / np.tile(detection_scale, [1, 1, 4])
         self.X_test = self.X_test / np.tile(detection_scale, [1, 1, 4])
-        self.X_train_shuffled = self.X_train_shuffled / np.tile(np.concatenate([detection_scale, np.ones([1,1,1])], axis=2), [1, 1, 4])
-        self.X_test_shuffled = self.X_test_shuffled / np.tile(np.concatenate([detection_scale, np.ones([1,1,1])], axis=2), [1, 1, 4])
+        self.X_train_shuffled = self.X_train_shuffled / np.tile(
+            np.concatenate([detection_scale, np.ones([1, 1, 1])], axis=2), [1, 1, 4])
+        self.X_test_shuffled = self.X_test_shuffled / np.tile(
+            np.concatenate([detection_scale, np.ones([1, 1, 1])], axis=2), [1, 1, 4])
         self.pattern_train = self.pattern_train / np.expand_dims(detection_scale, 0)
         self.pattern_test = self.pattern_test / np.expand_dims(detection_scale, 0)
         self.pos_train = self.pos_train / detection_scale
         self.pos_test = self.pos_test / detection_scale
 
-        delta_scale = np.maximum(np.max(np.abs(self.delta_pos_train), axis=(0,1)),
-                                 np.max(np.abs(self.delta_pos_test), axis=(0,1)))
+        delta_scale = np.maximum(np.max(np.abs(self.delta_pos_train), axis=(0, 1)),
+                                 np.max(np.abs(self.delta_pos_test), axis=(0, 1)))
         delta_scale = np.expand_dims(np.expand_dims(delta_scale, 0), 0)
         self.delta_pos_train = self.delta_pos_train / delta_scale
         self.delta_pos_test = self.delta_pos_test / delta_scale
-        self.delta_X_train_shuffled = self.delta_X_train_shuffled / np.tile(np.concatenate([delta_scale, np.ones([1,1,1])], axis=2), [1, 1, 4])
-        self.delta_X_test_shuffled = self.delta_X_test_shuffled / np.tile(np.concatenate([delta_scale, np.ones([1,1,1])], axis=2), [1, 1, 4])
-
+        self.delta_X_train_shuffled = self.delta_X_train_shuffled / np.tile(
+            np.concatenate([delta_scale, np.ones([1, 1, 1])], axis=2), [1, 1, 4])
+        self.delta_X_test_shuffled = self.delta_X_test_shuffled / np.tile(
+            np.concatenate([delta_scale, np.ones([1, 1, 1])], axis=2), [1, 1, 4])
 
 
 class HyperParams():
@@ -431,7 +439,6 @@ class HyperParams():
         description = description + 'Loss type: \t ' + self.loss_type + '\n'
         description = description + 'Comments: \t ' + self.comments + '\n'
         return description
-
 
 
 class TrainingLogger():
@@ -505,7 +512,6 @@ class TrainingLogger():
                     plt.plot(training_progress[:, k], c=c_test, label=key)
             plt.legend()
             plt.savefig(self.folder_name + '/training_progress.png', format='png')
-
 
 
 def gen_pattern_constant(N):
@@ -582,7 +588,7 @@ def gen_pattern(N):
 
 
 def gen_quats(length):
-    theta_range = np.random.uniform(1, 2)
+    theta_range = np.random.uniform(0.5, 1)
     theta = np.linspace(-theta_range * np.pi, theta_range * np.pi, length)
     z_range = np.random.randint(1, 10)
     z = np.random.uniform(1, 3) * np.sin(np.linspace(0, z_range, length))
@@ -661,6 +667,7 @@ def qrot(q, v):
     uuv = torch.cross(qvec, uv, dim=1)
     return (v + 2 * (q[:, :1] * uv + uuv)).view(original_shape)
 
+
 def rotate_quats(quats, theta):
     q = Quaternion(axis=[0, 0, 1], angle=theta)
     rotated_quats = []
@@ -669,19 +676,21 @@ def rotate_quats(quats, theta):
         rotated_quats.append((qq * q).elements)
     return rotated_quats
 
+
 def rotate_snippet(snip, theta):
-    #theta = np.random.uniform(1, 5)
+    # theta = np.random.uniform(1, 5)
     c, s = np.cos(theta), np.sin(theta)
     R = np.array(((c, -s), (s, c)))
     rotated_xy = np.matmul(R, snip[:, :2].T).T
     return np.concatenate([rotated_xy, np.expand_dims(snip[:, 2], axis=1)], axis=1)
 
+
 # TODO: vecotrize with qrot() and by shuffling markers while generating them
 def gen_data(N_train, N_test):
     p1 = [0.1, 0.2]
-    p2 = [0.35, 0.6]
-    p3 = [0.6, 0.85]
-    p4 = [0.8, 0.95]
+    p2 = [0.2, 0.3]
+    p3 = [0.3, 0.4]
+    p4 = [0.4, 0.5]
     noise_model_states = ['all', 'some', 'none']
     noise_model_transition_prob = {'all': [0.89, 0.1, 0.01], 'some': [0.02, 0.97, 0.01], 'none': [0.48, 0.48, 0.04]}
     noise_model_initial_state = 'all'
@@ -694,32 +703,35 @@ def gen_data(N_train, N_test):
         quats = np.load('data/cleaned_kalman_quat_all.npy')
         true_N = pos.shape[1]
         norms = np.linalg.norm(pos, axis=2)
-        is_moving = np.any(norms > 0.8, axis=0)
+        is_moving = np.any(norms > 1.1, axis=0)
         num_moving = np.count_nonzero(is_moving)
-        print('Num moving')
+        print('Num moving:')
         print(num_moving)
         num_static = true_N - num_moving
-        print('Num static')
+        print('Num static: ')
         print(num_static)
+        quat_diff = np.abs(quats[5::5, :, :] - quats[0:-5:5, :, :])
+        is_twisting_ = np.mean(quat_diff, axis=(0, 2))
+        is_twisting = is_twisting_ > 0.025
+        num_twisting = np.count_nonzero(is_twisting)
+        print('Num twisting:')
+        print(num_twisting)
+        # for k in range(len(is_twisting)):
+        #    if is_twisting[k]:
+        #        plt.plot(quats[:, k, :])
+        #        plt.show()
 
-        moving_pos = pos[:, is_moving, :]
-        moving_quats = quats[:, is_moving, :]
-        static_pos = pos[:, np.logical_not(is_moving), :]
-        static_quats = quats[:, np.logical_not(is_moving), :]
-        static_pos = np.transpose(np.random.permutation(np.transpose(static_pos, [1, 0, 2])), [1, 0, 2])
-        static_quats = np.transpose(np.random.permutation(np.transpose(static_quats, [1, 0, 2])), [1, 0, 2])
-        static_pos = static_pos[:, :num_moving, :]
-        static_quats = static_quats[:, :num_moving, :]
+        interesting = np.logical_or(is_twisting, is_moving)
+        print('Num interesting:')
+        print(np.count_nonzero(interesting))
 
+        pos = pos[:, interesting, :]
+        quats = quats[:, interesting, :]
 
-        selected_pos = np.concatenate([moving_pos, static_pos], axis=1)
-        selected_quats = np.concatenate([moving_quats, static_quats], axis=1)
-        selected_pos = np.transpose(selected_pos, axes=[1, 0, 2])
-        selected_quats = np.transpose(selected_quats, axes=[1, 0, 2])
-        selected_pos = np.random.permutation(selected_pos)
-        selected_quats = np.random.permutation(selected_quats)
-        pos = np.transpose(selected_pos, [1, 0, 2])
-        quats = np.transpose(selected_quats, [1, 0, 2])
+        order = np.arange(0, np.shape(pos)[1])
+        perm = np.random.permutation(order)
+        pos = pos[:, perm, :]
+        quats = quats[:, perm, :]
         true_N = np.shape(pos)[1]
 
         N_train = ceil(true_N * ratio)
@@ -738,6 +750,8 @@ def gen_data(N_train, N_test):
             patterns = np.load(colab_path_prefix + 'patterns.npy')
         else:
             patterns = np.load('data/patterns.npy')
+            # patterns = patterns[1, :, :]
+            # patterns = np.expand_dims(patterns, axis=0)
         patterns = patterns / 10
 
         if generate_data:
@@ -748,10 +762,30 @@ def gen_data(N_train, N_test):
             for n in range(N):
                 quats[:, n, :] = gen_quats(T)
         else:
-            augmentation_factor = 10
+            augmentation_factor = 5
 
-            pos = pos_data
+            pos = np.zeros(pos_data.shape)
             quats = quats_data
+            # q_norm = np.linalg.norm(quats_real, axis=2)
+            # print(q_norm)
+            # print(np.any(q_norm != 1))
+            # quats = np.zeros([100, pos.shape[1], 4])
+            # for n in range(pos.shape[1]):
+            #    quats[:, n, :] = gen_quats(100)
+
+            # print(quats.shape)
+            # for k in range(1, 1000, 7):
+            #    plt.subplot(1,2,1)
+            #    plt.plot(quats[:, k, 0])
+            #    plt.plot(quats[:, k, 1])
+            #    plt.plot(quats[:, k, 2])
+            #    plt.plot(quats[:, k, 3])
+            #    plt.subplot(1,2,2)
+            #    plt.plot(quats_real[:, k, 0])
+            #    plt.plot(quats_real[:, k, 1])
+            #    plt.plot(quats_real[:, k, 2])
+            #    plt.plot(quats_real[:, k, 3])
+            #    plt.show()
 
             augmented_pos = []
             augmented_quats = []
@@ -767,18 +801,10 @@ def gen_data(N_train, N_test):
                     augmented_pos.append(snippy)
                     augmented_quats.append(qsnippy)
 
-
             pos = np.stack(augmented_pos, axis=1)
             quats = np.stack(augmented_quats, axis=1)
             num_positions = N
             N = N * len(patterns) * augmentation_factor
-
-
-        #zero_pos_shape = [0,0,0]
-        #zero_pos_shape[0] = pos.shape[0]
-        #zero_pos_shape[1] = pos.shape[1]
-        #zero_pos_shape[2] = 1;
-        #zero_pos = np.zeros(zero_pos_shape)
 
         X = np.zeros([T, N, 12])
         print('Gnerating data with size:')
@@ -795,23 +821,23 @@ def gen_data(N_train, N_test):
         for n in range(N):
             gc.collect()
             if drop_some_dets:
-                marker_visibility = nM.rollout(T) > 0
+                marker_visibility = np.ones([100, 4])
+                # marker_visibility = nM.rollout(T) > 0
             for t in range(T):
 
-                p_idx = int(n/(num_positions*augmentation_factor))
+                p_idx = int(n / (num_positions * augmentation_factor))
                 p = patterns[p_idx, :, :]
                 p_copy = np.copy(p)
-                q = Quaternion(quats[t, int(n/len(patterns)), :])
-                rnd_perm = np.random.permutation(np.arange(0,4))
+                q = Quaternion(quats[t, n % (num_positions * augmentation_factor), :])
+                rnd_perm = np.random.permutation(np.arange(0, 4))
                 p_copy = p_copy[rnd_perm, :]
                 marker_identities[t, n, :] = rnd_perm[rnd_perm]
-
                 rotated_pattern = (q.rotation_matrix @ p_copy.T).T
                 isMissing = np.zeros([4])
                 if add_false_positives:
                     raise ValueError('ADD FALSE POSITIVES IS NOT YET SUPPORTED')
-                    #rotated_pattern = np.concatenate([rotated_pattern, np.ones([1, 3]) * 0], axis=0)
-                    #if np.random.uniform(0, 1) < 0.1:
+                    # rotated_pattern = np.concatenate([rotated_pattern, np.ones([1, 3]) * 0], axis=0)
+                    # if np.random.uniform(0, 1) < 0.1:
                     #    if drop_some_dets:
                     #        if np.random.uniform(0, 1) < 0.5:
                     #            if np.random.uniform(0, 1) < 0.5:
@@ -823,7 +849,7 @@ def gen_data(N_train, N_test):
                     #            rotated_pattern[4, :] = np.random.uniform(-2, 2, [1, 3])
                     #    else:
                     #        rotated_pattern[4, :] = np.random.uniform(-2, 2, [1, 3])
-                    #else:
+                    # else:
                     #    if drop_some_dets and np.random.uniform(0, 1) < 0.5:
                     #        rotated_pattern[3, :] = np.array([0, 0, 0])
                     #        if drop_some_dets and np.random.uniform(0, 1) < 0.5:
@@ -831,11 +857,11 @@ def gen_data(N_train, N_test):
                 else:
                     if drop_some_dets:
                         rotated_pattern[rnd_perm[np.logical_not(marker_visibility[t, :])], :] = 0
-                        #print(rotated_pattern)
+                        # print(rotated_pattern)
                         marker_identities[t, n, rnd_perm[np.where(marker_visibility[t, :] < 1)]] = 4
                         isMissing[rnd_perm[np.where(marker_visibility[t, :] < 1)]] = 1
-                        #print(isMissing)
-                    #if drop_some_dets and np.random.uniform(0, 1) < 0.5:
+                        # print(isMissing)
+                    # if drop_some_dets and np.random.uniform(0, 1) < 0.5:
                     #    rotated_pattern[3, :] = np.array([0, 0, 0])
                     #    marker_identities[t, n, rnd_perm[3]] = 4
                     #    isMissing[rnd_perm[3]] = 1
@@ -843,7 +869,7 @@ def gen_data(N_train, N_test):
                     #        rotated_pattern[2, :] = np.array([0, 0, 0])
                     #        marker_identities[t, n, rnd_perm[2]] = 4
                     #        isMissing[rnd_perm[2]] = 1
-                rotated_pattern_aug = np.zeros([4,4])
+                rotated_pattern_aug = np.zeros([4, 4])
                 rotated_pattern_aug[:, :3] = rotated_pattern
                 rotated_pattern_aug[:, 3] = isMissing
                 dets = np.reshape(rotated_pattern_aug, -1)
@@ -851,12 +877,11 @@ def gen_data(N_train, N_test):
                     noise = np.random.normal(0, NOISE_STD, np.shape(dets))
                     dets = dets + noise
                 X_shuffled[t, n, :] = dets
-                #print(X_shuffled.dtype)
 
                 rotated_pattern = (q.rotation_matrix @ p.T).T
                 X[t, n, :] = np.reshape(rotated_pattern, -1)
                 all_patterns[t, n, :, :] = p
-        #TODO replace 4 with correct value
+        # TODO replace 4 with correct value
         print(X.shape)
         print(X_shuffled.shape)
         X = X + np.tile(pos, [1, len(patterns), 4])
@@ -864,8 +889,8 @@ def gen_data(N_train, N_test):
         pos_aug = np.concatenate([pos, zero_pos], axis=2)
         X_shuffled = X_shuffled + np.tile(pos_aug, [1, len(patterns), 4])
 
-        return {'X': X, 'X_shuffled': X_shuffled, 'quat': quats, 'pos': np.tile(pos, [1, len(patterns), 1]), 'pattern': all_patterns, 'marker_ids': marker_identities}
-
+        return {'X': X, 'X_shuffled': X_shuffled, 'quat': np.tile(quats, [1, len(patterns), 1]),
+                'pos': np.tile(pos, [1, len(patterns), 1]), 'pattern': all_patterns, 'marker_ids': marker_identities}
 
     if generate_data:
         return (gen_datum(N_train), gen_datum(N_test))
@@ -877,26 +902,25 @@ def gen_data(N_train, N_test):
         for key in train_data.keys():
             print(key)
             print(train_data[key].shape)
-        test_data =  gen_datum(N_test, pos_test, quats_test)
+        test_data = gen_datum(N_test, pos_test, quats_test)
         N_test = test_data['X'].shape[1]
         return (train_data, test_data), N_train, N_test
 
 
 def gen_data_(N_train, N_test):
-
     print(N_train)
     print(N_test)
     if not generate_data:
         ratio = N_train / (N_train + N_test)
         pos = np.load('data/cleaned_kalman_pos_all.npy')
-        #pos_fast = []
+        # pos_fast = []
         true_N = pos.shape[1]
-        #for n in range(true_N):
+        # for n in range(true_N):
         #    p = pos[:, n, :]
         #    if np.max(p) > 2:
         #        pos_fast.append(p)
-        #pos = np.stack(pos_fast, 1)
-        #true_N = pos.shape[1]
+        # pos = np.stack(pos_fast, 1)
+        # true_N = pos.shape[1]
         N_train = ceil(true_N * ratio)
         pos_train = pos[:, :N_train, :]
         pos_test = pos[:, N_train:, :]
@@ -911,7 +935,6 @@ def gen_data_(N_train, N_test):
         else:
             pos = pos_data
 
-
         quat = np.zeros([T, N, 4], dtype=np.float32)
 
         for n in range(N):
@@ -925,8 +948,7 @@ def gen_data_(N_train, N_test):
         else:
             pos_stacked_fp = np.tile(pos, [1, n_pats, 4])
 
-
-        X = np.zeros([T, N*n_pats, 12])
+        X = np.zeros([T, N * n_pats, 12])
         if add_false_positives:
             X_shuffled = np.zeros([T, n_pats * N, 15])
         else:
@@ -935,10 +957,8 @@ def gen_data_(N_train, N_test):
         for k in range(n_pats):
             pat = np.expand_dims(np.expand_dims(patterns[k, :, :], axis=0), axis=0)
             pattern = np.tile(pat, [T, N, 1, 1])
-            print(pattern.shape)
             pattern = pattern / 10
-            all_patterns[:, k*N:(k+1)*N, :, :] = pattern
-
+            all_patterns[:, k * N:(k + 1) * N, :, :] = pattern
 
             for t in range(T):
                 for n in range(N):
@@ -976,14 +996,15 @@ def gen_data_(N_train, N_test):
                     if add_noise:
                         noise = np.random.normal(0, NOISE_STD, np.shape(dets))
                         dets = dets + noise
-                    X_shuffled[t, n*k, :] = dets
+                    X_shuffled[t, n * k, :] = dets
 
                     rotated_pattern = (q.rotation_matrix @ p.T).T
-                    X[t, n*k, :] = np.reshape(rotated_pattern, -1)
-        X = X + pos_stacked
-        X_shuffled = X_shuffled + pos_stacked_fp
+                    X[t, n * k, :] = np.reshape(rotated_pattern, -1)
+        X = X  # + pos_stacked
+        X_shuffled = X_shuffled  # + pos_stacked_fp
 
-        return {'X': X, 'X_shuffled': X_shuffled, 'quat': np.tile(quat, [1, n_pats, 1]), 'pos': np.tile(pos, [1, n_pats, 1]), 'pattern': all_patterns}
+        return {'X': X, 'X_shuffled': X_shuffled, 'quat': np.tile(quat, [1, n_pats, 1]),
+                'pos': np.tile(pos, [1, n_pats, 1]), 'pattern': all_patterns}
 
     if generate_data:
         return (gen_datum(N_train), gen_datum(N_test))
@@ -1025,7 +1046,6 @@ class customLSTMCell(nn.Module):
 
         self.reset_parameters()
 
-
     def reset_parameters(self):
         std = 1.0 / sqrt(self.hidden_size)
         for w in self.parameters():
@@ -1040,7 +1060,7 @@ class customLSTMCell(nn.Module):
 
         hh = self.fc1(h)
         if use_const_pat:
-           x = F.relu(self.det2vec(x_det) + hh)
+            x = F.relu(self.det2vec(x_det) + hh)
         else:
             x = F.relu(self.det2vec(x_det) + hh) - F.relu(self.pat2vec(x_pat) + hh)
 
@@ -1065,12 +1085,12 @@ class customLSTMCell(nn.Module):
         h_t = h_t.view(1, h_t.size(0), -1)
         c_t = c_t.view(1, c_t.size(0), -1)
         return (h_t, c_t)
-        #return h_t, (h_t, c_t)
+        # return h_t, (h_t, c_t)
 
     @staticmethod
     def _init_hidden(input_):
-        #h = torch.zeros_like(input_.view(1, input_.size(1), -1))
-        #c = torch.zeros_like(input_.view(1, input_.size(1), -1))
+        # h = torch.zeros_like(input_.view(1, input_.size(1), -1))
+        # c = torch.zeros_like(input_.view(1, input_.size(1), -1))
         if use_colab:
             h = torch.zeros([1, input_.size(1), hidden_dim]).cuda()
             c = torch.zeros([1, input_.size(1), hidden_dim]).cuda()
@@ -1118,7 +1138,6 @@ class customLSTM(nn.Module):
         self.strong_dropout = nn.Dropout(p=STRONG_DROPOUT_RATE)
         self.weak_dropout = nn.Dropout(p=WEAK_DROPOUT_RATE)
 
-
     def forward(self, x, patterns, hidden=None):
         # input is of dimensionalty (time, input_size, ...)
 
@@ -1133,7 +1152,7 @@ class customLSTM(nn.Module):
             x_pat = self.strong_dropout(F.relu(self.fc2_pat(x_pat)))
             x_pat = self.strong_dropout(F.relu(self.fc3_pat(x_pat)))
             x_pat = self.strong_dropout(F.relu(self.fc4_pat(x_pat)))
-            #x = torch.cat([x, x_pat], dim=2)
+            # x = torch.cat([x, x_pat], dim=2)
 
         x = torch.unsqueeze(x, dim=0)
         x_pat = torch.unsqueeze(x_pat, dim=0)
@@ -1144,7 +1163,6 @@ class customLSTM(nn.Module):
             lstm_out.append(hidden[0].clone())
 
         lstm_out = torch.squeeze(torch.stack(lstm_out, dim=1))
-
 
         x_quat = self.weak_dropout(F.relu(self.hidden2quat1(lstm_out)))
         x_quat = self.weak_dropout(F.relu(self.hidden2quat2(x_quat)))
@@ -1191,16 +1209,14 @@ class MarkerNetOld(nn.Module):
         self.fc2_marker3 = nn.Linear(300, 100)
         self.fc2_marker4 = nn.Linear(300, 100)
 
-
-        #if add_false_positives:
+        # if add_false_positives:
         #    self.fc3 = nn.Linear(100, 5)
         #
-        #else:
+        # else:
         self.fc3_marker1 = nn.Linear(100, 4)
         self.fc3_marker2 = nn.Linear(100, 4)
         self.fc3_marker3 = nn.Linear(100, 4)
         self.fc3_marker4 = nn.Linear(100, 4)
-
 
         self.weak_dropout = nn.Dropout(p=0.1)
 
@@ -1226,19 +1242,19 @@ class MarkerNetOld(nn.Module):
 
         x_marker1 = F.relu(self.fc2_marker1(x))
         x_marker1 = F.relu(self.fc3_marker1(x_marker1))
-        #x_marker1 = F.softmax(x_marker1, dim=2)
+        # x_marker1 = F.softmax(x_marker1, dim=2)
 
         x_marker2 = F.relu(self.fc2_marker2(x))
         x_marker2 = F.relu(self.fc3_marker2(x_marker2))
-        #x_marker2 = F.softmax(x_marker2, dim=2)
+        # x_marker2 = F.softmax(x_marker2, dim=2)
 
         x_marker3 = F.relu(self.fc2_marker3(x))
         x_marker3 = F.relu(self.fc3_marker3(x_marker3))
-        #x_marker3 = F.softmax(x_marker3, dim=2)
+        # x_marker3 = F.softmax(x_marker3, dim=2)
 
         x_marker4 = F.relu(self.fc2_marker4(x))
         x_marker4 = F.relu(self.fc3_marker4(x_marker4))
-        #x_marker4 = F.softmax(x_marker4, dim=2)
+        # x_marker4 = F.softmax(x_marker4, dim=2)
 
         return x_marker1, x_marker2, x_marker3, x_marker4
 
@@ -1253,15 +1269,14 @@ class BirdPoseTracker(nn.Module):
             self.fc1_det = nn.Linear(16, fc1_det_dim)
         self.fc2_det = nn.Linear(fc1_det_dim, fc2_det_dim)
         self.fc3_det = nn.Linear(fc2_det_dim, fc3_det_dim)
-        #self.fc4_det = nn.Linear(fc3_det_dim, fc4_det_dim)
-        #self.fc5_det = nn.Linear(fc4_det_dim, fc5_det_dim)
+        # self.fc4_det = nn.Linear(fc3_det_dim, fc4_det_dim)
+        # self.fc5_det = nn.Linear(fc4_det_dim, fc5_det_dim)
 
         if not use_const_pat:
             self.fc1_pat = nn.Linear(12, fc1_pat_dim)
             self.fc2_pat = nn.Linear(fc1_pat_dim, fc2_pat_dim)
-            #self.fc3_pat = nn.Linear(fc2_pat_dim, fc3_pat_dim)
-            #self.fc4_pat = nn.Linear(fc3_pat_dim, fc4_pat_dim)
-
+            # self.fc3_pat = nn.Linear(fc2_pat_dim, fc3_pat_dim)
+            # self.fc4_pat = nn.Linear(fc3_pat_dim, fc4_pat_dim)
 
         if use_const_pat:
             self.lstm = nn.LSTM(fc3_det_dim, hidden_dim)
@@ -1298,14 +1313,14 @@ class BirdPoseTracker(nn.Module):
         x = self.weak_dropout(F.relu(self.fc1_det(detections)))
         x = self.strong_dropout(F.relu(self.fc2_det(x)))
         x = self.strong_dropout(F.relu(self.fc3_det(x)))
-        #x = self.strong_dropout(F.relu(self.fc4_det(x)))
-        #x = self.strong_dropout(F.relu(self.fc5_det(x)))
+        # x = self.strong_dropout(F.relu(self.fc4_det(x)))
+        # x = self.strong_dropout(F.relu(self.fc5_det(x)))
 
         if not use_const_pat:
             x_pat = self.weak_dropout(F.relu(self.fc1_pat(patterns.view(T - 2, -1, 12))))
             x_pat = self.strong_dropout(F.relu(self.fc2_pat(x_pat)))
-            #x_pat = self.strong_dropout(F.relu(self.fc3_pat(x_pat)))
-            #x_pat = self.strong_dropout(F.relu(self.fc4_pat(x_pat)))
+            # x_pat = self.strong_dropout(F.relu(self.fc3_pat(x_pat)))
+            # x_pat = self.strong_dropout(F.relu(self.fc4_pat(x_pat)))
             x = torch.cat([x, x_pat], dim=2)
 
         x, _ = self.lstm(x)
@@ -1350,17 +1365,16 @@ class LSTMTracker(nn.Module):
             self.fc1_det = nn.Linear(15, fc1_det_dim)
         else:
             self.fc1_det = nn.Linear(12, fc1_det_dim)
-        #self.fc2_det = nn.Linear(fc1_det_dim, fc2_det_dim)
-        #self.fc3_det = nn.Linear(fc2_det_dim, fc3_det_dim)
-        #self.fc4_det = nn.Linear(fc3_det_dim, fc4_det_dim)
-        #self.fc5_det = nn.Linear(fc4_det_dim, fc5_det_dim)
+        # self.fc2_det = nn.Linear(fc1_det_dim, fc2_det_dim)
+        # self.fc3_det = nn.Linear(fc2_det_dim, fc3_det_dim)
+        # self.fc4_det = nn.Linear(fc3_det_dim, fc4_det_dim)
+        # self.fc5_det = nn.Linear(fc4_det_dim, fc5_det_dim)
 
         if not use_const_pat:
             self.fc1_pat = nn.Linear(12, fc1_pat_dim)
-            #self.fc2_pat = nn.Linear(fc1_pat_dim, fc2_pat_dim)
-            #self.fc3_pat = nn.Linear(fc2_pat_dim, fc3_pat_dim)
-            #self.fc4_pat = nn.Linear(fc3_pat_dim, fc4_pat_dim)
-
+            # self.fc2_pat = nn.Linear(fc1_pat_dim, fc2_pat_dim)
+            # self.fc3_pat = nn.Linear(fc2_pat_dim, fc3_pat_dim)
+            # self.fc4_pat = nn.Linear(fc3_pat_dim, fc4_pat_dim)
 
         if use_const_pat:
             self.lstm = nn.LSTM(fc5_det_dim, hidden_dim)
@@ -1369,11 +1383,11 @@ class LSTMTracker(nn.Module):
 
         # The linear layer that maps from hidden state space to tag space
         self.hidden2quat1 = nn.Linear(hidden_dim, fc1_quat_size)
-        #self.hidden2quat2 = nn.Linear(fc1_quat_size, fc2_quat_size)
+        # self.hidden2quat2 = nn.Linear(fc1_quat_size, fc2_quat_size)
         self.hidden2quat3 = nn.Linear(fc1_quat_size, 4)
 
         self.hidden2pos1 = nn.Linear(hidden_dim, fc1_pos_size)
-        #self.hidden2pos2 = nn.Linear(fc1_pos_size, fc2_pos_size)
+        # self.hidden2pos2 = nn.Linear(fc1_pos_size, fc2_pos_size)
         self.hidden2pos3 = nn.Linear(fc1_pos_size, 3)
 
         self.strong_dropout = nn.Dropout(p=STRONG_DROPOUT_RATE)
@@ -1386,27 +1400,27 @@ class LSTMTracker(nn.Module):
         marker4 = patterns[:, :, 3, :].contiguous()
 
         x = self.weak_dropout(F.relu(self.fc1_det(detections)))
-        #x = self.strong_dropout(F.relu(self.fc2_det(x)))
-        #x = self.strong_dropout(F.relu(self.fc3_det(x)))
-        #x = self.strong_dropout(F.relu(self.fc4_det(x)))
-        #x = self.strong_dropout(F.relu(self.fc5_det(x)))
+        # x = self.strong_dropout(F.relu(self.fc2_det(x)))
+        # x = self.strong_dropout(F.relu(self.fc3_det(x)))
+        # x = self.strong_dropout(F.relu(self.fc4_det(x)))
+        # x = self.strong_dropout(F.relu(self.fc5_det(x)))
 
         if not use_const_pat:
             x_pat = self.weak_dropout(F.relu(self.fc1_pat(patterns.view(T - 3, -1, 12))))
-            #x_pat = self.weak_dropout(F.relu(self.fc1_pat(patterns.view(T - 2, -1, 12))))
-            #x_pat = self.strong_dropout(F.relu(self.fc2_pat(x_pat)))
-            #x_pat = self.strong_dropout(F.relu(self.fc3_pat(x_pat)))
-            #x_pat = self.strong_dropout(F.relu(self.fc4_pat(x_pat)))
+            # x_pat = self.weak_dropout(F.relu(self.fc1_pat(patterns.view(T - 2, -1, 12))))
+            # x_pat = self.strong_dropout(F.relu(self.fc2_pat(x_pat)))
+            # x_pat = self.strong_dropout(F.relu(self.fc3_pat(x_pat)))
+            # x_pat = self.strong_dropout(F.relu(self.fc4_pat(x_pat)))
             x = torch.cat([x, x_pat], dim=2)
 
         lstm_out, _ = self.lstm(x)
 
         x_quat = self.weak_dropout(F.relu(self.hidden2quat1(lstm_out)))
-        #x_quat = self.weak_dropout(F.relu(self.hidden2quat2(x_quat)))
+        # x_quat = self.weak_dropout(F.relu(self.hidden2quat2(x_quat)))
         x_quat = self.hidden2quat3(x_quat)
 
         x_pos = self.weak_dropout(F.relu(self.hidden2pos1(lstm_out)))
-        #x_pos = self.weak_dropout(F.relu(self.hidden2pos2(x_pos)))
+        # x_pos = self.weak_dropout(F.relu(self.hidden2pos2(x_pos)))
         x_pos = self.hidden2pos3(x_pos)
 
         quat_norm = torch.sqrt(torch.sum(torch.pow(x_quat, 2, ), dim=2))
@@ -1429,131 +1443,256 @@ class SOTTracker(nn.Module):
         super(SOTTracker, self).__init__()
 
         if add_false_positives:
-            self.fc1_det = nn.Linear(20, fc1_det_dim)
+            self.fc1_det = nn.Linear(20, 150)
         else:
-            self.fc1_det = nn.Linear(16, fc1_det_dim)
-        self.fc2_det = nn.Linear(fc1_det_dim, fc2_det_dim)
-        self.fc3_det = nn.Linear(fc2_det_dim, fc3_det_dim)
-        #self.fc4_det = nn.Linear(fc3_det_dim, fc4_det_dim)
+            self.fc1_det = nn.Linear(12, 150)
+        self.bn1 = nn.BatchNorm1d(150)
+        self.fc2_det = nn.Linear(150, 200)
+        self.bn2 = nn.BatchNorm1d(200)
+        self.fc3_det = nn.Linear(200, 250)
+        self.bn3 = nn.BatchNorm1d(250)
+        self.fc4_det = nn.Linear(250, 250)
+        self.bn4 = nn.BatchNorm1d(250)
         # self.fc5_det = nn.Linear(fc4_det_dim, fc5_det_dim)
 
         if not use_const_pat:
-            self.fc1_pat = nn.Linear(16, fc1_pat_dim)
-            self.fc2_pat = nn.Linear(fc1_pat_dim, fc2_pat_dim)
+            self.fc1_pat = nn.Linear(12, 50)
+            self.fc2_pat = nn.Linear(50, 100)
+            self.fc3_pat = nn.Linear(100, 100)
+            self.fc4_pat = nn.Linear(100, 100)
+
+            self.bn1_pat = nn.BatchNorm1d(50)
+            self.bn2_pat = nn.BatchNorm1d(100)
+            self.bn3_pat = nn.BatchNorm1d(100)
+            self.bn4_pat = nn.BatchNorm1d(100)
+
             # self.fc3_pat = nn.Linear(fc2_pat_dim, fc3_pat_dim)
             # self.fc4_pat = nn.Linear(fc3_pat_dim, fc4_pat_dim)
 
-        #if use_const_pat:
+        # if use_const_pat:
         #    self.lstm_prediction = nn.LSTM(fc3_det_dim, hidden_dim)
-        #else:
+        # else:
         #    self.lstm_prediction = nn.LSTM(fc3_det_dim + fc2_pat_dim, hidden_dim)
 
         if use_const_pat:
-            self.lstm = nn.LSTM(fc3_det_dim, hidden_dim)
+            self.lstm = nn.LSTM(250, 500)
         else:
-            self.lstm = nn.LSTM(fc3_det_dim + fc2_pat_dim, hidden_dim)
+            self.lstm = nn.LSTM(250 + 100, 500)
+        self.lstm2 = nn.LSTM(500, 350)
 
-        self.hidden2out1_prediction = nn.Linear(hidden_dim, 500)
-        self.hidden2out2_prediction = nn.Linear(500, 200)
+        self.hidden2out1_prediction = nn.Linear(350, 200)
+        self.hidden2out2_prediction = nn.Linear(200, 128)
+        self.hidden2out_bn1 = nn.BatchNorm1d(200)
+        self.hidden2out_bn2 = nn.BatchNorm1d(128)
 
-        self.hidden2quat1_prediction = nn.Linear(200, 100)
-        self.hidden2quat2_prediction = nn.Linear(100, 4)
+        self.hidden2quat1_prediction = nn.Linear(128, 128)
+        self.hidden2quat2_prediction = nn.Linear(128, 128)
+        self.hidden2quat3_prediction = nn.Linear(128, 6)
+        self.hidden2quat_bn1 = nn.BatchNorm1d(128)
+        self.hidden2quat_bn2 = nn.BatchNorm1d(128)
 
-        self.hidden2pos1_prediction = nn.Linear(200, 50)
-        self.hidden2pos2_prediction = nn.Linear(50, 3)
+        self.hidden2pos1_prediction = nn.Linear(128, 128)
+        self.hidden2pos2_prediction = nn.Linear(128, 3)
+        self.hidden2pos_bn1 = nn.BatchNorm1d(128)
 
-        self.hidden2out1_correction = nn.Linear(hidden_dim, 500)
-        self.hidden2out2_correction = nn.Linear(500, 200)
+        # self.hidden2out1_correction = nn.Linear(hidden_dim, 500)
+        # self.hidden2out2_correction = nn.Linear(500, 200)
 
-        self.hidden2quat1_correction = nn.Linear(200, 100)
-        self.hidden2quat2_correction = nn.Linear(100, 4)
+        # self.hidden2quat1_correction = nn.Linear(200, 100)
+        # self.hidden2quat2_correction = nn.Linear(100, 4)
 
-        self.hidden2pos1_correction = nn.Linear(200, 50)
-        self.hidden2pos2_correction = nn.Linear(50, 3)
+        # self.hidden2pos1_correction = nn.Linear(200, 50)
+        # self.hidden2pos2_correction = nn.Linear(50, 3)
 
-        #self.hidden2m11_prediction = nn.Linear(200, 100)
-        #self.hidden2m12_prediction = nn.Linear(100, 5)
-        #self.hidden2m21_prediction = nn.Linear(200, 100)
-        #self.hidden2m22_prediction = nn.Linear(100, 5)
-        #self.hidden2m31_prediction = nn.Linear(200, 100)
-        #self.hidden2m32_prediction = nn.Linear(100, 5)
-        #self.hidden2m41_prediction = nn.Linear(200, 100)
-        #self.hidden2m42_prediction = nn.Linear(100, 5)
+        # self.hidden2m11_prediction = nn.Linear(200, 100)
+        # self.hidden2m12_prediction = nn.Linear(100, 5)
+        # self.hidden2m21_prediction = nn.Linear(200, 100)
+        # self.hidden2m22_prediction = nn.Linear(100, 5)
+        # self.hidden2m31_prediction = nn.Linear(200, 100)
+        # self.hidden2m32_prediction = nn.Linear(100, 5)
+        # self.hidden2m41_prediction = nn.Linear(200, 100)
+        # self.hidden2m42_prediction = nn.Linear(100, 5)
 
-        self.strong_dropout = nn.Dropout(p=STRONG_DROPOUT_RATE)
-        self.weak_dropout = nn.Dropout(p=WEAK_DROPOUT_RATE)
+        # self.strong_dropout = nn.Dropout(p=STRONG_DROPOUT_RATE)
+        # self.weak_dropout = nn.Dropout(p=WEAK_DROPOUT_RATE)
 
     def forward(self, detections, patterns):
-        #marker1 = patterns[:, :, 0, :].contiguous()
-        #marker2 = patterns[:, :, 1, :].contiguous()
-        #marker3 = patterns[:, :, 2, :].contiguous()
-        #marker4 = patterns[:, :, 3, :].contiguous()
-
-        x = self.weak_dropout(F.relu(self.fc1_det(detections)))
-        x = self.strong_dropout(F.relu(self.fc2_det(x)))
-        x = self.strong_dropout(F.relu(self.fc3_det(x)))
+        x = F.leaky_relu(self.bn1(self.fc1_det(detections).permute(0, 2, 1)).permute(0, 2, 1))
+        x = F.leaky_relu(self.bn2(self.fc2_det(x).permute(0, 2, 1)).permute(0, 2, 1))
+        x = F.leaky_relu(self.bn3(self.fc3_det(x).permute(0, 2, 1)).permute(0, 2, 1))
+        x = F.leaky_relu(self.bn4(self.fc4_det(x).permute(0, 2, 1)).permute(0, 2, 1))
 
         if not use_const_pat:
-            x_pat = self.weak_dropout(F.relu(self.fc1_pat(patterns.view(T - 2, -1, 12))))
-            x_pat = self.strong_dropout(F.relu(self.fc2_pat(x_pat)))
-            #x_pat = self.strong_dropout(F.relu(self.fc3_pat(x_pat)))
-            #x_pat = self.strong_dropout(F.relu(self.fc4_pat(x_pat)))
+            x_pat = F.leaky_relu(self.bn1_pat(self.fc1_pat(patterns.view(T, -1, 12)).permute(0, 2, 1)).permute(0, 2, 1))
+            x_pat = F.leaky_relu(self.bn2_pat(self.fc2_pat(x_pat).permute(0, 2, 1)).permute(0, 2, 1))
+            x_pat = F.leaky_relu(self.bn3_pat(self.fc3_pat(x_pat).permute(0, 2, 1)).permute(0, 2, 1))
+            x_pat = F.leaky_relu(self.bn4_pat(self.fc4_pat(x_pat).permute(0, 2, 1)).permute(0, 2, 1))
+            # x_pat = self.strong_dropout(F.relu(self.fc4_pat(x_pat)))
             x = torch.cat([x, x_pat], dim=2)
 
-        #x_prediction, _ = self.lstm_prediction(x)
-        #x_correction, _ = self.lstm_correction(torch.cat([x_prediction[:, :, :], x[:, :, :]], dim=2))
+        # x_prediction, _ = self.lstm_prediction(x)
+        # x_correction, _ = self.lstm_correction(torch.cat([x_prediction[:, :, :], x[:, :, :]], dim=2))
         x, _ = self.lstm(x)
+        x, _ = self.lstm2(x)
 
-        x_prediction = self.strong_dropout(F.relu(self.hidden2out1_prediction(x)))
-        x_prediction = self.weak_dropout(F.relu(self.hidden2out2_prediction(x)))
+        x_prediction = F.leaky_relu(
+            self.hidden2out_bn1(self.hidden2out1_prediction(x).permute(0, 2, 1)).permute(0, 2, 1))
+        x_prediction = F.leaky_relu(
+            self.hidden2out_bn2(self.hidden2out2_prediction(x_prediction).permute(0, 2, 1)).permute(0, 2, 1))
 
-        x_correction = self.strong_dropout(F.relu(self.hidden2out1_correction(x)))
-        x_correction = self.weak_dropout(F.relu(self.hidden2out2_correction(x)))
+        # x_correction = self.strong_dropout(F.relu(self.hidden2out1_correction(x)))
+        # x_correction = self.weak_dropout(F.relu(self.hidden2out2_correction(x_correction)))
 
-        #m1 = self.weak_dropout(F.relu(self.hidden2m11(x)))
-        #m1 = self.hidden2m12(m1)
-        #m2 = self.weak_dropout(F.relu(self.hidden2m21(x)))
-        #m2 = self.hidden2m22(m2)
-        #m3 = self.weak_dropout(F.relu(self.hidden2m31(x)))
-        #m3 = self.hidden2m32(m3)
-        #m4 = self.weak_dropout(F.relu(self.hidden2m41(x)))
-        #m4 = self.hidden2m42(m4)
+        # m1 = self.weak_dropout(F.relu(self.hidden2m11(x)))
+        # m1 = self.hidden2m12(m1)
+        # m2 = self.weak_dropout(F.relu(self.hidden2m21(x)))
+        # m2 = self.hidden2m22(m2)
+        # m3 = self.weak_dropout(F.relu(self.hidden2m31(x)))
+        # m3 = self.hidden2m32(m3)
+        # m4 = self.weak_dropout(F.relu(self.hidden2m41(x)))
+        # m4 = self.hidden2m42(m4)
 
-        x_quat_prediction = self.weak_dropout(F.relu(self.hidden2quat1_prediction(x_prediction)))
-        x_quat_prediction = self.hidden2quat2_prediction(x_quat_prediction)
+        x_quat_prediction = F.leaky_relu(
+            self.hidden2quat_bn1(self.hidden2quat1_prediction(x_prediction).permute(0, 2, 1)).permute(0, 2, 1))
+        x_quat_prediction = F.leaky_relu(
+            self.hidden2quat_bn2(self.hidden2quat2_prediction(x_quat_prediction).permute(0, 2, 1)).permute(0, 2, 1))
+        x_quat_prediction = self.hidden2quat3_prediction(x_quat_prediction)
 
-        x_quat_correction = self.weak_dropout(F.relu(self.hidden2quat1_correction(x_correction)))
-        x_quat_correction = self.hidden2quat2_correction(x_quat_correction)
+        # x_quat_correction = self.weak_dropout(F.relu(self.hidden2quat1_correction(x_correction)))
+        # x_quat_correction = self.hidden2quat2_correction(x_quat_correction)
 
-        x_pos_prediction = self.weak_dropout(F.relu(self.hidden2pos1_prediction(x_prediction)))
+        x_pos_prediction = F.leaky_relu(
+            self.hidden2pos_bn1(self.hidden2pos1_prediction(x_prediction).permute(0, 2, 1)).permute(0, 2, 1))
         x_pos_prediction = self.hidden2pos2_prediction(x_pos_prediction)
 
-        x_pos_correction = self.weak_dropout(F.relu(self.hidden2pos1_correction(x_correction)))
-        x_pos_correction = self.hidden2pos2_correction(x_pos_correction)
+        # x_pos_correction = self.weak_dropout(F.relu(self.hidden2pos1_correction(x_correction)))
+        # x_pos_correction = self.hidden2pos2_correction(x_pos_correction)
 
-        quat_norm_prediction = torch.sqrt(torch.sum(torch.pow(x_quat_prediction, 2, ), dim=2))
-        x_quat_prediction = x_quat_prediction / torch.unsqueeze(quat_norm_prediction, dim=2)
+        # quat_norm_correction = torch.sqrt(torch.sum(torch.pow(x_quat_correction, 2, ), dim=2))
+        # x_quat_correction = x_quat_correction / torch.unsqueeze(quat_norm_correction, dim=2)
 
-        quat_norm_correction = torch.sqrt(torch.sum(torch.pow(x_quat_correction, 2, ), dim=2))
-        x_quat_correction = x_quat_correction / torch.unsqueeze(quat_norm_correction, dim=2)
-
-        #rotated_marker1 = qrot(x_quat, marker1) + x_pos
-        #rotated_marker2 = qrot(x_quat, marker2) + x_pos
-        #rotated_marker3 = qrot(x_quat, marker3) + x_pos
-        #rotated_marker4 = qrot(x_quat, marker4) + x_pos
-        #rotated_pattern = torch.cat([rotated_marker1,
-        #                             rotated_marker2,
-        #                             rotated_marker3,
-        #                             rotated_marker4], dim=2)
-
-        return x_quat_prediction, x_pos_prediction, x_quat_correction, x_pos_correction#rotated_pattern, m1, m2, m3, m4
+        return x_quat_prediction, x_pos_prediction  # x_quat_correction#, x_pos_correction#rotated_pattern, m1, m2, m3, m4
 
 
-#model = customLSTM(hidden_dim, bias=True)
-#model = LSTMTracker(hidden_dim)
-#model = MarkerNet()
-#model = BirdPoseTracker(hidden_dim)
-model = SOTTracker()
+class PointPatternTracker(nn.Module):
+    def __init__(self):
+        super(PointPatternTracker, self).__init__()
+
+        if add_false_positives:
+            self.fc1 = nn.Linear(20, 150)
+        else:
+            self.fc1 = nn.Linear(3, 64)
+        self.bn1 = nn.BatchNorm1d(64)
+        self.fc2 = nn.Linear(64, 128)
+        self.bn2 = nn.BatchNorm1d(128)
+        self.fc3 = nn.Linear(128, 512)
+        self.bn3 = nn.BatchNorm1d(512)
+        self.pool = nn.MaxPool1d(4)
+        self.fc4 = nn.Linear(512, 256)
+        self.bn4 = nn.BatchNorm1d(256)
+        self.fc5 = nn.Linear(256, 128)
+        self.bn5 = nn.BatchNorm1d(128)
+
+        if use_const_pat:
+            self.lstm = nn.LSTM(128, 500)
+        else:
+            self.lstm = nn.LSTM(128*2, 500)
+        self.lstm2 = nn.LSTM(500, 350)
+
+        self.hidden2out1_prediction = nn.Linear(350, 200)
+        self.hidden2out2_prediction = nn.Linear(200, 128)
+        self.hidden2out_bn1 = nn.BatchNorm1d(200)
+        self.hidden2out_bn2 = nn.BatchNorm1d(128)
+
+        self.hidden2quat1_prediction = nn.Linear(128, 128)
+        self.hidden2quat2_prediction = nn.Linear(128, 128)
+        self.hidden2quat3_prediction = nn.Linear(128, 6)
+        self.hidden2quat_bn1 = nn.BatchNorm1d(128)
+        self.hidden2quat_bn2 = nn.BatchNorm1d(128)
+
+        self.hidden2pos1_prediction = nn.Linear(128, 128)
+        self.hidden2pos2_prediction = nn.Linear(128, 3)
+        self.hidden2pos_bn1 = nn.BatchNorm1d(128)
+
+        # self.strong_dropout = nn.Dropout(p=STRONG_DROPOUT_RATE)
+        # self.weak_dropout = nn.Dropout(p=WEAK_DROPOUT_RATE)
+
+    def forward(self, detections, patterns):
+        x = F.leaky_relu(self.bn1(self.fc1(detections).view(T, -1, 64).permute(0, 2, 1)).permute(0, 2, 1)).view(T, -1, 4, 64)
+        x = F.leaky_relu(self.bn2(self.fc2(x).view(T, -1, 128).permute(0, 2, 1)).permute(0, 2, 1)).view(T, -1, 4, 128)
+        x = F.leaky_relu(self.bn3(self.fc3(x).view(T, -1, 512).permute(0, 2, 1)).permute(0, 2, 1)).view(T, -1, 4, 512)
+        x = self.pool(x.view([T, -1, 4*512]))
+        x = F.leaky_relu(self.bn4(self.fc4(x).permute(0, 2, 1)).permute(0,2,1))
+        x = F.leaky_relu(self.bn5(self.fc5(x).permute(0, 2, 1)).permute(0,2,1))
+
+
+        #TODO: actually a fully siamese network will not be optimal, since noise is never present in the pattern!!!
+        if not use_const_pat:
+            x_pat = F.leaky_relu(self.bn1(self.fc1(patterns).view(T, -1, 64).permute(0, 2, 1)).permute(0, 2, 1)).view(T,
+                                                                                                                    -1,
+                                                                                                                    4,
+                                                                                                                    64)
+            x_pat = F.leaky_relu(self.bn2(self.fc2(x_pat).view(T, -1, 128).permute(0, 2, 1)).permute(0, 2, 1)).view(T,
+                                                                                                            -1,
+                                                                                                            4, 128)
+            x_pat = F.leaky_relu(self.bn3(self.fc3(x_pat).view(T, -1, 512).permute(0, 2, 1)).permute(0, 2, 1)).view(T,
+                                                                                                            -1,
+                                                                                                            4, 512)
+            x_pat = self.pool(x_pat.view([T, -1, 4*512]))
+            x_pat = F.leaky_relu(self.bn4(self.fc4(x_pat).permute(0, 2, 1)).permute(0, 2, 1))
+            x_pat = F.leaky_relu(self.bn5(self.fc5(x_pat).permute(0, 2, 1)).permute(0, 2, 1))
+            x = torch.cat([x, x_pat], dim=2)
+
+        # x_prediction, _ = self.lstm_prediction(x)
+        # x_correction, _ = self.lstm_correction(torch.cat([x_prediction[:, :, :], x[:, :, :]], dim=2))
+        x, _ = self.lstm(x)
+        x, _ = self.lstm2(x)
+
+        x_prediction = F.leaky_relu(
+            self.hidden2out_bn1(self.hidden2out1_prediction(x).permute(0, 2, 1)).permute(0, 2, 1))
+        x_prediction = F.leaky_relu(
+            self.hidden2out_bn2(self.hidden2out2_prediction(x_prediction).permute(0, 2, 1)).permute(0, 2, 1))
+
+        # x_correction = self.strong_dropout(F.relu(self.hidden2out1_correction(x)))
+        # x_correction = self.weak_dropout(F.relu(self.hidden2out2_correction(x_correction)))
+
+        # m1 = self.weak_dropout(F.relu(self.hidden2m11(x)))
+        # m1 = self.hidden2m12(m1)
+        # m2 = self.weak_dropout(F.relu(self.hidden2m21(x)))
+        # m2 = self.hidden2m22(m2)
+        # m3 = self.weak_dropout(F.relu(self.hidden2m31(x)))
+        # m3 = self.hidden2m32(m3)
+        # m4 = self.weak_dropout(F.relu(self.hidden2m41(x)))
+        # m4 = self.hidden2m42(m4)
+
+        x_quat_prediction = F.leaky_relu(
+            self.hidden2quat_bn1(self.hidden2quat1_prediction(x_prediction).permute(0, 2, 1)).permute(0, 2, 1))
+        x_quat_prediction = F.leaky_relu(
+            self.hidden2quat_bn2(self.hidden2quat2_prediction(x_quat_prediction).permute(0, 2, 1)).permute(0, 2, 1))
+        x_quat_prediction = self.hidden2quat3_prediction(x_quat_prediction)
+
+        # x_quat_correction = self.weak_dropout(F.relu(self.hidden2quat1_correction(x_correction)))
+        # x_quat_correction = self.hidden2quat2_correction(x_quat_correction)
+
+        x_pos_prediction = F.leaky_relu(
+            self.hidden2pos_bn1(self.hidden2pos1_prediction(x_prediction).permute(0, 2, 1)).permute(0, 2, 1))
+        x_pos_prediction = self.hidden2pos2_prediction(x_pos_prediction)
+
+        # x_pos_correction = self.weak_dropout(F.relu(self.hidden2pos1_correction(x_correction)))
+        # x_pos_correction = self.hidden2pos2_correction(x_pos_correction)
+
+        # quat_norm_correction = torch.sqrt(torch.sum(torch.pow(x_quat_correction, 2, ), dim=2))
+        # x_quat_correction = x_quat_correction / torch.unsqueeze(quat_norm_correction, dim=2)
+
+        return x_quat_prediction, x_pos_prediction  # x_quat_correction#, x_pos_correction#rotated_pattern, m1, m2, m3, m4
+
+
+
+# model = customLSTM(hidden_dim, bias=True)
+# model = LSTMTracker(hidden_dim)
+# model = MarkerNet()
+# model = BirdPoseTracker(hidden_dim)
+model = PointPatternTracker()
 
 if use_colab and torch.cuda.is_available():
     print('USING CUDA DEVICE')
@@ -1564,7 +1703,6 @@ if use_colab and torch.cuda.is_available():
     print('Allocated:', round(torch.cuda.memory_allocated(0) / 1024 ** 3, 1), 'GB')
     print('Cached:   ', round(torch.cuda.memory_cached(0) / 1024 ** 3, 1), 'GB')
 
-
 loss_function_pos = nn.MSELoss()
 loss_function_quat = nn.L1Loss()
 loss_cross_entropy = nn.CrossEntropyLoss()
@@ -1573,13 +1711,60 @@ lr_scheduler_params = {'mode': 'min', 'factor': 0.5, 'patience': 3, 'min_lr': 1e
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode=lr_scheduler_params['mode'],
                                                        factor=lr_scheduler_params['factor'],
                                                        patience=lr_scheduler_params['patience'],
-                                                       cooldown= lr_scheduler_params['cooldown'],
+                                                       cooldown=lr_scheduler_params['cooldown'],
                                                        verbose=True, min_lr=lr_scheduler_params['min_lr'])
 
 hyper_params = HyperParams(N_train, N_test, T, BATCH_SIZE, optimizer, LEARNING_RATE, scheduler, lr_scheduler_params,
                            STRONG_DROPOUT_RATE, 'NONE', 'l2 on pos + 5* l1 on quat', '')
 logger = TrainingLogger(MODEL_NAME, TASK, hyper_params)
 name = logger.folder_name + '/model_best.npy'
+
+def normalize_torch(tensor):
+    return tensor / torch.unsqueeze(torch.sqrt(torch.sum(torch.pow(tensor, 2), dim=2)), dim=2)
+
+def pose_loss6D(pos, rot_param, patterns, true_markers):
+    marker1 = patterns[:, :, 0, :].contiguous()
+    marker2 = patterns[:, :, 1, :].contiguous()
+    marker3 = patterns[:, :, 2, :].contiguous()
+    marker4 = patterns[:, :, 3, :].contiguous()
+
+    column1 = normalize_torch(rot_param[:, :, :3])
+    column2 = rot_param[:, :, 3:] - torch.unsqueeze(torch.sum((column1 * rot_param[:, :, 3:]), dim=2), dim=2)*column1
+    column3 = torch.cross(column1, column2, dim=2)
+    rot_mat = torch.stack([column1, column2, column3], dim=2)
+    rotated_marker1 = torch.squeeze(torch.matmul(rot_mat, torch.unsqueeze(marker1, dim=3))) + pos
+    rotated_marker2 = torch.squeeze(torch.matmul(rot_mat, torch.unsqueeze(marker2, dim=3))) + pos
+    rotated_marker3 = torch.squeeze(torch.matmul(rot_mat, torch.unsqueeze(marker3, dim=3))) + pos
+    rotated_marker4 = torch.squeeze(torch.matmul(rot_mat, torch.unsqueeze(marker4, dim=3))) + pos
+
+    rotated_pattern = torch.cat([rotated_marker1,
+                                 rotated_marker2,
+                                 rotated_marker3,
+                                 rotated_marker4], dim=2)
+
+    return loss_function_pos(rotated_pattern, true_markers)
+
+
+def pose_loss(pos, quats, patterns, true_markers):
+    marker1 = patterns[:, :, 0, :].contiguous()
+    marker2 = patterns[:, :, 1, :].contiguous()
+    marker3 = patterns[:, :, 2, :].contiguous()
+    marker4 = patterns[:, :, 3, :].contiguous()
+
+    quat_norm = torch.sqrt(torch.sum(torch.pow(quats, 2), dim=2))
+    quats = quats / torch.unsqueeze(quat_norm, dim=2)
+    rotated_marker1 = qrot(quats, marker1) + pos
+    rotated_marker2 = qrot(quats, marker2) + pos
+    rotated_marker3 = qrot(quats, marker3) + pos
+    rotated_marker4 = qrot(quats, marker4) + pos
+    rotated_pattern = torch.cat([rotated_marker1,
+                                 rotated_marker2,
+                                 rotated_marker3,
+                                 rotated_marker4], dim=2)
+
+    return loss_function_pos(rotated_pattern, true_markers), loss_function_pos(quat_norm,
+                                                                               torch.ones(quat_norm.shape).cuda())
+
 
 def train_assigner(data):
     data.shuffle()
@@ -1590,30 +1775,32 @@ def train_assigner(data):
         gc.collect()
         model.train()
 
-        delta_detection_batches = torch.split(data.X_train_shuffled[:,:,:], BATCH_SIZE, 1)
-        quat_truth_batches = torch.split(data.quat_train[:,:,:], BATCH_SIZE, 1)
-        pos_truth_batches = torch.split(data.pos_train[:,:,:], BATCH_SIZE, 1)
-        delta_pos_truth_batches = torch.split(data.delta_pos_train[:,:,:], BATCH_SIZE, 1)
-        detections_truth_batches = torch.split(data.X_train[:,:,:], BATCH_SIZE, 1)
-        pattern_batches = torch.split(data.pattern_train[:,:,:,:], BATCH_SIZE, 1)
-        marker_assignment_batches = torch.split(data.marker_ids_train[:,:,:], BATCH_SIZE, 1)
+        delta_detection_batches = torch.split(data.X_train_shuffled[:, :, :], BATCH_SIZE, 1)
+        quat_truth_batches = torch.split(data.quat_train[:, :, :], BATCH_SIZE, 1)
+        pos_truth_batches = torch.split(data.pos_train[:, :, :], BATCH_SIZE, 1)
+        delta_pos_truth_batches = torch.split(data.delta_pos_train[:, :, :], BATCH_SIZE, 1)
+        detections_truth_batches = torch.split(data.X_train[:, :, :], BATCH_SIZE, 1)
+        pattern_batches = torch.split(data.pattern_train[:, :, :, :], BATCH_SIZE, 1)
+        marker_assignment_batches = torch.split(data.marker_ids_train[:, :, :], BATCH_SIZE, 1)
         avg_loss_class = 0
         avg_loss_pose = 0
         avg_loss_quat = 0
         avg_loss_pos = 0
         n_batches_per_epoch = len(delta_detection_batches)
-        for k, [delta_dets, quat_truth, pos_truth, marker_truth, delta_pos_truth, pattern_batch, marker_ass] in enumerate(
-                zip(delta_detection_batches[:-1], quat_truth_batches[:-1], pos_truth_batches[:-1], detections_truth_batches[:-1],
+        for k, [delta_dets, quat_truth, pos_truth, marker_truth, delta_pos_truth, pattern_batch,
+                marker_ass] in enumerate(
+                zip(delta_detection_batches[:-1], quat_truth_batches[:-1], pos_truth_batches[:-1],
+                    detections_truth_batches[:-1],
                     delta_pos_truth_batches[:-1], pattern_batches[:-1], marker_assignment_batches[:-1])):
-
             model.zero_grad()
             gc.collect()
 
-            pred_quat, pred_delta_pos, pred_delta_markers, marker1, marker2, marker3, marker4 = model(delta_dets[:-1, :, :], pattern_batch[:-1, :, :, :])
-            #loss_class =  loss_cross_entropy(marker1.contiguous().view(-1, 5), marker_ass[0:-1, :, 0].contiguous().view(-1))
-            #loss_class += loss_cross_entropy(marker2.contiguous().view(-1, 5), marker_ass[0:-1, :, 1].contiguous().view(-1))
-            #loss_class += loss_cross_entropy(marker3.contiguous().view(-1, 5), marker_ass[0:-1, :, 2].contiguous().view(-1))
-            #loss_class += loss_cross_entropy(marker4.contiguous().view(-1, 5), marker_ass[0:-1, :, 3].contiguous().view(-1))
+            pred_quat, pred_delta_pos, pred_delta_markers, marker1, marker2, marker3, marker4 = model(
+                delta_dets[:-1, :, :], pattern_batch[:-1, :, :, :])
+            # loss_class =  loss_cross_entropy(marker1.contiguous().view(-1, 5), marker_ass[0:-1, :, 0].contiguous().view(-1))
+            # loss_class += loss_cross_entropy(marker2.contiguous().view(-1, 5), marker_ass[0:-1, :, 1].contiguous().view(-1))
+            # loss_class += loss_cross_entropy(marker3.contiguous().view(-1, 5), marker_ass[0:-1, :, 2].contiguous().view(-1))
+            # loss_class += loss_cross_entropy(marker4.contiguous().view(-1, 5), marker_ass[0:-1, :, 3].contiguous().view(-1))
 
             pred_markers = pos_truth[:-1, :, :].repeat(1, 1, 4) + pred_delta_markers
             loss_pose = loss_function_pos(pred_markers, marker_truth[1:, :, :])
@@ -1621,7 +1808,7 @@ def train_assigner(data):
                                   loss_function_quat(-pred_quat, quat_truth[1:, :, :]))
             loss_pos = loss_function_pos(pred_delta_pos, delta_pos_truth[1:, :, :])
 
-            loss = lambda_pos * loss_pos + lambda_quat * loss_quat #+ lambda_classification * loss_class
+            loss = lambda_pos * loss_pos + lambda_quat * loss_quat  # + lambda_classification * loss_class
 
             loss.backward()
             optimizer.step()
@@ -1629,24 +1816,25 @@ def train_assigner(data):
             avg_loss_pose += loss_pose.item()
             avg_loss_quat += loss_quat.item()
             avg_loss_pos += loss_pos.item()
-            #avg_loss_class += loss_class.item()
+            # avg_loss_class += loss_class.item()
 
         avg_loss_pose /= n_batches_per_epoch
         avg_loss_quat /= n_batches_per_epoch
         avg_loss_pos /= n_batches_per_epoch
-        #avg_loss_class /= n_batches_per_epoch
+        # avg_loss_class /= n_batches_per_epoch
 
         model.eval()
         with torch.no_grad():
-            pred_quat, pred_delta_pos, pred_delta_markers, marker1, marker2, marker3, marker4 = model(data.X_test_shuffled[:-1, :, :],
-                                                                  data.pattern_test[:-1, :, :, :])
-            #loss_class = loss_cross_entropy(marker1.contiguous().view(-1, 5),
+            pred_quat, pred_delta_pos, pred_delta_markers, marker1, marker2, marker3, marker4 = model(
+                data.X_test_shuffled[:-1, :, :],
+                data.pattern_test[:-1, :, :, :])
+            # loss_class = loss_cross_entropy(marker1.contiguous().view(-1, 5),
             #                                data.marker_ids_test[0:-1, :, 0].contiguous().view(-1))
-            #loss_class += loss_cross_entropy(marker2.contiguous().view(-1, 5),
+            # loss_class += loss_cross_entropy(marker2.contiguous().view(-1, 5),
             #                                 data.marker_ids_test[0:-1:, :, 1].contiguous().view(-1))
-            #loss_class += loss_cross_entropy(marker3.contiguous().view(-1, 5),
+            # loss_class += loss_cross_entropy(marker3.contiguous().view(-1, 5),
             #                                 data.marker_ids_test[0:-1, :, 2].contiguous().view(-1))
-            #loss_class += loss_cross_entropy(marker4.contiguous().view(-1, 5),
+            # loss_class += loss_cross_entropy(marker4.contiguous().view(-1, 5),
             #                                 data.marker_ids_test[0:-1, :, 3].contiguous().view(-1))
 
             pred_markers = data.pos_test[:-1, :, :].repeat(1, 1, 4) + pred_delta_markers
@@ -1654,8 +1842,8 @@ def train_assigner(data):
             loss_quat = torch.min(loss_function_quat(pred_quat, data.quat_test[1:, :, :]),
                                   loss_function_quat(-pred_quat, data.quat_test[1:, :, :]))
             loss_pos = loss_function_pos(pred_delta_pos, data.delta_pos_test[1:, :, :])
-            #val_loss = lambda_classification * loss_class.item() + \
-            val_loss  = lambda_pos * loss_pos.item() + lambda_quat * loss_quat.item()
+            # val_loss = lambda_classification * loss_class.item() + \
+            val_loss = lambda_pos * loss_pos.item() + lambda_quat * loss_quat.item()
 
             for param_group in optimizer.param_groups:
                 learning_rate = param_group['lr']
@@ -1687,152 +1875,136 @@ def train_sot_tracker(data):
         gc.collect()
         model.train()
 
-
-        #delta_detection_batches = torch.split(data.delta_X_train_shuffled[:,:,:], BATCH_SIZE, 1)
+        # delta_detection_batches = torch.split(data.delta_X_train_shuffled[:,:,:], BATCH_SIZE, 1)
         detection_batches = torch.split(data.X_train_shuffled, BATCH_SIZE, 1)
-        quat_truth_batches = torch.split(data.quat_train[:,:,:], BATCH_SIZE, 1)
-        pos_truth_batches = torch.split(data.pos_train[:,:,:], BATCH_SIZE, 1)
-        delta_pos_truth_batches = torch.split(data.delta_pos_train[:,:,:], BATCH_SIZE, 1)
-        detections_truth_batches = torch.split(data.X_train[:,:,:], BATCH_SIZE, 1)
-        pattern_batches = torch.split(data.pattern_train[:,:,:,:], BATCH_SIZE, 1)
-        #marker_assignment_batches = torch.split(data.marker_ids_train[:,:,:], BATCH_SIZE, 1)
-        #avg_loss_class = 0
-        #avg_loss_pose = 0
-        avg_loss_quat_pred = 0
+        quat_truth_batches = torch.split(data.quat_train[:, :, :], BATCH_SIZE, 1)
+        pos_truth_batches = torch.split(data.pos_train[:, :, :], BATCH_SIZE, 1)
+        # delta_pos_truth_batches = torch.split(data.delta_pos_train[:,:,:], BATCH_SIZE, 1)
+        detections_truth_batches = torch.split(data.X_train[:, :, :], BATCH_SIZE, 1)
+        pattern_batches = torch.split(data.pattern_train[:, :, :, :], BATCH_SIZE, 1)
+        # marker_assignment_batches = torch.split(data.marker_ids_train[:,:,:], BATCH_SIZE, 1)
+        # avg_loss_class = 0
+        avg_loss_pose = 0
+        avg_loss_quat = 0
         avg_loss_pos_pred = 0
         avg_loss_quat_corr = 0
         avg_loss_pos_corr = 0
         n_batches_per_epoch = len(detection_batches)
-        #for k, [delta_dets, quat_truth, pos_truth, marker_truth, delta_pos_truth, pattern_batch, marker_ass] in enumerate(
+        # for k, [delta_dets, quat_truth, pos_truth, marker_truth, delta_pos_truth, pattern_batch, marker_ass] in enumerate(
         #        zip(delta_detection_batches[:-1], quat_truth_batches[:-1], pos_truth_batches[:-1], detections_truth_batches[:-1],
         #            delta_pos_truth_batches[:-1], pattern_batches[:-1], marker_assignment_batches[:-1])):
-        for k, [dets, quat_truth, pos_truth, marker_truth, delta_pos_truth, pattern_batch] in enumerate(
-                zip(detection_batches[:-1], quat_truth_batches[:-1], pos_truth_batches[:-1], detections_truth_batches[:-1], delta_pos_truth_batches[:-1], pattern_batches[:-1])):
-
+        for k, [dets, quat_truth, pos_truth, marker_truth, pattern_batch] in enumerate(
+                zip(detections_truth_batches[:-1], quat_truth_batches[:-1], pos_truth_batches[:-1],
+                    detections_truth_batches[:-1], pattern_batches[:-1])):
             model.zero_grad()
             gc.collect()
 
-            pred_quat, pred_delta_pos, corr_quat, corr_pos = model(dets[:, :, :], pattern_batch[:, :, :, :])
-            #loss_class =  loss_cross_entropy(marker1.contiguous().view(-1, 5), marker_ass[0:-1, :, 0].contiguous().view(-1))
-            #loss_class += loss_cross_entropy(marker2.contiguous().view(-1, 5), marker_ass[0:-1, :, 1].contiguous().view(-1))
-            #loss_class += loss_cross_entropy(marker3.contiguous().view(-1, 5), marker_ass[0:-1, :, 2].contiguous().view(-1))
-            #loss_class += loss_cross_entropy(marker4.contiguous().view(-1, 5), marker_ass[0:-1, :, 3].contiguous().view(-1))
+            pred_quats, pred_pos = model(dets.view(T, BATCH_SIZE, 4, 3), pattern_batch)
+            loss_pose= pose_loss6D(pred_pos[:-1, :, :], pred_quats[:-1, :, :], pattern_batch[1:, :, :, :],
+                                            marker_truth[1:, :, :])
+            loss = loss_pose
+            # loss_class =  loss_cross_entropy(marker1.contiguous().view(-1, 5), marker_ass[0:-1, :, 0].contiguous().view(-1))
+            # loss_class += loss_cross_entropy(marker2.contiguous().view(-1, 5), marker_ass[0:-1, :, 1].contiguous().view(-1))
+            # loss_class += loss_cross_entropy(marker3.contiguous().view(-1, 5), marker_ass[0:-1, :, 2].contiguous().view(-1))
+            # loss_class += loss_cross_entropy(marker4.contiguous().view(-1, 5), marker_ass[0:-1, :, 3].contiguous().view(-1))
 
-            #pred_markers = pos_truth[:-1, :, :].repeat(1, 1, 4) + pred_delta_markers
-            #loss_pose_p = loss_function_pos(pred_markers, marker_truth[1:, :, :])
-            loss_quat_pred = torch.min(loss_function_quat(pred_quat[:-1, :, :], quat_truth[1:, :, :]),
-                                  loss_function_quat(-pred_quat[:-1, :, :], quat_truth[1:, :, :]))
-            loss_pos_pred = loss_function_pos(pred_delta_pos[:-1, :, :], delta_pos_truth[:, :, :])
+            # pred_markers = pos_truth[:-1, :, :].repeat(1, 1, 4) + pred_delta_markers
+            # loss_pose_p = loss_function_pos(pred_markers, marker_truth[1:, :, :])
+            # loss_quat = torch.min(loss_function_quat(pred_quats[:-1, :, :], quat_truth[1:, :, :]),
+            #                      loss_function_quat(-pred_quats[:-1, :, :], quat_truth[1:, :, :]))
+            # loss_pos = loss_function_pos(pred_pos[:-1, :, :], pos_truth[1:, :, :])
+            # loss = loss_aux * 0.001 + loss_quat + loss_pos
 
-            loss_quat_corr = torch.min(loss_function_quat(corr_quat, quat_truth[:, :, :]),
-                                  loss_function_quat(-corr_quat, quat_truth[:, :, :]))
-            loss_pos_corr = loss_function_pos(corr_pos, pos_truth[:, :, :])
+            # loss_quat_corr = torch.min(loss_function_quat(corr_quat, quat_truth[:, :, :]),
+            #                      loss_function_quat(-corr_quat, quat_truth[:, :, :]))
+            # loss_pos_corr = loss_function_pos(corr_pos, pos_truth[:, :, :])
 
-            loss = loss_quat_corr + 100*loss_pos_corr + loss_quat_pred + 100*loss_pos_pred
-            #loss = lambda_pos * loss_pos_pred + lambda_quat * loss_quat_pred + loss_pos_corr.item() + loss_quat_corr.item() #+ lambda_classification * loss_class
+            # loss = loss_quat_corr + loss_quat_pred #+ 100*loss_pos_pred
+            # loss = lambda_pos * loss_pos_pred + lambda_quat * loss_quat_pred + loss_pos_corr.item() + loss_quat_corr.item() #+ lambda_classification * loss_class
 
             loss.backward()
             optimizer.step()
 
-            #avg_loss_pose += loss_pose.item()
-            avg_loss_quat_pred += loss_quat_pred.item()
-            avg_loss_pos_pred += loss_pos_pred.item()
-            avg_loss_quat_corr += loss_quat_corr.item()
-            avg_loss_pos_corr += loss_pos_corr.item()
-            #avg_loss_class += loss_class.item()
+            avg_loss_pose += loss_pose.item()
+            # avg_loss_quat += loss_quat.item()
+            # avg_loss_pos_pred += loss_pos_pred.item()
+            # avg_loss_quat_corr += loss_quat_corr.item()
+            # avg_loss_pos_corr += loss_pos_corr.item()
+            # avg_loss_class += loss_class.item()
 
-        #avg_loss_pose /= n_batches_per_epoch
-        avg_loss_quat_pred /= n_batches_per_epoch
-        avg_loss_pos_pred /= n_batches_per_epoch
-        avg_loss_quat_corr /= n_batches_per_epoch
-        avg_loss_pos_corr /= n_batches_per_epoch
-        #avg_loss_class /= n_batches_per_epoch
+        avg_loss_pose /= n_batches_per_epoch
+        # avg_loss_quat /= n_batches_per_epoch
+        # avg_loss_pos_pred /= n_batches_per_epoch
+        # avg_loss_quat_corr /= n_batches_per_epoch
+        # avg_loss_pos_corr /= n_batches_per_epoch
+        # avg_loss_class /= n_batches_per_epoch
 
         model.eval()
         with torch.no_grad():
-            #pred_quat, pred_delta_pos, pred_delta_markers, marker1, marker2, marker3, marker4 = model(data.X_test_shuffled[:-1, :, :],
+            # pred_quat, pred_delta_pos, pred_delta_markers, marker1, marker2, marker3, marker4 = model(data.X_test_shuffled[:-1, :, :],
             #                                                      data.pattern_test[:-1, :, :, :])
-            pred_quat, pred_delta_pos, corr_quat, corr_pos = model(data.X_test_shuffled[:, :, :], data.pattern_test[:, :, :, :])
-
-            #loss_class = loss_cross_entropy(marker1.contiguous().view(-1, 5),
-            #                                data.marker_ids_test[0:-1, :, 0].contiguous().view(-1))
-            #loss_class += loss_cross_entropy(marker2.contiguous().view(-1, 5),
-            #                                 data.marker_ids_test[0:-1:, :, 1].contiguous().view(-1))
-            #loss_class += loss_cross_entropy(marker3.contiguous().view(-1, 5),
-            #                                 data.marker_ids_test[0:-1, :, 2].contiguous().view(-1))
-            #loss_class += loss_cross_entropy(marker4.contiguous().view(-1, 5),
-            #                                 data.marker_ids_test[0:-1, :, 3].contiguous().view(-1))
-
-            #pred_markers = data.pos_test[:-1, :, :].repeat(1, 1, 4) + pred_delta_markers
-            #loss_pose = loss_function_pos(pred_markers, data.X_test[1:, :, :])
-            loss_quat_pred = torch.min(loss_function_quat(pred_quat[:-1, :, :], data.quat_test[1:, :, :]),
-                                  loss_function_quat(-pred_quat[:-1, :, :], data.quat_test[1:, :, :]))
-            loss_pos_pred = loss_function_pos(pred_delta_pos[:-1, :, :], data.delta_pos_test[:, :, :])
-
-            loss_quat_corr = torch.min(loss_function_quat(corr_quat, data.quat_test[:, :, :]),
-                                  loss_function_quat(-corr_quat, data.quat_test[:, :, :]))
-            loss_pos_corr = loss_function_pos(corr_pos, data.pos_test[:, :, :])
-            #val_loss = lambda_classification * loss_class.item() + \
-
-            val_loss  = loss_quat_corr + 100*loss_pos_corr + 100*loss_pos_pred.item() + loss_quat_pred.item()# + loss_pos_corr.item() + loss_pos_corr.item()
+            n = data.X_test.shape[1]
+            X_split = torch.split(data.X_test, int(n/10), dim=1)
+            pattern_split = torch.split(data.pattern_test, int(n/10), dim=1)
+            avg_loss_pose_test = 0
+            for (X, pattern) in zip(X_split, pattern_split):
+              pred_quats, pred_pos = model(X.view(T, -1, 4, 3), pattern)
+              avg_loss_pose_test += pose_loss6D(pred_pos[:-1, :, :], pred_quats[:-1, :, :], data.pattern_test[1:, :, :, :],
+                                            data.X_test[1:, :, :]).item()
+            avg_loss_pose_test /= 10
+            val_loss = avg_loss_pose_test
             for param_group in optimizer.param_groups:
                 learning_rate = param_group['lr']
-                print("Epoch: {epoch:2d}, Learning Rate: {learning_rate:1.8f} \n TrainPosCorr: {train_pos_corr:1.6f}, "
-                      "TrainQuatCorr: {train_quat_corr:1.4f}  TrainPosPred: {train_pos_pred:1.6f}  TrainQuatPred: {train_quat_pred:1.6f} \t , "
-                      "TestPosCorr: {test_pos_corr:1.6f} TestQuatCorr: {test_quat_corr:1.4f}  TestPosPred: {test_pos_pred:1.6f}  TestQuatPred: {test_quat_pred:1.6f}".format(
-                    epoch=epoch, learning_rate=learning_rate,
-                    train_pos_corr=avg_loss_pos_corr, train_quat_corr=avg_loss_quat_corr, train_pos_pred=avg_loss_pos_pred, train_quat_pred=avg_loss_quat_pred,
-                    test_pos_corr=loss_pos_corr, test_quat_corr=loss_quat_corr,
-                    test_pos_pred=loss_pos_pred, test_quat_pred=loss_quat_pred))
-                #print("Epoch: {epoch:2d}, Learning Rate: {learning_rate:1.8f} \n TrainPosCorr: {train_pos_corr:1.6f}, "
-                #      "TrainQuatCorr: {train_quat_corr:1.4f}   \t , "
-                #      "TestPosCorr: {test_pos_corr:1.6f} TestQuatCorr: {test_quat_corr:1.4f}  ".format(
+                # print("Epoch: {epoch:2d}, Learning Rate: {learning_rate:1.8f} \n TrainPosCorr: {train_pos_corr:1.6f}, "
+                #      "TrainQuatCorr: {train_quat_corr:1.4f}  TrainPosPred: {train_pos_pred:1.6f}  TrainQuatPred: {train_quat_pred:1.6f} \t , "
+                #      "TestPosCorr: {test_pos_corr:1.6f} TestQuatCorr: {test_quat_corr:1.4f}  TestPosPred: {test_pos_pred:1.6f}  TestQuatPred: {test_quat_pred:1.6f}".format(
                 #    epoch=epoch, learning_rate=learning_rate,
-                #    train_pos_corr=avg_loss_pos_corr, train_quat_corr=avg_loss_quat_corr,
-                #    test_pos_corr=loss_pos_corr, test_quat_corr=loss_quat_corr))
+                #    train_pos_corr=avg_loss_pos_corr, train_quat_corr=avg_loss_quat_corr, train_pos_pred=avg_loss_pos_pred, train_quat_pred=avg_loss_quat_pred,
+                #    test_pos_corr=loss_pos_corr, test_quat_corr=loss_quat_corr,
+                #    test_pos_pred=loss_pos_pred, test_quat_pred=loss_quat_pred))
+                print("Epoch: {epoch:2d}, Learning Rate: {learning_rate:1.8f} \n TrainPose: {train_pose:1.6f}\t "
+                      "TestPose: {test_pose:1.6f}".format(epoch=epoch, learning_rate=learning_rate,
+                                                          train_pose=avg_loss_pose,
+                                                          test_pose=avg_loss_pose_test))
             scheduler.step(val_loss)
-            #avg_loss_pose = -1
-            #loss_pose = -1
-            #logger.log_epoch(avg_loss_pose, avg_loss_quat, avg_loss_pos,
-            #                 loss_pose, loss_quat, loss_pos,
-            #                 model,
-            #                 learning_rate)
+
+            logger.log_epoch(avg_loss_pose, -1, -1,
+                             avg_loss_pose_test, -1, -1,
+                             model,
+                             learning_rate)
         if use_colab:
             print('Memory Usage:')
             print('Allocated:', round(torch.cuda.memory_allocated(0) / 1024 ** 3, 1), 'GB')
             print('Cached:   ', round(torch.cuda.memory_cached(0) / 1024 ** 3, 1), 'GB')
 
-    #logger.save_log()
+    logger.save_log()
 
 
 def train(data):
     data.shuffle()
 
-    #data.convert_to_numpy()
-    #data.X_train_shuffled = make_detections_relative(data.X_train, data.pos_train)
-    #data.X_train = data.X_train[1:, :, :]
-    #data.pos_train = data.pos_train[1:, :, :]
-    #data.delta_pos_train = data.delta_pos_train[1:, :, :]
-    #data.pattern_train = data.pattern_train[1:, :, :]
-    #data.quat_train = data.quat_train[1:, :, :]
-#
-    #data.X_test_shuffled = make_detections_relative(data.X_test, data.pos_test)
-    #data.X_test = data.X_test[1:, :, :]
-    #data.pos_test = data.pos_test[1:, :, :]
-    #data.delta_pos_test = data.delta_pos_test[1:, :, :]
-    #data.pattern_test = data.pattern_test[1:, :, :]
-    #data.quat_test = data.quat_test[1:, :, :]
-    #data.convert_to_torch()
+    # data.convert_to_numpy()
+    # data.X_train_shuffled = make_detections_relative(data.X_train, data.pos_train)
+    # data.X_train = data.X_train[1:, :, :]
+    # data.pos_train = data.pos_train[1:, :, :]
+    # data.delta_pos_train = data.delta_pos_train[1:, :, :]
+    # data.pattern_train = data.pattern_train[1:, :, :]
+    # data.quat_train = data.quat_train[1:, :, :]
+    #
+    # data.X_test_shuffled = make_detections_relative(data.X_test, data.pos_test)
+    # data.X_test = data.X_test[1:, :, :]
+    # data.pos_test = data.pos_test[1:, :, :]
+    # data.delta_pos_test = data.delta_pos_test[1:, :, :]
+    # data.pattern_test = data.pattern_test[1:, :, :]
+    # data.quat_test = data.quat_test[1:, :, :]
+    # data.convert_to_torch()
 
     for gci in range(10):
         gc.collect()
 
-
-
     for epoch in range(1, NUM_EPOCHS + 1):
         gc.collect()
         model.train()
-
 
         delta_detection_batches = torch.split(data.X_train_shuffled, BATCH_SIZE, 1)
         quat_truth_batches = torch.split(data.quat_train, BATCH_SIZE, 1)
@@ -1845,7 +2017,8 @@ def train(data):
         avg_loss_pos = 0
         n_batches_per_epoch = len(delta_detection_batches)
         for k, [delta_dets, quat_truth, pos_truth, marker_truth, delta_pos_truth, pattern_batch] in enumerate(
-                zip(delta_detection_batches[:-1], quat_truth_batches[:-1], pos_truth_batches[:-1], detections_truth_batches[:-1],
+                zip(delta_detection_batches[:-1], quat_truth_batches[:-1], pos_truth_batches[:-1],
+                    detections_truth_batches[:-1],
                     delta_pos_truth_batches[:-1], pattern_batches[:-1])):
             model.zero_grad()
             gc.collect()
@@ -1858,8 +2031,8 @@ def train(data):
                                   loss_function_quat(-pred_quat, quat_truth[1:, :, :]))
             loss_pos = loss_function_pos(pred_delta_pos, delta_pos_truth[1:, :, :])
 
-            loss = 100*loss_pos + loss_quat
-            #loss = loss_pose
+            loss = 100 * loss_pos + loss_quat
+            # loss = loss_pose
             loss.backward()
             optimizer.step()
             avg_loss_pose += loss_pose
@@ -1872,13 +2045,14 @@ def train(data):
 
         model.eval()
         with torch.no_grad():
-            pred_quat, pred_delta_pos, pred_delta_markers = model(data.X_test_shuffled[:-1, :, :], data.pattern_test[:-1, :, :, :])
+            pred_quat, pred_delta_pos, pred_delta_markers = model(data.X_test_shuffled[:-1, :, :],
+                                                                  data.pattern_test[:-1, :, :, :])
             pred_markers = data.pos_test[:-1, :, :].repeat(1, 1, 4) + pred_delta_markers
             loss_pose = loss_function_pos(pred_markers, data.X_test[1:, :, :])
             loss_quat = torch.min(loss_function_quat(pred_quat, data.quat_test[1:, :, :]),
                                   loss_function_quat(-pred_quat, data.quat_test[1:, :, :]))
             loss_pos = loss_function_pos(pred_delta_pos, data.delta_pos_test[1:, :, :])
-            val_loss = 100*loss_pos + loss_quat
+            val_loss = 100 * loss_pos + loss_quat
             for param_group in optimizer.param_groups:
                 learning_rate = param_group['lr']
                 print("Epoch: {epoch:2d}, Learning Rate: {learning_rate:1.8f} \n TrainPose: {train_pose:1.6f}, "
@@ -1900,14 +2074,31 @@ def train(data):
     logger.save_log()
 
 
-def eval(name, data):
+def eval(data, name=None):
+    if name is not None:
+        model = torch.load(name, map_location=lambda storage, loc: storage)
+    model.eval()
+    with torch.no_grad():
+        quat_preds, pred_pos = model(data.X_test[:, :, :], data.pattern_test[:, :, :, :])
+
+        for n in range(3, 100, 21):
+            visualize_tracking(pred_pos[1:, n, :].detach().numpy(),
+                               quat_preds[1:, n, :].detach().numpy(),
+                               data.pos_test[2:, n, :].detach().numpy(),
+                               data.quat_test[2:, n, :].detach().numpy(),
+                               data.X_test[1:-1, n, :].numpy(),  # + np.tile(data.pos_test[:-2, n, :].numpy(), [1, 4]),
+                               data.pattern_test[0, n, :].numpy())
+
+
+def eval_(name, data):
     model = torch.load(name, map_location=lambda storage, loc: storage)
     model.eval()
     printed_slow = False
     with torch.no_grad():
-        quat_preds, pred_delta_pos, _, m1, m2, m3, m4 = model(data.X_test_shuffled[:-1, :, :], data.pattern_test[:-1, :, :, :])
-        print(m1[:10,1,:])
-        print(data.marker_ids_test[:10,1,0])
+        quat_preds, pred_delta_pos, _, m1, m2, m3, m4 = model(data.X_test_shuffled[:-1, :, :],
+                                                              data.pattern_test[:-1, :, :, :])
+        print(m1[:10, 1, :])
+        print(data.marker_ids_test[:10, 1, 0])
         # TODO: 1: oder :-1??
         pos_preds = data.pos_test[:-1, :, :] + pred_delta_pos
 
@@ -1915,14 +2106,26 @@ def eval(name, data):
             if np.amax(np.reshape(pos_preds[:, n, :].numpy(), -1)) < 2:
                 continue
             print('fast')
-            print(pred_delta_pos[:, n, : ])
+            print(pred_delta_pos[:, n, :])
 
             visualize_tracking(pos_preds[1:, n, :].detach().numpy(),
                                quat_preds[1:, n, :].detach().numpy(),
                                data.pos_test[2:, n, :].detach().numpy(),
                                data.quat_test[2:, n, :].detach().numpy(),
-                               data.X_test_shuffled[1:-1, n, :].numpy() + np.tile(data.pos_test[:-2, n, :].numpy(), [1, 4]),
+                               data.X_test_shuffled[1:-1, n, :].numpy() + np.tile(data.pos_test[:-2, n, :].numpy(),
+                                                                                  [1, 4]),
                                data.pattern_test[0, n, :].numpy())
+
+
+def show_data(data):
+    print(data.X_test_shuffled.shape)
+    for n in range(0, 100, 5):
+        visualize_tracking(data.pos_test[:, n, :].numpy(),
+                           data.quat_test[:, n, :].numpy(),
+                           data.pos_test[:, n, :].numpy(),
+                           data.quat_test[:, n, :].numpy(),
+                           data.X_test[:, n, :3].numpy(),
+                           data.pattern_test[0, n, :].numpy())
 
 
 #######################################################################################################################
@@ -1933,31 +2136,40 @@ def eval(name, data):
 
 if use_colab:
     data = TrainingData()
-    #if not generate_data:
+    # if not generate_data:
     #    train_data, test_data, N_train, N_test = gen_data(N_train, N_test)
-    #else:
+    # else:
     #    (train_data, test_data) = gen_data(N_train, N_test)
-    #data.set_data(train_data, test_data)
-    #data.save_data(generated_data_dir, 'all')
+    # data.set_data(train_data, test_data)
+    # data.save_data(generated_data_dir, 'all')
     data.load_data(generated_data_dir, N_train, N_test, 'all')
     data.convert_to_torch()
 
 else:
     data = TrainingData()
-    if not generate_data:
-        (train_data, test_data), N_train, N_test = gen_data(N_train, N_test)
-    else:
-       (train_data, test_data) = gen_data(N_train, N_test)
-    data.set_data(train_data, test_data)
-    data.save_data(generated_data_dir, 'all')
-    #data = TrainingData()
-    #data.load_data(generated_data_dir, N_train, N_test, 'all')
-    data.normalize()
+    # if not generate_data:
+    #    (train_data, test_data), N_train, N_test = gen_data(N_train, N_test)
+    # else:
+    #   (train_data, test_data) = gen_data(N_train, N_test)
+    # data.set_data(train_data, test_data)
+    # data.save_data(generated_data_dir, 'all')
+    # data = TrainingData()
+    data.load_data(generated_data_dir, N_train, N_test, 'all')
+    # data.normalize()
     data.convert_to_torch()
+# show_data(data)
 
 gc.collect()
 train_sot_tracker(data)
 gc.collect()
-#if not use_colab:
-    #eval(name, data)
-    #eval('models/PoseNet_first', data)
+if not use_colab:
+     eval(data, name)
+    #eval(data, 'models/SOTNet_6D/model_best.npy')
+
+# TODO: checke daten, wieso ist grau und orange komplett anders?
+# TODO: werden verschiedene patterns benutzt?
+
+# TODO try with pos = 0 (const)
+# TODO: fix normalize()!!!
+
+# TODO make relative??
