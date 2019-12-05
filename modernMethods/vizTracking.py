@@ -32,7 +32,7 @@ from pyquaternion import Quaternion as Quaternion
 import os, os.path
 
 birdId = 9
-firstFrame = 1
+firstFrame = 1500
 lastFrame = -1
 shown_trajectory_length = 100
 hide_expected_marker_locations = False
@@ -42,6 +42,19 @@ save_animation = False
 
 
 # Attaching 3D axis to the figure
+#fig = plt.figure()
+#ax = p3.Axes3D(fig)
+#patterns = np.load('data/patterns.npy')
+
+
+patterns = np.load('data/patterns.npy')
+
+def rot_mat_from_6d(rot):
+    column1 = rot[:3] / np.linalg.norm(rot[:3])
+    tmp = np.sum(column1* rot[3:]) * column1
+    column2 = rot[3:] - tmp
+    column3 = np.cross(column1, column2)
+    return np.stack([column1, column2, column3], axis=0)
 
 
 class MetaParams:
@@ -60,12 +73,12 @@ class AnimationParams:
 
 
 class TrackedObject:
-    def __init__(self, predicted_pos, predicted_quat, true_pos, true_quat, pattern, detections,
-                 predicted_line, true_line, scatter, predicted_markers, true_markers):
+    def __init__(self, predicted_pos, predicted_rot, true_pos, true_rot, pattern, detections,
+                 predicted_line, true_line, scatter, predicted_markers, true_markers, rot_representation):
         self.predicted_pos = predicted_pos
-        self.predicted_quat = predicted_quat
+        self.predicted_rot = predicted_rot
         self.true_pos = true_pos
-        self.true_quat = true_quat
+        self.true_rot = true_rot
         self.pattern = pattern
         self.detections = detections
         self.predicted_line = predicted_line
@@ -73,6 +86,7 @@ class TrackedObject:
         self.scatter = scatter
         self.predicted_markers = predicted_markers
         self.true_markers = true_markers
+        self.rot_representation = rot_representation
 
 
 def run_tracking_animation(tracked_objects, length, animation_params, fig, ax):
@@ -106,18 +120,25 @@ def run_tracking_animation(tracked_objects, length, animation_params, fig, ax):
                 object.true_line.set_3d_properties(object.true_pos[:t+1, 2])
                 lines.append(object.true_line)
 
-            q_predicted = Quaternion(object.predicted_quat[t, :])
-            rot_mat_predicted = q_predicted.rotation_matrix
-            rotated_pattern_predicted = np.dot(rot_mat_predicted, object.pattern.T).T
+            if object.rot_representation == 'quat':
+                q_predicted = Quaternion(object.predicted_rot[t, :])
+                rot_mat_predicted = q_predicted.rotation_matrix
+            else:
+                rot_mat_predicted = rot_mat_from_6d(object.predicted_rot[t, :])
+
+            rotated_pattern_predicted = (rot_mat_predicted @ object.pattern.T).T
             if object.predicted_pos is not None:
                 predicted_markers = rotated_pattern_predicted + object.predicted_pos[t, :]
             else:
                 predicted_markers = rotated_pattern_predicted
 
             # now with VICON predictions
-            q_true = Quaternion(object.true_quat[t, :])
+            #if object.rot_representation == 'quat':
+            q_true = Quaternion(object.true_rot[t, :])
             rot_mat_true = q_true.rotation_matrix
-            rotated_pattern_true = np.dot(rot_mat_true, object.pattern.T).T
+            #else:
+            #    rot_mat_true = rot_mat_from_6d(object.true_rot[t, :])
+            rotated_pattern_true = (rot_mat_true @ object.pattern.T).T
             if object.predicted_pos is not None:
                 true_markers = rotated_pattern_true + object.true_pos[t, :]
             else:
@@ -175,8 +196,7 @@ class BirdData:
         self.vicon_preds = vicon_preds
 
 
-def run_animation(dataAndLines, length, animation_params):
-    global ax
+def run_animation(dataAndLines, length, animation_params, ax, fig):
 
     # Set up formatting for the movie files
     Writer = animation.writers['ffmpeg']
@@ -386,7 +406,6 @@ def importAndStoreMATLABData():
 def old(meta_params, animation_params):
     fig = plt.figure()
     ax = p3.Axes3D(fig)
-    patterns = np.load('data/patterns.npy')
     #global ax
     global birdId
     # load data
@@ -461,7 +480,7 @@ def old(meta_params, animation_params):
     ax.view_init(elev=50.)
 
     # Creating the Animation object
-    run_animation(dataAndLines, np.shape(quats)[1] - 1, animation_params)
+    run_animation(dataAndLines, np.shape(quats)[1] - 1, animation_params, ax, fig)
 
 
 def save_clips():
@@ -478,27 +497,48 @@ def save_clips():
     old(meta_params, animation_params)
 
 
-def visualize_tracking(predicted_pos, predicted_quat, true_pos, true_quats, detections, pattern):
+def plot_bird_traj(name1, name2):
+    plt.subplot(121)
+    pos = np.load(name1)
+    colors = np.load('data/colors.npy')
+    n_objects = pos.shape[0]
+    print(n_objects)
+    for k in range(n_objects):
+        traj = pos[k, :, 0]
+        plt.plot(traj, c=colors[k, :])
+    plt.subplot(122)
+    pos = np.load(name2)
+    colors = np.load('data/colors.npy')
+    n_objects = pos.shape[0]
+    print(n_objects)
+    for k in range(n_objects):
+        traj = pos[k, :, 0]
+        plt.plot(traj, c=colors[k, :])
+    plt.show()
+
+def visualize_tracking(predicted_pos, predicted_rot, true_pos, true_rot, detections, pattern, rot_representation):
     animation_params = AnimationParams(-1, True, False, False)
 
 
     fig = plt.figure()
     ax = p3.Axes3D(fig)
     if predicted_pos is None:
-        track_viz = TrackedObject(None, predicted_quat, None, true_quats, pattern, detections,
+        track_viz = TrackedObject(None, predicted_rot, None, true_rot, pattern, detections,
                                   None,
                                   None,
                                   ax.scatter([], [], [], c='r'),
                                   ax.scatter([], [], [], c='g'),
-                                  ax.scatter([], [], [], c='b')  # TODO: add colors
+                                  ax.scatter([], [], [], c='b'),  # TODO: add colors
+                                  rot_representation
                                   )
     else:
-        track_viz = TrackedObject(predicted_pos, predicted_quat, true_pos, true_quats, pattern, detections,
+        track_viz = TrackedObject(predicted_pos, predicted_rot, true_pos, true_rot, pattern, detections,
                                   ax.plot(predicted_pos[0:1, 0], predicted_pos[0:1, 1], predicted_pos[0:1, 2])[0],
                                   ax.plot(true_pos[0:1, 0], true_pos[0:1, 1], true_pos[0:1, 2])[0],
                                   ax.scatter([], [], [], c='gray'),
                                   ax.scatter([], [], []),
-                                  ax.scatter([], [], []) #TODO: add colors
+                                  ax.scatter([], [], []), #TODO: add colors
+                                  rot_representation
                                   )
 
     # TODO: set inital view params, etc.
@@ -518,7 +558,7 @@ def visualize_tracking(predicted_pos, predicted_quat, true_pos, true_quats, dete
     if predicted_pos is not None:
         run_tracking_animation([track_viz], np.shape(predicted_pos)[0] - 1, animation_params, fig, ax)
     else:
-        run_tracking_animation([track_viz], np.shape(predicted_quat)[0] - 1, animation_params, fig, ax)
+        run_tracking_animation([track_viz], np.shape(predicted_rot)[0] - 1, animation_params, fig, ax)
 
 
 
@@ -529,5 +569,8 @@ animation_params = AnimationParams(shown_trajectory_length, hide_expected_marker
 
 
 # at the end bird 0 has no detections anymore, i.e. it cannot be tracked
-#old(meta_params, animation_params)
 #save_clips()
+
+
+#old(meta_params, animation_params)
+#plot_bird_traj('data/viconPos.npy', 'data/pos.npy')

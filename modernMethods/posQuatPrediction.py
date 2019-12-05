@@ -1,4 +1,4 @@
-use_colab = True
+use_colab = False
 
 import torch
 import torch.nn as nn
@@ -2087,7 +2087,8 @@ def eval(data, name=None):
                                data.pos_test[2:, n, :].detach().numpy(),
                                data.quat_test[2:, n, :].detach().numpy(),
                                data.X_test[1:-1, n, :].numpy(),  # + np.tile(data.pos_test[:-2, n, :].numpy(), [1, 4]),
-                               data.pattern_test[0, n, :].numpy())
+                               data.pattern_test[0, n, :].numpy(),
+                               '6d')
 
 
 def eval_(name, data):
@@ -2160,11 +2161,11 @@ else:
 # show_data(data)
 
 gc.collect()
-train_sot_tracker(data)
+#train_sot_tracker(data)
 gc.collect()
 if not use_colab:
-     eval(data, name)
-    #eval(data, 'models/SOTNet_6D/model_best.npy')
+    #eval(data, name)
+    eval(data, 'models/SOTNet_6D/model_best.npy')
 
 # TODO: checke daten, wieso ist grau und orange komplett anders?
 # TODO: werden verschiedene patterns benutzt?
