@@ -71,8 +71,8 @@ else:
     TASK += 'ChangingPattern; '
 
 BATCH_SIZE = 64
-NUM_EPOCHS = 50
-LEARNING_RATE = 0.0001
+NUM_EPOCHS = 150
+LEARNING_RATE = 0.001
 STRONG_DROPOUT_RATE = 0.10
 WEAK_DROPOUT_RATE = 0.05
 lambda_classification = 1 / 10
@@ -807,6 +807,7 @@ def gen_data(N_train, N_test):
             N = N * len(patterns) * augmentation_factor
 
         X = np.zeros([T, N, 12])
+        rotation_matrices = np.zeros([T, N, 3, 3])
         print('Gnerating data with size:')
         print(X.shape)
         if add_false_positives:
@@ -829,6 +830,7 @@ def gen_data(N_train, N_test):
                 p = patterns[p_idx, :, :]
                 p_copy = np.copy(p)
                 q = Quaternion(quats[t, n % (num_positions * augmentation_factor), :])
+                rotation_matrices[t, n, :, :] = q.rotation_matrix
                 rnd_perm = np.random.permutation(np.arange(0, 4))
                 p_copy = p_copy[rnd_perm, :]
                 marker_identities[t, n, :] = rnd_perm[rnd_perm]
@@ -889,7 +891,7 @@ def gen_data(N_train, N_test):
         pos_aug = np.concatenate([pos, zero_pos], axis=2)
         X_shuffled = X_shuffled + np.tile(pos_aug, [1, len(patterns), 4])
 
-        return {'X': X, 'X_shuffled': X_shuffled, 'quat': np.tile(quats, [1, len(patterns), 1]),
+        return {'X': X, 'X_shuffled': X_shuffled, 'quat': rotation_matrices,
                 'pos': np.tile(pos, [1, len(patterns), 1]), 'pattern': all_patterns, 'marker_ids': marker_identities}
 
     if generate_data:
@@ -1574,6 +1576,148 @@ class SOTTracker(nn.Module):
         return x_quat_prediction, x_pos_prediction  # x_quat_correction#, x_pos_correction#rotated_pattern, m1, m2, m3, m4
 
 
+class LSTMEncoderTracker(nn.Module):
+    def __init__(self):
+        super(LSTMEncoderTracker, self).__init__()
+
+        if add_false_positives:
+            self.fc1_det = nn.Linear(20, 150)
+        else:
+            self.fc1_det = nn.Linear(12, 128)
+            self.bn1 = nn.BatchNorm1d(128)
+            #self.lstm_encoder = nn.LSTM(32, 200)
+        self.fc2_det = nn.Linear(128, 200)
+        self.bn2 = nn.BatchNorm1d(200)
+        self.fc3_det = nn.Linear(200, 250)
+        self.bn3 = nn.BatchNorm1d(250)
+        self.fc4_det = nn.Linear(250, 250)
+        self.bn4 = nn.BatchNorm1d(250)
+        # self.fc5_det = nn.Linear(fc4_det_dim, fc5_det_dim)
+
+        if not use_const_pat:
+            self.fc1_pat = nn.Linear(12, 50)
+            self.fc2_pat = nn.Linear(50, 100)
+            self.fc3_pat = nn.Linear(100, 100)
+            self.fc4_pat = nn.Linear(100, 100)
+
+            self.bn1_pat = nn.BatchNorm1d(50)
+            self.bn2_pat = nn.BatchNorm1d(100)
+            self.bn3_pat = nn.BatchNorm1d(100)
+            self.bn4_pat = nn.BatchNorm1d(100)
+
+            # self.fc3_pat = nn.Linear(fc2_pat_dim, fc3_pat_dim)
+            # self.fc4_pat = nn.Linear(fc3_pat_dim, fc4_pat_dim)
+
+        # if use_const_pat:
+        #    self.lstm_prediction = nn.LSTM(fc3_det_dim, hidden_dim)
+        # else:
+        #    self.lstm_prediction = nn.LSTM(fc3_det_dim + fc2_pat_dim, hidden_dim)
+
+        if use_const_pat:
+            self.lstm = nn.LSTM(250, 500)
+        else:
+            self.lstm = nn.LSTM(250 + 100, 500)
+        self.lstm2 = nn.LSTM(500, 350)
+
+        self.hidden2out1_prediction = nn.Linear(350, 200)
+        self.hidden2out2_prediction = nn.Linear(200, 128)
+        self.hidden2out_bn1 = nn.BatchNorm1d(200)
+        self.hidden2out_bn2 = nn.BatchNorm1d(128)
+
+        self.hidden2quat1_prediction = nn.Linear(128, 128)
+        self.hidden2quat2_prediction = nn.Linear(128, 128)
+        self.hidden2quat3_prediction = nn.Linear(128, 6)
+        self.hidden2quat_bn1 = nn.BatchNorm1d(128)
+        self.hidden2quat_bn2 = nn.BatchNorm1d(128)
+
+        self.hidden2pos1_prediction = nn.Linear(128, 128)
+        self.hidden2pos2_prediction = nn.Linear(128, 3)
+        self.hidden2pos_bn1 = nn.BatchNorm1d(128)
+
+        # self.hidden2out1_correction = nn.Linear(hidden_dim, 500)
+        # self.hidden2out2_correction = nn.Linear(500, 200)
+
+        # self.hidden2quat1_correction = nn.Linear(200, 100)
+        # self.hidden2quat2_correction = nn.Linear(100, 4)
+
+        # self.hidden2pos1_correction = nn.Linear(200, 50)
+        # self.hidden2pos2_correction = nn.Linear(50, 3)
+
+        # self.hidden2m11_prediction = nn.Linear(200, 100)
+        # self.hidden2m12_prediction = nn.Linear(100, 5)
+        # self.hidden2m21_prediction = nn.Linear(200, 100)
+        # self.hidden2m22_prediction = nn.Linear(100, 5)
+        # self.hidden2m31_prediction = nn.Linear(200, 100)
+        # self.hidden2m32_prediction = nn.Linear(100, 5)
+        # self.hidden2m41_prediction = nn.Linear(200, 100)
+        # self.hidden2m42_prediction = nn.Linear(100, 5)
+
+        # self.strong_dropout = nn.Dropout(p=STRONG_DROPOUT_RATE)
+        # self.weak_dropout = nn.Dropout(p=WEAK_DROPOUT_RATE)
+
+    def forward(self, detections, patterns):
+        #x = F.leaky_relu(self.bn1(self.fc1_det(detections).view(T, -1, 32).permute(0, 2, 1)).permute(0, 2, 1)).view(T, -1, 4, 32)
+        #x = x.permute(2, 0, 1, 3).view(4, -1, 32)
+        #_, x = self.lstm_encoder(x)
+        #x = x[0]
+        #x = x.view(T, -1, 200)
+        x = F.leaky_relu(self.bn1(self.fc1_det(detections).permute(0, 2, 1)).permute(0, 2, 1))
+        x = F.leaky_relu(self.bn2(self.fc2_det(x).permute(0, 2, 1)).permute(0, 2, 1))
+        x = F.leaky_relu(self.bn3(self.fc3_det(x).permute(0, 2, 1)).permute(0, 2, 1))
+        x = F.leaky_relu(self.bn4(self.fc4_det(x).permute(0, 2, 1)).permute(0, 2, 1))
+
+        if not use_const_pat:
+            x_pat = F.leaky_relu(self.bn1_pat(self.fc1_pat(patterns.view(T, -1, 12)).permute(0, 2, 1)).permute(0, 2, 1))
+            x_pat = F.leaky_relu(self.bn2_pat(self.fc2_pat(x_pat).permute(0, 2, 1)).permute(0, 2, 1))
+            x_pat = F.leaky_relu(self.bn3_pat(self.fc3_pat(x_pat).permute(0, 2, 1)).permute(0, 2, 1))
+            x_pat = F.leaky_relu(self.bn4_pat(self.fc4_pat(x_pat).permute(0, 2, 1)).permute(0, 2, 1))
+            # x_pat = self.strong_dropout(F.relu(self.fc4_pat(x_pat)))
+            x = torch.cat([x, x_pat], dim=2)
+
+        # x_prediction, _ = self.lstm_prediction(x)
+        # x_correction, _ = self.lstm_correction(torch.cat([x_prediction[:, :, :], x[:, :, :]], dim=2))
+        x, _ = self.lstm(x)
+        x, _ = self.lstm2(x)
+
+        x_prediction = F.leaky_relu(
+            self.hidden2out_bn1(self.hidden2out1_prediction(x).permute(0, 2, 1)).permute(0, 2, 1))
+        x_prediction = F.leaky_relu(
+            self.hidden2out_bn2(self.hidden2out2_prediction(x_prediction).permute(0, 2, 1)).permute(0, 2, 1))
+
+        # x_correction = self.strong_dropout(F.relu(self.hidden2out1_correction(x)))
+        # x_correction = self.weak_dropout(F.relu(self.hidden2out2_correction(x_correction)))
+
+        # m1 = self.weak_dropout(F.relu(self.hidden2m11(x)))
+        # m1 = self.hidden2m12(m1)
+        # m2 = self.weak_dropout(F.relu(self.hidden2m21(x)))
+        # m2 = self.hidden2m22(m2)
+        # m3 = self.weak_dropout(F.relu(self.hidden2m31(x)))
+        # m3 = self.hidden2m32(m3)
+        # m4 = self.weak_dropout(F.relu(self.hidden2m41(x)))
+        # m4 = self.hidden2m42(m4)
+
+        x_quat_prediction = F.leaky_relu(
+            self.hidden2quat_bn1(self.hidden2quat1_prediction(x_prediction).permute(0, 2, 1)).permute(0, 2, 1))
+        x_quat_prediction = F.leaky_relu(
+            self.hidden2quat_bn2(self.hidden2quat2_prediction(x_quat_prediction).permute(0, 2, 1)).permute(0, 2, 1))
+        x_quat_prediction = self.hidden2quat3_prediction(x_quat_prediction)
+
+        # x_quat_correction = self.weak_dropout(F.relu(self.hidden2quat1_correction(x_correction)))
+        # x_quat_correction = self.hidden2quat2_correction(x_quat_correction)
+
+        x_pos_prediction = F.leaky_relu(
+            self.hidden2pos_bn1(self.hidden2pos1_prediction(x_prediction).permute(0, 2, 1)).permute(0, 2, 1))
+        x_pos_prediction = self.hidden2pos2_prediction(x_pos_prediction)
+
+        # x_pos_correction = self.weak_dropout(F.relu(self.hidden2pos1_correction(x_correction)))
+        # x_pos_correction = self.hidden2pos2_correction(x_pos_correction)
+
+        # quat_norm_correction = torch.sqrt(torch.sum(torch.pow(x_quat_correction, 2, ), dim=2))
+        # x_quat_correction = x_quat_correction / torch.unsqueeze(quat_norm_correction, dim=2)
+
+        return x_quat_prediction, x_pos_prediction  # x_quat_correction#, x_pos_correction#rotated_pattern, m1, m2, m3, m4
+
+
 class PointPatternTracker(nn.Module):
     def __init__(self):
         super(PointPatternTracker, self).__init__()
@@ -1692,7 +1836,7 @@ class PointPatternTracker(nn.Module):
 # model = LSTMTracker(hidden_dim)
 # model = MarkerNet()
 # model = BirdPoseTracker(hidden_dim)
-model = PointPatternTracker()
+model = LSTMEncoderTracker()
 
 if use_colab and torch.cuda.is_available():
     print('USING CUDA DEVICE')
@@ -1743,6 +1887,15 @@ def pose_loss6D(pos, rot_param, patterns, true_markers):
                                  rotated_marker4], dim=2)
 
     return loss_function_pos(rotated_pattern, true_markers)
+
+
+def rot_loss6D(rot_param, true_rot):
+    column1 = normalize_torch(rot_param[:, :, :3])
+    column2 = rot_param[:, :, 3:] - torch.unsqueeze(torch.sum((column1 * rot_param[:, :, 3:]), dim=2), dim=2)*column1
+    column3 = torch.cross(column1, column2, dim=2)
+    rot_mat = torch.stack([column1, column2, column3], dim=2)
+
+    return loss_function_pos(rot_mat, true_rot)
 
 
 def pose_loss(pos, quats, patterns, true_markers):
@@ -1899,9 +2052,8 @@ def train_sot_tracker(data):
             model.zero_grad()
             gc.collect()
 
-            pred_quats, pred_pos = model(dets.view(T, BATCH_SIZE, 4, 3), pattern_batch)
-            loss_pose= pose_loss6D(pred_pos[:-1, :, :], pred_quats[:-1, :, :], pattern_batch[1:, :, :, :],
-                                            marker_truth[1:, :, :])
+            pred_quats, pred_pos = model(dets, pattern_batch)
+            loss_pose= rot_loss6D(pred_quats, quat_truth)
             loss = loss_pose
             # loss_class =  loss_cross_entropy(marker1.contiguous().view(-1, 5), marker_ass[0:-1, :, 0].contiguous().view(-1))
             # loss_class += loss_cross_entropy(marker2.contiguous().view(-1, 5), marker_ass[0:-1, :, 1].contiguous().view(-1))
@@ -1948,9 +2100,8 @@ def train_sot_tracker(data):
             pattern_split = torch.split(data.pattern_test, int(n/10), dim=1)
             avg_loss_pose_test = 0
             for (X, pattern) in zip(X_split, pattern_split):
-              pred_quats, pred_pos = model(X.view(T, -1, 4, 3), pattern)
-              avg_loss_pose_test += pose_loss6D(pred_pos[:-1, :, :], pred_quats[:-1, :, :], data.pattern_test[1:, :, :, :],
-                                            data.X_test[1:, :, :]).item()
+              pred_quats, pred_pos = model(X, pattern)
+              avg_loss_pose_test += pose_loss6D(pred_pos[:, :, :], pred_quats[:, :, :], pattern[:, :, :, :], X[:, :, :]).item()
             avg_loss_pose_test /= 10
             val_loss = avg_loss_pose_test
             for param_group in optimizer.param_groups:
@@ -2148,29 +2299,29 @@ if use_colab:
 
 else:
     data = TrainingData()
-    # if not generate_data:
-    #    (train_data, test_data), N_train, N_test = gen_data(N_train, N_test)
-    # else:
-    #   (train_data, test_data) = gen_data(N_train, N_test)
-    # data.set_data(train_data, test_data)
-    # data.save_data(generated_data_dir, 'all')
-    # data = TrainingData()
-    data.load_data(generated_data_dir, N_train, N_test, 'all')
+    #if not generate_data:
+    #   (train_data, test_data), N_train, N_test = gen_data(N_train, N_test)
+    #else:
+    #  (train_data, test_data) = gen_data(N_train, N_test)
+    #data.set_data(train_data, test_data)
+    #data.save_data(generated_data_dir, 'rot_matrix')
+    #data = TrainingData()
+    data.load_data(generated_data_dir, N_train, N_test, 'rot_matrix')
     # data.normalize()
     data.convert_to_torch()
 # show_data(data)
 
 gc.collect()
-#train_sot_tracker(data)
+train_sot_tracker(data)
 gc.collect()
-if not use_colab:
+#if not use_colab:
     #eval(data, name)
-    eval(data, 'models/SOTNet_6D/model_best.npy')
+    #eval(data, 'models/SOTNet_MLP_encoder/model_best.npy')
 
-# TODO: checke daten, wieso ist grau und orange komplett anders?
-# TODO: werden verschiedene patterns benutzt?
 
-# TODO try with pos = 0 (const)
+# TODO: regress rot mat directly
+# TODO: add FNs
+# TODO: add FPs
+# TODO: add positions
 # TODO: fix normalize()!!!
 
-# TODO make relative??
