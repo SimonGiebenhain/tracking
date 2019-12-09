@@ -34,7 +34,7 @@ if not use_colab:
     from BehaviourModel import NoiseModelFN, NoiseModelFP
 
 drop_some_dets = True
-add_false_positives = True
+add_false_positives = False
 add_noise = True
 NOISE_STD = 0.0001
 use_const_pat = False
@@ -689,10 +689,10 @@ def rotate_snippet(snip, theta):
 def gen_data(N_train, N_test):
 
     # Parameters for Noise Model responsible for false negatives
-    p1 = [0.05, 0.1]
-    p2 = [0.15, 0.2]
-    p3 = [0.25, 0.35]
-    p4 = [0.35, 0.45]
+    p1 = [0.025, 0.05]
+    p2 = [0.1, 0.15]
+    p3 = [0.15, 0.2]
+    p4 = [0.25, 0.35]
     noise_model_states = ['all', 'some', 'none']
     noise_model_transition_prob = {'all': [0.84, 0.15, 0.01], 'some': [0.05, 0.94, 0.01], 'none': [0.48, 0.48, 0.04]}
     noise_model_initial_state = 'all'
@@ -704,7 +704,7 @@ def gen_data(N_train, N_test):
     noise_model_FP_transition_probs = np.array([[0.8, 0.2, 0], [0.4, 0.5, 0.1], [0, 0.8, 0.2]])
     noise_model_FP_initial_probs = np.array([0, 0, 1])
     fp_scale = 0.5
-    fp_prob = 0.5
+    fp_prob = 0.3
     radius = 4
 
     nM_FP = NoiseModelFP(noise_model_FP_states, noise_model_FP_transition_probs, noise_model_FP_initial_probs,
@@ -853,7 +853,8 @@ def gen_data(N_train, N_test):
                 p_copy = np.copy(p)
                 q = Quaternion(quats[t, n % (num_positions * augmentation_factor), :])
                 rotation_matrices[t, n, :, :] = q.rotation_matrix
-                rnd_perm = np.random.permutation(np.arange(0, 4))
+                #num_visible = np.nnz(marker_visibility[t, :] > 0)
+                rnd_perm = np.arange(0, 4) #np.random.permutation(np.arange(0, 4))
                 p_copy = p_copy[rnd_perm, :]
                 marker_identities[t, n, :] = rnd_perm[rnd_perm]
                 rotated_pattern = (q.rotation_matrix @ p_copy.T).T
@@ -912,10 +913,27 @@ def gen_data(N_train, N_test):
                     if add_false_positives:
                         noise = np.random.normal(0, NOISE_STD, [6, 4])
                         noise[4:, :] = 0
+                        noise[np.concatenate([isMissing == 1, fp_isMissing[t, :] == 1]), :3] = 0
                     else:
                         noise = np.random.normal(0, NOISE_STD, [4, 4])
+                        noise[isMissing == 1, :3] = 0
                     noise[:, 3] = 0
                     rotated_pattern_aug = rotated_pattern_aug + noise
+                rotated_pattern_aug_ordered = np.zeros(rotated_pattern_aug.shape)
+                if add_false_positives:
+                    print('not implemented yet')
+                else:
+                    index = 0
+                    num_missing = np.count_nonzero(isMissing == 1)
+                    index_missing = 4 - num_missing
+                    for i in range(4):
+                        if isMissing[i] == 1:
+                            rotated_pattern_aug_ordered[index_missing, :] = rotated_pattern_aug[i, :]
+                            index_missing += 1
+                        else:
+                            rotated_pattern_aug_ordered[index, :] = rotated_pattern_aug[i, :]
+                            index += 1
+                rotated_pattern_aug = rotated_pattern_aug_ordered
                 dets = np.reshape(rotated_pattern_aug, -1)
 
                 X_shuffled[t, n, :] = dets
@@ -2315,31 +2333,30 @@ if use_colab:
 
 else:
     data = TrainingData()
-    #if not generate_data:
-    #    (train_data, test_data), N_train, N_test = gen_data(N_train, N_test)
-    #else:
-    #    (train_data, test_data) = gen_data(N_train, N_test)
-    #data.set_data(train_data, test_data)
-    #data.save_data(generated_data_dir, 'rot_matrix_all_noise')
+    if not generate_data:
+        (train_data, test_data), N_train, N_test = gen_data(N_train, N_test)
+    else:
+        (train_data, test_data) = gen_data(N_train, N_test)
+    data.set_data(train_data, test_data)
+    data.save_data(generated_data_dir, 'rot_matrix_noise_ordered')
     #data = TrainingData()
-    data.load_data(generated_data_dir, N_train, N_test, 'rot_matrix_all_noise')
+    #data.load_data(generated_data_dir, N_train, N_test, 'rot_matrix_all_noise')
     #data.normalize()
     data.convert_to_torch()
 # show_data(data)
 
 gc.collect()
-train_sot_tracker(data)
+#train_sot_tracker(data)
 gc.collect()
-if not use_colab:
+#if not use_colab:
     #eval(data, name)
-    eval(data, 'models/SOTNet_rotmat_with_noise_FNs/model_best.npy')
+    #eval(data, 'models/SOTNet_rotmat_with_noise_FNs/model_best.npy')
 
 
 # DONE TODO: regress rot mat directly
 # DONE TODO: add FNs and noise
 
-# TODO: gen_data() don't add noise on mising detections!!!
-# TODO: in eval() daten auch noch ok?
+# TODO: gen data, such that missing immer am ende, don't add fps yet
 # TODO: MATLAB: - different motion models
 
 
