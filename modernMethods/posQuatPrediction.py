@@ -31,12 +31,12 @@ from pyquaternion import Quaternion as Quaternion
 if not use_colab:
     from vizTracking import visualize_tracking
 
-    from BehaviourModel import NoiseModelFN
+    from BehaviourModel import NoiseModelFN, NoiseModelFP
 
 drop_some_dets = True
-add_false_positives = False
-add_noise = False
-NOISE_STD = 0.000001
+add_false_positives = True
+add_noise = True
+NOISE_STD = 0.0001
 use_const_pat = False
 generate_data = False
 multi_modal = False
@@ -222,7 +222,7 @@ class TrainingData():
         if 'marker_ids' in test_data_dict.keys():
             self.marker_ids_test = test_data_dict['marker_ids']
 
-        self.make_relative()
+        #self.make_relative()
 
     def make_relative(self):
         self.delta_X_train_shuffled = make_detections_relative(self.X_train_shuffled, self.pos_train)
@@ -687,15 +687,28 @@ def rotate_snippet(snip, theta):
 
 # TODO: vecotrize with qrot() and by shuffling markers while generating them
 def gen_data(N_train, N_test):
-    p1 = [0.1, 0.2]
-    p2 = [0.2, 0.3]
-    p3 = [0.3, 0.4]
-    p4 = [0.4, 0.5]
+
+    # Parameters for Noise Model responsible for false negatives
+    p1 = [0.05, 0.1]
+    p2 = [0.15, 0.2]
+    p3 = [0.25, 0.35]
+    p4 = [0.35, 0.45]
     noise_model_states = ['all', 'some', 'none']
-    noise_model_transition_prob = {'all': [0.89, 0.1, 0.01], 'some': [0.02, 0.97, 0.01], 'none': [0.48, 0.48, 0.04]}
+    noise_model_transition_prob = {'all': [0.84, 0.15, 0.01], 'some': [0.05, 0.94, 0.01], 'none': [0.48, 0.48, 0.04]}
     noise_model_initial_state = 'all'
 
-    nM = NoiseModelFN(noise_model_states, noise_model_transition_prob, noise_model_initial_state, p1, p2, p3, p4)
+    nM_FN = NoiseModelFN(noise_model_states, noise_model_transition_prob, noise_model_initial_state, p1, p2, p3, p4)
+
+    # Parameters for Noise Model responsible for false positives
+    noise_model_FP_states = [0, 1, 2]
+    noise_model_FP_transition_probs = np.array([[0.8, 0.2, 0], [0.4, 0.5, 0.1], [0, 0.8, 0.2]])
+    noise_model_FP_initial_probs = np.array([0, 0, 1])
+    fp_scale = 0.5
+    fp_prob = 0.5
+    radius = 4
+
+    nM_FP = NoiseModelFP(noise_model_FP_states, noise_model_FP_transition_probs, noise_model_FP_initial_probs,
+                        fp_scale, fp_prob, radius)
 
     if not generate_data:
         ratio = N_train / (N_train + N_test)
@@ -757,21 +770,22 @@ def gen_data(N_train, N_test):
         if generate_data:
             pos = gen_pos(N)
 
-            quats = np.zeros([T, N, 4], dtype=np.float32)
+            quats = quats_data
+            #quats = np.zeros([T, N, 4], dtype=np.float32)
 
-            for n in range(N):
-                quats[:, n, :] = gen_quats(T)
+            #for n in range(N):
+            #    quats[:, n, :] = gen_quats(T)
         else:
             augmentation_factor = 5
 
             pos = np.zeros(pos_data.shape)
-            quats = quats_data
+            #quats = quats_data
             # q_norm = np.linalg.norm(quats_real, axis=2)
             # print(q_norm)
             # print(np.any(q_norm != 1))
-            # quats = np.zeros([100, pos.shape[1], 4])
-            # for n in range(pos.shape[1]):
-            #    quats[:, n, :] = gen_quats(100)
+            quats = np.zeros([T, pos.shape[1], 4])
+            for n in range(pos.shape[1]):
+               quats[:, n, :] = gen_quats(T)
 
             # print(quats.shape)
             # for k in range(1, 1000, 7):
@@ -811,9 +825,9 @@ def gen_data(N_train, N_test):
         print('Gnerating data with size:')
         print(X.shape)
         if add_false_positives:
-            X_shuffled = np.zeros([T, N, 20])
+            X_shuffled = np.zeros([T, N, 6*4])
         else:
-            X_shuffled = np.zeros([T, N, 16])
+            X_shuffled = np.zeros([T, N, 4*4])
 
         all_patterns = np.zeros([T, N, 4, 3])
 
@@ -822,8 +836,16 @@ def gen_data(N_train, N_test):
         for n in range(N):
             gc.collect()
             if drop_some_dets:
-                marker_visibility = np.ones([100, 4])
-                # marker_visibility = nM.rollout(T) > 0
+                marker_visibility = nM_FN.rollout(T) > 0
+            if add_false_positives:
+                false_positive_detections_list = nM_FP.rollout(T)
+                fp_dets = np.zeros([T, 2, 3])
+                fp_isMissing = np.ones([T, 2])
+                for i, fp_frame in enumerate(false_positive_detections_list):
+                    for j, fp in enumerate(fp_frame):
+                        if len(fp) > 2:
+                            fp_dets[i, j, :] = fp
+                            fp_isMissing[i, j] = 0
             for t in range(T):
 
                 p_idx = int(n / (num_positions * augmentation_factor))
@@ -836,8 +858,12 @@ def gen_data(N_train, N_test):
                 marker_identities[t, n, :] = rnd_perm[rnd_perm]
                 rotated_pattern = (q.rotation_matrix @ p_copy.T).T
                 isMissing = np.zeros([4])
-                if add_false_positives:
-                    raise ValueError('ADD FALSE POSITIVES IS NOT YET SUPPORTED')
+                #if add_false_positives:
+
+
+                #    raise ValueError('ADD FALSE POSITIVES IS NOT YET SUPPORTED')
+
+
                     # rotated_pattern = np.concatenate([rotated_pattern, np.ones([1, 3]) * 0], axis=0)
                     # if np.random.uniform(0, 1) < 0.1:
                     #    if drop_some_dets:
@@ -856,28 +882,42 @@ def gen_data(N_train, N_test):
                     #        rotated_pattern[3, :] = np.array([0, 0, 0])
                     #        if drop_some_dets and np.random.uniform(0, 1) < 0.5:
                     #            rotated_pattern[2, :] = np.array([0, 0, 0])
+                #else:
+                if drop_some_dets:
+                    rotated_pattern[rnd_perm[np.logical_not(marker_visibility[t, :])], :] = 0
+                    # print(rotated_pattern)
+                    marker_identities[t, n, rnd_perm[np.where(marker_visibility[t, :] < 1)]] = 4
+                    isMissing[rnd_perm[np.where(marker_visibility[t, :] < 1)]] = 1
+                    # print(isMissing)
+                # if drop_some_dets and np.random.uniform(0, 1) < 0.5:
+                #    rotated_pattern[3, :] = np.array([0, 0, 0])
+                #    marker_identities[t, n, rnd_perm[3]] = 4
+                #    isMissing[rnd_perm[3]] = 1
+                #    if drop_some_dets and np.random.uniform(0, 1) < 0.5:
+                #        rotated_pattern[2, :] = np.array([0, 0, 0])
+                #        marker_identities[t, n, rnd_perm[2]] = 4
+                #        isMissing[rnd_perm[2]] = 1
+                if add_false_positives:
+                    rotated_pattern_aug = np.zeros([6, 4])
                 else:
-                    if drop_some_dets:
-                        rotated_pattern[rnd_perm[np.logical_not(marker_visibility[t, :])], :] = 0
-                        # print(rotated_pattern)
-                        marker_identities[t, n, rnd_perm[np.where(marker_visibility[t, :] < 1)]] = 4
-                        isMissing[rnd_perm[np.where(marker_visibility[t, :] < 1)]] = 1
-                        # print(isMissing)
-                    # if drop_some_dets and np.random.uniform(0, 1) < 0.5:
-                    #    rotated_pattern[3, :] = np.array([0, 0, 0])
-                    #    marker_identities[t, n, rnd_perm[3]] = 4
-                    #    isMissing[rnd_perm[3]] = 1
-                    #    if drop_some_dets and np.random.uniform(0, 1) < 0.5:
-                    #        rotated_pattern[2, :] = np.array([0, 0, 0])
-                    #        marker_identities[t, n, rnd_perm[2]] = 4
-                    #        isMissing[rnd_perm[2]] = 1
-                rotated_pattern_aug = np.zeros([4, 4])
-                rotated_pattern_aug[:, :3] = rotated_pattern
-                rotated_pattern_aug[:, 3] = isMissing
-                dets = np.reshape(rotated_pattern_aug, -1)
+                    rotated_pattern_aug = np.zeros([4, 4])
+                rotated_pattern_aug[:4, :3] = rotated_pattern
+                if add_false_positives:
+                    rotated_pattern_aug[4:, :3] = fp_dets[t, :, :]
+                rotated_pattern_aug[:4, 3] = isMissing
+                if add_false_positives:
+                    rotated_pattern_aug[4:, 3] = fp_isMissing[t, :]
+
                 if add_noise:
-                    noise = np.random.normal(0, NOISE_STD, np.shape(dets))
-                    dets = dets + noise
+                    if add_false_positives:
+                        noise = np.random.normal(0, NOISE_STD, [6, 4])
+                        noise[4:, :] = 0
+                    else:
+                        noise = np.random.normal(0, NOISE_STD, [4, 4])
+                    noise[:, 3] = 0
+                    rotated_pattern_aug = rotated_pattern_aug + noise
+                dets = np.reshape(rotated_pattern_aug, -1)
+
                 X_shuffled[t, n, :] = dets
 
                 rotated_pattern = (q.rotation_matrix @ p.T).T
@@ -886,10 +926,10 @@ def gen_data(N_train, N_test):
         # TODO replace 4 with correct value
         print(X.shape)
         print(X_shuffled.shape)
-        X = X + np.tile(pos, [1, len(patterns), 4])
-        zero_pos = np.zeros([pos.shape[0], pos.shape[1], 1])
-        pos_aug = np.concatenate([pos, zero_pos], axis=2)
-        X_shuffled = X_shuffled + np.tile(pos_aug, [1, len(patterns), 4])
+        X = X #+ np.tile(pos, [1, len(patterns), 4])
+        #zero_pos = np.zeros([pos.shape[0], pos.shape[1], 1])
+        #pos_aug = np.concatenate([pos, zero_pos], axis=2)
+        #X_shuffled = X_shuffled #+ np.tile(pos_aug, [1, len(patterns), 4])
 
         return {'X': X, 'X_shuffled': X_shuffled, 'quat': rotation_matrices,
                 'pos': np.tile(pos, [1, len(patterns), 1]), 'pattern': all_patterns, 'marker_ids': marker_identities}
@@ -1581,12 +1621,13 @@ class LSTMEncoderTracker(nn.Module):
         super(LSTMEncoderTracker, self).__init__()
 
         if add_false_positives:
-            self.fc1_det = nn.Linear(20, 150)
+            self.fc1_det = nn.Linear(6*4, 256)
+            self.bn1 = nn.BatchNorm1d(256)
         else:
-            self.fc1_det = nn.Linear(12, 128)
-            self.bn1 = nn.BatchNorm1d(128)
+            self.fc1_det = nn.Linear(4*4, 256)
+            self.bn1 = nn.BatchNorm1d(256)
             #self.lstm_encoder = nn.LSTM(32, 200)
-        self.fc2_det = nn.Linear(128, 200)
+        self.fc2_det = nn.Linear(256, 200)
         self.bn2 = nn.BatchNorm1d(200)
         self.fc3_det = nn.Linear(200, 250)
         self.bn3 = nn.BatchNorm1d(250)
@@ -1630,30 +1671,11 @@ class LSTMEncoderTracker(nn.Module):
         self.hidden2quat_bn1 = nn.BatchNorm1d(128)
         self.hidden2quat_bn2 = nn.BatchNorm1d(128)
 
-        self.hidden2pos1_prediction = nn.Linear(128, 128)
-        self.hidden2pos2_prediction = nn.Linear(128, 3)
-        self.hidden2pos_bn1 = nn.BatchNorm1d(128)
+        #self.hidden2pos1_prediction = nn.Linear(128, 128)
+        #self.hidden2pos2_prediction = nn.Linear(128, 3)
+        #self.hidden2pos_bn1 = nn.BatchNorm1d(128)
 
-        # self.hidden2out1_correction = nn.Linear(hidden_dim, 500)
-        # self.hidden2out2_correction = nn.Linear(500, 200)
 
-        # self.hidden2quat1_correction = nn.Linear(200, 100)
-        # self.hidden2quat2_correction = nn.Linear(100, 4)
-
-        # self.hidden2pos1_correction = nn.Linear(200, 50)
-        # self.hidden2pos2_correction = nn.Linear(50, 3)
-
-        # self.hidden2m11_prediction = nn.Linear(200, 100)
-        # self.hidden2m12_prediction = nn.Linear(100, 5)
-        # self.hidden2m21_prediction = nn.Linear(200, 100)
-        # self.hidden2m22_prediction = nn.Linear(100, 5)
-        # self.hidden2m31_prediction = nn.Linear(200, 100)
-        # self.hidden2m32_prediction = nn.Linear(100, 5)
-        # self.hidden2m41_prediction = nn.Linear(200, 100)
-        # self.hidden2m42_prediction = nn.Linear(100, 5)
-
-        # self.strong_dropout = nn.Dropout(p=STRONG_DROPOUT_RATE)
-        # self.weak_dropout = nn.Dropout(p=WEAK_DROPOUT_RATE)
 
     def forward(self, detections, patterns):
         #x = F.leaky_relu(self.bn1(self.fc1_det(detections).view(T, -1, 32).permute(0, 2, 1)).permute(0, 2, 1)).view(T, -1, 4, 32)
@@ -1705,17 +1727,12 @@ class LSTMEncoderTracker(nn.Module):
         # x_quat_correction = self.weak_dropout(F.relu(self.hidden2quat1_correction(x_correction)))
         # x_quat_correction = self.hidden2quat2_correction(x_quat_correction)
 
-        x_pos_prediction = F.leaky_relu(
-            self.hidden2pos_bn1(self.hidden2pos1_prediction(x_prediction).permute(0, 2, 1)).permute(0, 2, 1))
-        x_pos_prediction = self.hidden2pos2_prediction(x_pos_prediction)
+        #x_pos_prediction = F.leaky_relu(
+        #    self.hidden2pos_bn1(self.hidden2pos1_prediction(x_prediction).permute(0, 2, 1)).permute(0, 2, 1))
+        #x_pos_prediction = self.hidden2pos2_prediction(x_pos_prediction)
 
-        # x_pos_correction = self.weak_dropout(F.relu(self.hidden2pos1_correction(x_correction)))
-        # x_pos_correction = self.hidden2pos2_correction(x_pos_correction)
 
-        # quat_norm_correction = torch.sqrt(torch.sum(torch.pow(x_quat_correction, 2, ), dim=2))
-        # x_quat_correction = x_quat_correction / torch.unsqueeze(quat_norm_correction, dim=2)
-
-        return x_quat_prediction, x_pos_prediction  # x_quat_correction#, x_pos_correction#rotated_pattern, m1, m2, m3, m4
+        return x_quat_prediction#, x_pos_prediction  # x_quat_correction#, x_pos_correction#rotated_pattern, m1, m2, m3, m4
 
 
 class PointPatternTracker(nn.Module):
@@ -2031,9 +2048,9 @@ def train_sot_tracker(data):
         # delta_detection_batches = torch.split(data.delta_X_train_shuffled[:,:,:], BATCH_SIZE, 1)
         detection_batches = torch.split(data.X_train_shuffled, BATCH_SIZE, 1)
         quat_truth_batches = torch.split(data.quat_train[:, :, :], BATCH_SIZE, 1)
-        pos_truth_batches = torch.split(data.pos_train[:, :, :], BATCH_SIZE, 1)
+        #pos_truth_batches = torch.split(data.pos_train[:, :, :], BATCH_SIZE, 1)
         # delta_pos_truth_batches = torch.split(data.delta_pos_train[:,:,:], BATCH_SIZE, 1)
-        detections_truth_batches = torch.split(data.X_train[:, :, :], BATCH_SIZE, 1)
+        #detections_truth_batches = torch.split(data.X_train[:, :, :], BATCH_SIZE, 1)
         pattern_batches = torch.split(data.pattern_train[:, :, :, :], BATCH_SIZE, 1)
         # marker_assignment_batches = torch.split(data.marker_ids_train[:,:,:], BATCH_SIZE, 1)
         # avg_loss_class = 0
@@ -2043,16 +2060,12 @@ def train_sot_tracker(data):
         avg_loss_quat_corr = 0
         avg_loss_pos_corr = 0
         n_batches_per_epoch = len(detection_batches)
-        # for k, [delta_dets, quat_truth, pos_truth, marker_truth, delta_pos_truth, pattern_batch, marker_ass] in enumerate(
-        #        zip(delta_detection_batches[:-1], quat_truth_batches[:-1], pos_truth_batches[:-1], detections_truth_batches[:-1],
-        #            delta_pos_truth_batches[:-1], pattern_batches[:-1], marker_assignment_batches[:-1])):
-        for k, [dets, quat_truth, pos_truth, marker_truth, pattern_batch] in enumerate(
-                zip(detections_truth_batches[:-1], quat_truth_batches[:-1], pos_truth_batches[:-1],
-                    detections_truth_batches[:-1], pattern_batches[:-1])):
+        for k, [dets, quat_truth, pattern_batch] in enumerate(
+                zip(detection_batches[:-1], quat_truth_batches[:-1], pattern_batches[:-1])):
             model.zero_grad()
             gc.collect()
 
-            pred_quats, pred_pos = model(dets, pattern_batch)
+            pred_quats = model(dets, pattern_batch)
             loss_pose= rot_loss6D(pred_quats, quat_truth)
             loss = loss_pose
             # loss_class =  loss_cross_entropy(marker1.contiguous().view(-1, 5), marker_ass[0:-1, :, 0].contiguous().view(-1))
@@ -2095,13 +2108,14 @@ def train_sot_tracker(data):
         with torch.no_grad():
             # pred_quat, pred_delta_pos, pred_delta_markers, marker1, marker2, marker3, marker4 = model(data.X_test_shuffled[:-1, :, :],
             #                                                      data.pattern_test[:-1, :, :, :])
-            n = data.X_test.shape[1]
-            X_split = torch.split(data.X_test, int(n/10), dim=1)
-            pattern_split = torch.split(data.pattern_test, int(n/10), dim=1)
+            n = data.X_test_shuffled.shape[1]
+            X_split = torch.split(data.X_test_shuffled, int(n / 10), dim=1)
+            pattern_split = torch.split(data.pattern_test, int(n / 10), dim=1)
+            rot_split = torch.split(data.quat_test, int(n / 10), dim=1)
             avg_loss_pose_test = 0
-            for (X, pattern) in zip(X_split, pattern_split):
-              pred_quats, pred_pos = model(X, pattern)
-              avg_loss_pose_test += pose_loss6D(pred_pos[:, :, :], pred_quats[:, :, :], pattern[:, :, :, :], X[:, :, :]).item()
+            for (X, pattern, rot) in zip(X_split, pattern_split, rot_split):
+                pred_quats = model(X, pattern)
+                avg_loss_pose_test += rot_loss6D(pred_quats, rot).item()
             avg_loss_pose_test /= 10
             val_loss = avg_loss_pose_test
             for param_group in optimizer.param_groups:
@@ -2230,14 +2244,16 @@ def eval(data, name=None):
         model = torch.load(name, map_location=lambda storage, loc: storage)
     model.eval()
     with torch.no_grad():
-        quat_preds, pred_pos = model(data.X_test[:, :, :], data.pattern_test[:, :, :, :])
-
+        quat_preds = model(data.X_test_shuffled[:, :, :], data.pattern_test[:, :, :, :])
+        idx = np.tile(np.array([True, True, True, False]), [4])
         for n in range(3, 100, 21):
-            visualize_tracking(pred_pos[1:, n, :].detach().numpy(),
-                               quat_preds[1:, n, :].detach().numpy(),
-                               data.pos_test[2:, n, :].detach().numpy(),
-                               data.quat_test[2:, n, :].detach().numpy(),
-                               data.X_test[1:-1, n, :].numpy(),  # + np.tile(data.pos_test[:-2, n, :].numpy(), [1, 4]),
+            dets = data.X_test_shuffled[:, n, :].numpy()
+            dets = dets[:, idx]
+            visualize_tracking(np.zeros([T, 3]),
+                               quat_preds[:, n, :].detach().numpy(),
+                               np.zeros([T, 3]),
+                               data.quat_test[:, n, :, :].detach().numpy(),
+                               dets,  # + np.tile(data.pos_test[:-2, n, :].numpy(), [1, 4]),
                                data.pattern_test[0, n, :].numpy(),
                                '6d')
 
@@ -2294,33 +2310,40 @@ if use_colab:
     #    (train_data, test_data) = gen_data(N_train, N_test)
     # data.set_data(train_data, test_data)
     # data.save_data(generated_data_dir, 'all')
-    data.load_data(generated_data_dir, N_train, N_test, 'all')
+    data.load_data(generated_data_dir, N_train, N_test, 'rot_matrix_plus_noise_artificial_rotation')
     data.convert_to_torch()
 
 else:
     data = TrainingData()
     #if not generate_data:
-    #   (train_data, test_data), N_train, N_test = gen_data(N_train, N_test)
+    #    (train_data, test_data), N_train, N_test = gen_data(N_train, N_test)
     #else:
-    #  (train_data, test_data) = gen_data(N_train, N_test)
+    #    (train_data, test_data) = gen_data(N_train, N_test)
     #data.set_data(train_data, test_data)
-    #data.save_data(generated_data_dir, 'rot_matrix')
+    #data.save_data(generated_data_dir, 'rot_matrix_all_noise')
     #data = TrainingData()
-    data.load_data(generated_data_dir, N_train, N_test, 'rot_matrix')
-    # data.normalize()
+    data.load_data(generated_data_dir, N_train, N_test, 'rot_matrix_all_noise')
+    #data.normalize()
     data.convert_to_torch()
 # show_data(data)
 
 gc.collect()
 train_sot_tracker(data)
 gc.collect()
-#if not use_colab:
+if not use_colab:
     #eval(data, name)
-    #eval(data, 'models/SOTNet_MLP_encoder/model_best.npy')
+    eval(data, 'models/SOTNet_rotmat_with_noise_FNs/model_best.npy')
 
 
-# TODO: regress rot mat directly
-# TODO: add FNs
+# DONE TODO: regress rot mat directly
+# DONE TODO: add FNs and noise
+
+# TODO: gen_data() don't add noise on mising detections!!!
+# TODO: in eval() daten auch noch ok?
+# TODO: MATLAB: - different motion models
+
+
+# TODO: IF looks promising so far:
 # TODO: add FPs
 # TODO: add positions
 # TODO: fix normalize()!!!
