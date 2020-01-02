@@ -3,7 +3,7 @@ function [tracks, unassignedPatterns] = createNewTracks(detections, unassignedPa
 %   Detailed explanation goes here
 
 if size(detections, 1) > 1 && sum(unassignedPatterns) > 0  
-    fprintf('Creatng new tracks')
+    %fprintf('Creatng new tracks')
     dim = size(patterns,3);
     epsilon = 55;
     clustersRaw = clusterUnassignedDetections(detections, epsilon);
@@ -11,7 +11,7 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
     clusters = {};
     for i=1:length(clustersRaw)
         if size(clustersRaw{i},1) > 3
-            size(clustersRaw{i},1)
+            %size(clustersRaw{i},1)
             while size(clustersRaw{i},1) > 4
                 %TODO split cluster
                 dets = clustersRaw{i};

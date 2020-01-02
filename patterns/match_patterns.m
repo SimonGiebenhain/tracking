@@ -140,11 +140,10 @@ switch method
            eucDist = (dets - rotatedPattern).^2;
            eucDist = reshape( eucDist(~isnan(eucDist)), [], 3);
            cost(iii) = cost(iii) + hyperParams.eucDistWeight*sum(sqrt(sum(eucDist,2)));
-
            if sum(any(isnan(dets),2)) == 1 || sum(any(isnan(dets),2)) == 2 
-               cost(iii) = (cost(iii) + sum(any(isnan(dets),2))* hyperParams.costOfNonAsDtMA)/sum(all(~isnan(dets),2));
+               cost(iii) = (cost(iii) + sum(any(isnan(dets),2)) * hyperParams.costOfNonAsDtMA);%/sum(all(~isnan(dets),2));
            elseif sum(any(isnan(dets),2)) == 0
-                cost(iii) = cost(iii)/sum(all(~isnan(dets),2));
+                cost(iii) = cost(iii);%/sum(all(~isnan(dets),2));
            else
                fprintf('WTF')
            end

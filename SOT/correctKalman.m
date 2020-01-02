@@ -1,4 +1,4 @@
-function s = correctKalman(s, noKnowledge, globalParams, missedDetections)
+function [s, assignment] = correctKalman(s, noKnowledge, globalParams, missedDetections, hyperParams)
 %CORRECTKALMAN Summary of this function goes here
 %   Detailed explanation goes here
 
@@ -14,28 +14,29 @@ dim = size(pattern,2);
 if noKnowledge 
     detections = reshape(s.z, [], dim);
     % Find an assignment between the individual markers and the detections
-    
 
-    [p, FPs] = match_patterns(pattern, detections - s.x(1:dim)', 'correct', s);
+    [p, FPs, certainty, method] = match_patterns(pattern, detections - s.x(1:dim)', 'correct', s, hyperParams);
+    %detections
     detections = detections(~FPs, :);
     s.z = reshape(detections, [], 1);
-    if size(detections,1) > 2
+    if strcmp(method, 'new')
         assignment(p) = 1:length(p);
         assignment = assignment(1:size(detections,1));
         lostDet = assignment == 5;
         assignment = assignment(assignment ~= 5);
-    else
+        if hyperParams.useAssignmentLength == 1
+            certainty = certainty / (size(assignment, 2)/2 + 1);
+        end
+    elseif strcmp(method, 'ML')
         assignment = p;
         lostDet = zeros(size(assignment));
+        if hyperParams.useAssignmentLength == 1
+            certainty = hyperParams.certaintyFactor * certainty / (size(assignment, 2)/2 + 1);
+        end
+    else
+        fprintf('unknown method encountered')
     end
-    
-    % Print in case an error was made in the assignment
-    %inversions = assignment(2:end) - assignment(1:end-1);
-    %if min(inversions) < 1
-    %    assignment
-    %else
-    %    fprintf('yay\n')
-    %end
+    % assignment holds the marker index assigned to the detections
     
     % construct H and R from assignment vector, i.e. delete the
     % corresponding rows in H and R.
@@ -45,8 +46,11 @@ if noKnowledge
         detectionsIdx( (i-1)*length(assignment) + 1: i*length(assignment)) = assignment' + nMarkers*(i-1);
         lostIdx((i-1)*length(lostDet) + 1: i*length(lostDet)) = lostDet';
     end
-    %s.H = @(x) s.H(x,assignment);
-    s.R = R(detectionsIdx, detectionsIdx);
+    if hyperParams.adaptiveNoise == 1
+        s.R = certainty * R(detectionsIdx, detectionsIdx);
+    else
+        s.R = R(detectionsIdx, detectionsIdx);
+    end
 else
     detectionsIdx = ~missedDetections;
 end
