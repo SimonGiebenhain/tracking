@@ -1,7 +1,8 @@
-# Tracking Birds using VICON data
+# Multiple Object Tracking with Point Patterns
 
-This project is a work in progress.
-The reason for its existence is three fold:
-  1. It might help me with my workflow.
-  2. It backs up my progress in case my computer breaks
-  3. It might encourage me to work in a more organized and structured manner.
+## This work was done as my Bachelor Project.
+ 
+## This repository is still a work in progress and desperately needs a clean-up.
+
+Code regarding the Kalman Filter approach is spread throughout most folders. The main file is **ownMOT.mat** and all relevant functions are used there.
+The Code regarding the deep learning approach can be found in the **ModernMethods** folder.
