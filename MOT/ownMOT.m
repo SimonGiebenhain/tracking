@@ -6,7 +6,7 @@
 % TODO
 % Explanation goes here
 
-function [estimatedPositions, estimatedQuats] = ownMOT(D, patterns, initialStates, nObjects, trueTrajectory, trueOrientation, quatMotionType)
+function [estimatedPositions, estimatedQuats, markerAssignemnts, falsePositives] = ownMOT(D, patterns, patternNames, useVICONinit, initialStates, nObjects, shouldShowTruth, trueTrajectory, trueOrientation, quatMotionType, hyperParams)
 % OWNMOT does multi object tracking
 %   @D all observations/detections in the format:
 %       T x maxDetectionsPerFrame x 3
@@ -34,41 +34,57 @@ nMarkers = 4;
 maxPos = squeeze(max(D,[],[1 2]));
 minPos = squeeze(min(D,[],[1 2]));
 
-processNoise.position = 20;
-processNoise.motion = 20;
-processNoise.quat = 0.02;
-processNoise.quatMotion = 0.02;
-measurementNoise = 150;
+processNoise.position = hyperParams.posNoise;
+processNoise.motion = hyperParams.motNoise;
+processNoise.quat = hyperParams.quatNoise;
+processNoise.quatMotion = hyperParams.quatMotionNoise;
+measurementNoise = hyperParams.measurementNoise;
 model = 'extended';
 initialNoise.initPositionVar = 5;
 initialNoise.initMotionVar = 5;
-initialNoise.initQuatVar = 0.2;
-initialNoise.initQuatMotionVar = 0.2;
+initialNoise.initQuatVar = 0.02;
+initialNoise.initQuatMotionVar = 0.02;
+
+params.initialNoise = initialNoise;
+params.model = model;
+params.measurementNoise = measurementNoise;
+params.processNoise = processNoise;
+params.quatMotionType = quatMotionType;
+
 
 nextId = 1;
+if useVICONinit
+    unassignedPatterns = zeros(nObjects, 1);
+else
+    unassignedPatterns = ones(nObjects, 1);
+end
 tracks = initializeTracks();
-unassignedPatterns = zeros(nObjects, 1);
 
-markersForVisualization = cell(nObjects,1);
+
+
+markersForVisualization = cell(1,1);
 birdsTrajectories = cell(nObjects,1);
 trueTrajectories = cell(nObjects,1);
-birdsPositions = cell(nObjects,1);
+%birdsPositions = cell(nObjects,1);
 markerPositions = cell(nObjects, nMarkers);
 viconMarkerPositions = cell(nObjects, nMarkers);
 
 colorsPredicted = distinguishable_colors(nObjects);
 colorsTrue = (colorsPredicted + 2) ./ (max(colorsPredicted,[],2) +2);
 keepOldTrajectory = 0;
-shouldShowTruth = 1;
+%shouldShowTruth = 1;
 vizHistoryLength = 200;
-initializeFigure();
+%initializeFigure();
 
 
 estimatedPositions = zeros(nObjects, T, 3);
 estimatedQuats = zeros(nObjects, T, 4);
+markerAssignemnts = zeros(nObjects, T, nMarkers);
+falsePositives = zeros(T, 1);
 
 
 for t = 1:T
+    tic
     detections = squeeze(D(t,:,:));
     detections = reshape(detections(~isnan(detections)),[],dim);
     
@@ -78,15 +94,12 @@ for t = 1:T
     updateAssignedTracks();
     updateUnassignedTracks();
     deleteLostTracks();
-
-    createNewTracks();
-    if t == 1020
-       t 
+    %TODO params
+    if sum(unassignedPatterns) > 0 &&  length(detections(unassignedDetections,:)) > 1
+        [tracks, unassignedPatterns] = createNewTracks(detections(unassignedDetections,:), unassignedPatterns, tracks, patterns, params);
     end
-    t
-    %if t > 9000
-        displayTrackingResults();
-    %end
+    %t
+    %displayTrackingResults();
     
     % Store tracking results
     for ii = 1:nObjects
@@ -99,7 +112,7 @@ for t = 1:T
             estimatedQuats(ii,t,:) = ones(4,1) * NaN;
         end
     end
-    
+    toc
 end
 
 
@@ -140,26 +153,42 @@ end
 %}
 
     function tracks = initializeTracks()
-        
-        for i = 1:nObjects
-            [s, kalmanParams] = setupKalman(squeeze(patterns(i,:,:)), -1, model, quatMotionType, measurementNoise, processNoise, initialNoise);
-            if strcmp(quatMotionType, 'brownian')
-                s.x = initialStates(i,1:end-4)';
-                s.P = eye(2*dim+4) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initQuatVar], [dim, dim, 4]);
+        if useVICONinit
+            for i = 1:nObjects
+                [s, kalmanParams] = setupKalman(squeeze(patterns(i,:,:)), -1, model, quatMotionType, measurementNoise, processNoise, initialNoise, patternNames{i});
+                if strcmp(quatMotionType, 'brownian')
+                    s.x = initialStates(i,1:end-4)';
+                    s.P = eye(2*dim+4) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initQuatVar], [dim, dim, 4]);
 
-            else
-                s.x = initialStates(i,:)';
-                s.P = eye(2*dim+8) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initQuatVar; kalmanParams.initQuatMotionVar], [dim, dim, 4, 4]);
+                else
+                    s.x = initialStates(i,:)';
+                    s.P = eye(2*dim+8) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initQuatVar; kalmanParams.initQuatMotionVar], [dim, dim, 4, 4]);
+                end
+                s.pattern = squeeze(patterns(i,:,:));
+                tracks(i) = struct(...
+                    'id', nextId, ... %'center', , ...
+                    'kalmanFilter', s, ...
+                    'kalmanParams', kalmanParams, ...
+                    'age', 1, ...
+                    'totalVisibleCount', 1, ...
+                    'consecutiveInvisibleCount', 0);
+                nextId = nextId + 1;
             end
-            s.pattern = squeeze(patterns(i,:,:));
-            tracks(i) = struct(...
-                'id', nextId, ... %'center', , ...
-                'kalmanFilter', s, ...
-                'kalmanParams', kalmanParams, ...
-                'age', 1, ...
-                'totalVisibleCount', 1, ...
-                'consecutiveInvisibleCount', 0);
-            nextId = nextId + 1;
+        else
+            emptyTrack.age = 0;
+            emptyTrack.totalVisibleCount = 0;
+            emptyTrack.consecutiveInvisibleCount = 0;
+            
+            for in =1:nObjects
+                emptyTrack.id = in;
+                emptyTrack.kalmanParams = [];
+                kalmanFilter.pattern = squeeze(patterns(in,:,:));
+                emptyTrack.kalmanFilter = kalmanFilter;
+                tracks(in) =  emptyTrack;
+            end
+            unassignedDetections = squeeze(D(1,:,:));
+            unassignedDetections = reshape(unassignedDetections(~isnan(unassignedDetections)),[],dim);
+            [tracks, unassignedPatterns] = createNewTracks(unassignedDetections, unassignedPatterns, tracks, patterns, params);
         end
     end
 
@@ -219,6 +248,8 @@ end
         cost = zeros(nTracks*nMarkers, nDetections);
         for i = 1:nTracks
             if tracks(i).age > 0
+                %TODO: something more sophisticated here would be useful!
+                %TODO: bc. costOfNonAssignment can mess up
                 cost((i-1)*nMarkers+1:i*nMarkers, :) = distanceKalman(tracks(i).kalmanFilter, detections);
             else
                 cost((i-1)*nMarkers+1:i*nMarkers, :) = Inf;
@@ -226,8 +257,9 @@ end
         end
         
         % Solve the assignment problem.
-        costOfNonAssignment = 50;
+        costOfNonAssignment = hyperParams.costOfNonAsDtTA; %TODO mit measurementNoise=150 hat auch 50 geklappt
         [assignments, unassignedTracks, unassignedDetections] = assignDetectionsToTracks(cost, costOfNonAssignment);
+        falsePositives(t) = falsePositives(t) + size(unassignedDetections, 1);
     end
 
 
@@ -239,7 +271,6 @@ end
 % the new bounding box, and increases the age of the track and the total
 % visible count by 1. Finally, the function sets the invisible count to 0.
 %}
-
     function updateAssignedTracks()
         
         
@@ -270,8 +301,8 @@ end
             
             % Correct the estimate of the object's location
             % using the new detection.
-            tracks(currentTrackIdx).kalmanFilter.z = reshape(detectedMarkersForCurrentTrack, [], 1);
-            tracks(currentTrackIdx).kalmanFilter = correctKalman(tracks(currentTrackIdx).kalmanFilter, 1, tracks(currentTrackIdx).kalmanParams);
+            tracks(currentTrackIdx).kalmanFilter.z = reshape(detectedMarkersForCurrentTrack, [], 1);            
+            tracks(currentTrackIdx).kalmanFilter = correctKalman(tracks(currentTrackIdx).kalmanFilter, 1, tracks(currentTrackIdx).kalmanParams, 0, hyperParams, tracks(currentTrackIdx).age);
             
             % Replace predicted bounding box with detected
             % bounding box.
@@ -286,6 +317,91 @@ end
             % Update visibility.
             tracks(currentTrackIdx).totalVisibleCount = tracks(currentTrackIdx).totalVisibleCount + 1;
             tracks(currentTrackIdx).consecutiveInvisibleCount = 0;
+        end
+    end
+
+    function updateAssignedTracksMultiThreaded()
+        assignments = double(assignments);
+        allAssignedTracksIdx = unique(floor((assignments(:,1)-1)/nMarkers) + 1);
+        nAssignedTracks = length(allAssignedTracksIdx);
+        
+        %Prepare variables to make multi-threading more efficient
+        %assignmentIndices = cell(nObjects);
+        %detectionIndices = cell(nObjects);
+        %detectedMarkersForTracks = cell(nObjects);
+        for idxx=1:nObjects
+            if ~ismember(idxx, allAssignedTracksIdx)
+               continue; 
+            end
+            assignmentIdx = floor((assignments(:,1)-1)/nMarkers) + 1 == idxx;
+            detectionIdx = assignments(assignmentIdx,2);
+            detectedMarkersForCurrentTrack = detections(detectionIdx, :);
+            tracks(idxx).kalmanFilter.z = reshape(detectedMarkersForCurrentTrack, [], 1);
+            
+            % Update track's age.
+            tracks(idxx).age = tracks(idxx).age + 1;
+            
+            % Update visibility.
+            tracks(idxx).totalVisibleCount = tracks(idxx).totalVisibleCount + 1;
+            tracks(idxx).consecutiveInvisibleCount = 0;
+        end
+        updatedKFs = cell(nObjects);
+        parfor idxx = 1:nObjects
+            if ~ismember(idxx, allAssignedTracksIdx)
+               continue; 
+            end
+            %currentTrackIdx = allAssignedTracksIdx(idxx);
+            %assignmentsIdx = floor((assignments(:,1)-1)/nMarkers) + 1 == idxx;
+            %assignmentsIdx = assignmentIndices{idxx};
+            %detectionIdx = assignments(assignmentsIdx,2);
+            %detectionIdx = detectionIndices{idxx};
+            
+            %detectedMarkersForCurrentTrack = detections(detectionIdx, :);
+            %%detectedMarkersForCurrentTrack = detectedMarkersForTracks{idxx};
+            
+            %if size(detectedMarkersForCurrentTrack, 1) > 2 && t > 10
+            %   dist = distanceKalman(tracks(currentTrackIdx).kalmanFilter, detectedMarkersForCurrentTrack);
+            %   minDist = min(dist, [], 1);
+            %   %distToCenter =  sqrt(sum((detectedMarkersForCurrentTrack - tracks(currentTrackIdx).kalmanFilter.x(1:dim)').^2,2));
+            %   isValidDetections = minDist < 30;
+            %   detectedMarkersForCurrentTrack = detectedMarkersForCurrentTrack(isValidDetections', :);
+            %end
+            
+            % Correct the estimate of the object's location
+            % using the new detection.
+            %%%%%tracks(idxx).kalmanFilter.z = reshape(detectedMarkersForCurrentTrack, [], 1);
+            [updatedKFs{idxx}, ~] = correctKalman(tracks(idxx).kalmanFilter, 1, tracks(idxx).kalmanParams, 0, hyperParams, tracks(idxx).age);
+            
+            %markerAs = [0,0,0,0];
+            %for g=1:size(assignment,2)
+            %    markerAs(assignment(1, g)) = 1;
+            %end
+          
+            
+            %markerAssignemnts(currentTrackIdx, t, :) = markerAs;
+            %falsePositives(t) = falsePositives(t) + (size(detectionIdx,1) - size(assignment,2));
+            
+            
+            
+            % Replace predicted bounding box with detected
+            % bounding box.
+            
+            %TODO should be contained in klamanFilter object
+            %tracks(trackIdx).center = getCenter(tracks(i).pattern, detectedMarkersForCurrentTrack, tracks(i).kalmanFilter);
+            %tracks(trackIdx).markers = detectedMarkersForCurrentTrack;
+            
+%             % Update track's age.
+%             tracks(idxx).age = tracks(idxx).age + 1;
+%             
+%             % Update visibility.
+%             tracks(idxx).totalVisibleCount = tracks(idxx).totalVisibleCount + 1;
+%             tracks(idxx).consecutiveInvisibleCount = 0;
+        end
+        for idxx=1:nObjects
+           if ~ismember(idxx, allAssignedTracksIdx)
+              continue; 
+           end
+           tracks(idxx).kalmanFilter = updatedKFs{idxx};
         end
     end
 
@@ -315,8 +431,8 @@ end
             return;
         end
         
-        invisibleForTooLong = 150;
-        ageThreshold = 0;
+        invisibleForTooLong = 20;
+        ageThreshold = 2;
         visibilityFraction = 0.5;
         
         % Compute the fraction of the track's age for which it was visible.
@@ -346,7 +462,7 @@ end
 % detection is a start of a new track. In practice, you can use other cues
 % to eliminate noisy detections, such as size, location, or appearance.
 
-    function createNewTracks()
+    function createNewTracksOld()
         if length(unassignedDetections) > 1 && sum(unassignedPatterns) > 0
             epsilon = 100;
             clustersRaw = clusterUnassignedDetections(detections(unassignedDetections,:), epsilon);
@@ -395,9 +511,9 @@ end
                     
                     % Create a Kalman filter object.
                     %TODO adaptive initial Noise!!!!
-                    patternIdx = unassignedPatternIdx(specificPatternIdx);
+                    patternIdx = unassignedPatternsIdx(specificPatternIdx);
                     pattern = squeeze( patterns(patternIdx,:,:));
-                    [s, kalmanParams] = setupKalman(pattern, -1, model, quatMotionType, measurementNoise, processNoise, initialNoise);
+                    [s, kalmanParams] = setupKalman(pattern, -1, model, quatMotionType, measurementNoise, processNoise, initialNoise, patternNames{patternIdx});
                     if strcmp(quatMotionType, 'brownian')
                         s.x = [pos'; zeros(3,1); quat'];
                         % TODO also estimate uncertainty
@@ -430,7 +546,7 @@ end
             else
                     patternIdx = find(unassignedPatterns);
                     pattern = squeeze( patterns(patternIdx,:,:));
-                    [s, kalmanParams] = setupKalman(pattern, -1, model, quatMotionType, measurementNoise, processNoise, initialNoise);
+                    [s, kalmanParams] = setupKalman(pattern, -1, model, quatMotionType, measurementNoise, processNoise, initialNoise, patternNames{patternIdx});
                     if strcmp(quatMotionType, 'brownian')
                         s.x = [centers{1}'; zeros(3,1); [sqrt(2);0;0;0]];
                         % TODO also estimate uncertainty
@@ -470,15 +586,13 @@ end
     end
 
 
-
-
 %% Vizualization methods
 
     % This function sets up the figure.
     %
     function initializeFigure()
         figure;
-        %scatter3([minPos(1), maxPos(1)], [minPos(2), maxPos(2)], [minPos(3), maxPos(3)], '*')
+        scatter3([minPos(1), maxPos(1)], [minPos(2), maxPos(2)], [minPos(3), maxPos(3)], '*')
         hold on;
         if shouldShowTruth && exist('trueTrajectory', 'var')
             for k = 1:nObjects
@@ -489,10 +603,9 @@ end
         for k = 1:nObjects
             birdsTrajectories{k} = plot3(NaN, NaN, NaN, 'Color', colorsPredicted(k,:));
         end
-        
+        dets = squeeze(D(1,:,:));
+        markersForVisualization{1} = plot3(dets(:,1),dets(:,2), dets(:,3), '*', 'MarkerSize', 5, 'MarkerEdgeColor', [0.5; 0.5; 0.5]);
         for k = 1:nObjects
-            dets = squeeze(D(1,(k-1)*nMarkers+1:k*nMarkers,:));
-            markersForVisualization{k} = plot3(dets(:,1),dets(:,2), dets(:,3), '*', 'MarkerSize', 5, 'MarkerEdgeColor', [0.5; 0.5; 0.5]);
             %birdsPositions{k} = plot3(NaN, NaN, NaN, 'o', 'MarkerSize', 10, 'MarkerEdgeColor', colors(k,:));
             for n = 1:nMarkers
                markerPositions{k,n} = plot3(NaN, NaN, NaN, 'o', 'MarkerSize', 10, 'MarkerEdgeColor', colorsPredicted(k,:));
@@ -502,7 +615,7 @@ end
         
         
         grid on;
-        axis equal;
+        %axis equal;
         axis manual;
     end
 
@@ -571,13 +684,14 @@ end
                         markerPositions{k,n}.ZData = zPos + rotatedPattern(n,3);
                     end
                 end
-            end
-            dets = squeeze(D(t,(k-1)*nMarkers+1:k*nMarkers,:));
-            markersForVisualization{k}.XData = dets(:,1);
-            markersForVisualization{k}.YData = dets(:,2);
-            markersForVisualization{k}.ZData = dets(:,3);
+            end            
         end
+        dets = squeeze(D(t, :, :));
+        markersForVisualization{1}.XData = dets(:,1);
+        markersForVisualization{1}.YData = dets(:,2);
+        markersForVisualization{1}.ZData = dets(:,3);
         drawnow
+        %pause(0.02)
     end
 
 

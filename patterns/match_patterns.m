@@ -1,4 +1,4 @@
-function [assignment, FPs, certainty, method] = match_patterns(whole_pattern, detected_pattern, method, kalmanFilter, hyperParams)
+function [assignment, lostDets, FPs, certainty, method] = match_patterns(whole_pattern, detected_pattern, method, kalmanFilter, hyperParams)
 %MATCH_PATTERNS Find corresponing points in two sets of points
 %
 %   assignment = MATCH_PATTERNS(whole_pattern, detected_pattern, 'ML', rotMat)
@@ -22,7 +22,8 @@ function [assignment, FPs, certainty, method] = match_patterns(whole_pattern, de
 %   finds correspondances where the outgoing edges of a point are similar
 %   in both point sets.
 %   The algorithm is very simple and only a first draft.
-
+lostDets = -1;
+FPs = -1;
 dim = size(whole_pattern,2);
 
 if strcmp(method, 'correct')
@@ -91,15 +92,16 @@ switch method
         end
         [assignment, bi_cost] = munkers(cost_matrix);
     case 'ML'
-        
+        rotMat = Rot(kalmanFilter.x(2*dim+1:2*dim+4));
+        rotatedPattern = (rotMat*whole_pattern')';
         cost_matrix = pdist2(detected_pattern, rotatedPattern);
         [assignment, c] = munkers(cost_matrix);
         certainty = c;
     case 'new'                
         sqDistPattern = squareform(pdist(whole_pattern));
-        anglesPattern = getInternalAngles(whole_pattern);
+        %anglesPattern = getInternalAngles(whole_pattern);
 
-        lambda = hyperParams.lambda;
+        %lambda = hyperParams.lambda;
         nMarkers = size(whole_pattern,1);
         allPerms = perms(1:nMarkers+1);
         cost = zeros(size(allPerms, 1),1);
@@ -117,11 +119,11 @@ switch method
            dets = det_pat(p,:);
            cost(iii) = sqrt(sum((sqDistDetections(p,p) - sqDistPattern).^2, 'all', 'omitnan'));
            
-           if lambda > 0
-                anglesDetections = getInternalAngles(dets);
-                angleDiff = (anglesDetections - anglesPattern).^2;
-                cost(iii) = cost(iii) + lambda * sqrt(sum(angleDiff(~isnan(angleDiff))));
-           end
+           %if lambda > 0
+           %     anglesDetections = getInternalAngles(dets);
+           %     angleDiff = (anglesDetections - anglesPattern).^2;
+           %     cost(iii) = cost(iii) + lambda * sqrt(sum(angleDiff(~isnan(angleDiff))));
+           %end
            
            
            %for in = 1:4
@@ -152,6 +154,140 @@ switch method
         [c, minIdx] = min(cost);
         assignment = allPerms(minIdx,:);
         certainty = c;
+    case 'final'
+        if hyperParams.simplePatternMatching == 1
+            rotMat = Rot(kalmanFilter.x(2*dim+1:2*dim+4));
+            rotatedPattern = (rotMat*whole_pattern')';
+            cost_matrix = pdist2(detected_pattern, rotatedPattern);
+            [assignment, c] = munkers(cost_matrix);
+            certainty = c;
+            method = 'ML';
+        else
+            rotMat = Rot(kalmanFilter.x(2*dim+1:2*dim+4));
+            rotatedPattern = (rotMat*whole_pattern')';
+            sqDistPattern = squareform(pdist(whole_pattern));
+
+            nDets = size(detected_pattern,1);
+            nMarkers = size(whole_pattern,1);
+            allPerms = perms(1:nMarkers);
+            numPossibleDrops = 0;
+            for indi=0:nDets-1
+                numPossibleDrops = numPossibleDrops + nchoosek(nDets, indi);
+            end
+            cost = 1000000*ones(size(allPerms,1)*numPossibleDrops,1);
+            Ps = cell(size(allPerms,1)*numPossibleDrops,1);
+            Ds = cell(size(allPerms,1)*numPossibleDrops,1);
+
+
+            sqDistDetections = squareform(pdist(detected_pattern));
+
+            choiceCount = 1;
+            for i1=1:size(allPerms,1)
+                p = allPerms(i1,:);
+               for j1=0:nDets-1
+                   drops = nchoosek(1:nDets, j1);
+                   for i2=1:size(drops, 1)
+                       drop = drops(i2, :);
+                       dets = detected_pattern;
+                       dets(drop, :) = [];
+                       nD = size(dets,1);
+                       p = p(1:nD);
+                       Ps{choiceCount} = p;
+                       Ds{choiceCount} = drop;
+
+                       distsDet = sqDistDetections;
+                       distsDet(drop, :) = [];
+                       distsDet(:, drop) = [];
+                       distsPat = sqDistPattern(p,p);
+
+                       cost(choiceCount) = mean(sqrt(sum((distsDet - distsPat).^2, 2)));
+                       
+                       eucDist = mean(sqrt(sum((dets - rotatedPattern(p, :)).^2, 2)));
+                       
+                       cost(choiceCount) = cost(choiceCount) + hyperParams.eucDistWeight*eucDist;
+                       cost(choiceCount) = cost(choiceCount) + hyperParams.costOfNonAsDtMA * j1;
+                       choiceCount = choiceCount + 1;
+                       %TODO: maybe add penaltiy for dropping all except one
+                       %detection
+                   end
+               end
+            end
+            [c, minIdx] = min(cost);
+            assignment = Ps{minIdx};
+            lostDets = Ds{minIdx};
+            %assignment = invs{minIdx};
+            certainty = c;
+        end
+    case 'final2'
+        if hyperParams.simplePatternMatching == 1
+            rotMat = Rot(kalmanFilter.x(2*dim+1:2*dim+4));
+            rotatedPattern = (rotMat*whole_pattern')';
+            cost_matrix = pdist2(detected_pattern, rotatedPattern);
+            [assignment, c] = munkers(cost_matrix);
+            certainty = c;
+            method = 'ML';
+        else
+            rotMat = Rot(kalmanFilter.x(2*dim+1:2*dim+4));
+            rotatedPattern = (rotMat*whole_pattern')';
+            sqDistMarkers = squareform(pdist(whole_pattern));
+            sqDistDetections = squareform(pdist(detected_pattern));
+
+            nDets = size(detected_pattern,1);
+            nMarkers = size(whole_pattern,1);
+            % number of assignments that are checked
+            numAssignments = 0;
+            for indi =1:nDets
+                numAssignments = numAssignments + nchoosek(nDets, indi)*nchoosek(nMarkers,indi)*factorial(indi);
+            end
+            
+            cost = 1000000*ones(numAssignments,1);
+            checkedPerms = cell(numAssignments,1);
+            chosenMarkers = cell(numAssignments,1);
+            chosenDets = cell(numAssignments,1);
+            choiceCount = 1;
+            %LOOPSLOOPSLOOPS
+            for numPoints=max(1,nDets-2):nDets
+               allPerms = perms(1:numPoints);
+               allMarkerSelections = nchoosek(1:nMarkers, numPoints);
+               allDetSelections = nchoosek(1:nDets, numPoints);
+               for iD=1:size(allDetSelections,1)
+                   detSelect = allDetSelections(iD,:);
+                   dets = detected_pattern(detSelect,:);
+                   sqDistD = sqDistDetections(detSelect,detSelect);
+
+                   for iM=1:size(allMarkerSelections,1)
+                       mSelect = allMarkerSelections(iM,:);
+                       rotatedP = rotatedPattern(mSelect,:);
+                       sqDistM = sqDistMarkers(mSelect,mSelect);
+                                             
+                      for iP=1:length(allPerms)
+                         p = allPerms(iP,:);
+                         checkedPerms{choiceCount} = p;
+                         chosenMarkers{choiceCount} = mSelect;
+                         chosenDets{choiceCount} = detSelect;
+                         
+                         cost(choiceCount) = mean(sqrt(sum((sqDistD - sqDistM(p,p)).^2, 2)));
+                       
+                         eucDist = mean(sqrt(sum((dets - rotatedP(p, :)).^2, 2)));
+                       
+                         cost(choiceCount) = cost(choiceCount) + hyperParams.eucDistWeight*eucDist;
+                         cost(choiceCount) = cost(choiceCount) + hyperParams.costOfNonAsDtMA * (nDets-numPoints);
+                         choiceCount = choiceCount + 1;
+                      end
+                   end
+               end
+            end
+            
+            [c, minIdx] = min(cost);
+            %assignment = Ps{minIdx};
+            chosenMs = chosenMarkers{minIdx};
+            assignment = chosenMs(checkedPerms{minIdx});
+            %TODO I have to incorporate 
+           
+            %lostDets = Ds{minIdx};
+            lostDets = setdiff(1:nDets, chosenDets{minIdx});
+            certainty = c;
+        end
     case 'noKnowledge'
         costNonAssignment = 50;
                    
