@@ -11,11 +11,11 @@ The Code regarding the deep learning approach can be found in the **ModernMethod
 
 ### SOT in a noise free setting
 See the neural network results on the left and the Kalman Filter results on the right
-![](NN_noise_free.gif)  ![](KF_noise_free.gif)
+![](GIFS/NN_noise_free.gif)  ![](GIFS/KF_noise_free.gif)
 
 ### SOT in a noisy setting
-![](NN_noisy.gif)  ![](KF_noisy.gif)
+![](GIFS/NN_noisy.gif)  ![](GIFS/KF_noisy.gif)
 
 ### MOT results
-![](closeup_MOT.gif)  ![](MOT.gif)
+![](GIFS/closeup_MOT.gif)  ![](GIFS/MOT.gif)
 
