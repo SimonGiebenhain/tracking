@@ -1,3 +1,6 @@
+% This script evaluates the Kalman Filter approach on the test data on
+% which the neural network was evaluated.
+
 %% load data
 load('tracking/modernMethods/data/artificial_none.mat')
 load('tracking/modernMethods/data/artificial_higher.mat')

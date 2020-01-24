@@ -1,3 +1,7 @@
+% This script evaluates the Kalman Filter approach for multiple different
+% settings and noise levels, in order to justify the additions to the
+% regular extended Kalman Filter.
+
 %% Parameter settings to test
 
 stdHyperParams.doFPFiltering = 1;
