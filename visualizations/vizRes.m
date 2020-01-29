@@ -19,7 +19,7 @@ colorsPredicted = distinguishable_colors(nObjects);
 colorsTrue = (colorsPredicted + 2) ./ (max(colorsPredicted,[],2) +2);
 
 figure;
-%scatter3([minPos(1), maxPos(1)], [minPos(2), maxPos(2)], [minPos(3), maxPos(3)], '*')
+scatter3([-2,2], [-2, 2], [-2, 2], '*')
 hold on;
 if shouldShowTruth && exist('trueTrajectory', 'var')
     for k = 1:nObjects
@@ -48,6 +48,7 @@ axis manual;
 
 %TODO loop t over all timesteps
 for t=1:min(size(D,1), size(estimatedPositions,2))
+    t
     for k = 1:nObjects
         if shouldShowTruth && exist('trueTrajectory', 'var') && size(trueTrajectory,2) > t
             newXTrue = [trueTrajectories{k}.XData trueTrajectory(k,t,1)];
@@ -64,9 +65,11 @@ for t=1:min(size(D,1), size(estimatedPositions,2))
             trueTrajectories{k}.XData = newXTrue;
             trueTrajectories{k}.YData = newYTrue;
             trueTrajectories{k}.ZData = newZTrue;
-            
+           
+        
             pattern = squeeze(patterns(k,:,:));
-            trueRotMat = Rot(trueOrientation(k, t, :));
+            trueRotMat = quat2rotm(squeeze(trueOrientation(k, t, :)));
+            %trueRotMat = Rot(squeeze(trueOrientation(k, t, :)));
             trueRotatedPattern = (trueRotMat * pattern')';
             
             for n = 1:nMarkers
@@ -101,7 +104,8 @@ for t=1:min(size(D,1), size(estimatedPositions,2))
         
         pattern = squeeze(patterns(k,:,:));
         quat = squeeze(estimatedQuats(k,t,:));
-        rotMat = Rot(quat);
+        rotMat = quat2rotm(quat');
+        %rotMat = Rot(quat);
         rotatedPattern = (rotMat * pattern')';
         
         for n = 1:nMarkers
@@ -115,7 +119,7 @@ for t=1:min(size(D,1), size(estimatedPositions,2))
         detsForVisualization{k}.ZData = dets(:,3);
     end
     drawnow
-    pause(0.002)
+    pause(0.1)
 end
 end
 

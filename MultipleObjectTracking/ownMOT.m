@@ -41,11 +41,11 @@ processNoise.quat = hyperParams.quatNoise;
 processNoise.quatMotion = hyperParams.quatMotionNoise;
 measurementNoise = hyperParams.measurementNoise;
 model = 'extended';
-initialNoise.initPositionVar = 5;
-initialNoise.initMotionVar = 5;
-initialNoise.initAccVar = 5;
-initialNoise.initQuatVar = 0.02;
-initialNoise.initQuatMotionVar = 0.02;
+initialNoise.initPositionVar = 10;
+initialNoise.initMotionVar = 20;
+initialNoise.initAccVar = 15;
+initialNoise.initQuatVar = 0.075;
+initialNoise.initQuatMotionVar = 0.075;
 
 params.initialNoise = initialNoise;
 params.model = model;
@@ -77,7 +77,7 @@ colorsTrue = (colorsPredicted + 2) ./ (max(colorsPredicted,[],2) +2);
 keepOldTrajectory = 0;
 %shouldShowTruth = 1;
 vizHistoryLength = 200;
-%initializeFigure();
+initializeFigure();
 
 
 estimatedPositions = zeros(nObjects, T, 3);
@@ -102,7 +102,7 @@ for t = 1:T
         [tracks, unassignedPatterns] = createNewTracks(detections(unassignedDetections,:), unassignedPatterns, tracks, patterns, params);
     end
     %t
-    %displayTrackingResults();
+    displayTrackingResults();
     
     % Store tracking results
     for ii = 1:nObjects
@@ -433,8 +433,8 @@ end
             return;
         end
         
-        invisibleForTooLong = 20;
-        ageThreshold = 2;
+        invisibleForTooLong = 10;
+        ageThreshold = 1;
         visibilityFraction = 0.5;
         
         % Compute the fraction of the track's age for which it was visible.

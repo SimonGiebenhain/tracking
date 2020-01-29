@@ -16,9 +16,9 @@ if noKnowledge
     nDets = size(detections, 1);
     % Find an assignment between the individual markers and the detections
     ds = detections - s.x(1:dim)';
-    if age > 3 && hyperParams.doFPFiltering == 1
+    if age > 10 && hyperParams.doFPFiltering == 1
         norms = sqrt(sum(ds.^2, 2));
-        threshold = hyperParams.whenFPFilter + sqrt(sum(s.x(dim+1:2*dim).^2))*4;
+        threshold = hyperParams.minAssignmentThreshold + sqrt(sum(s.x(dim+1:2*dim).^2))*5;
         if nnz(norms > threshold) < nDets || nnz(norms > threshold) == 1
             ds(norms > threshold, :) = [];
             detections(norms > threshold, :) = [];
@@ -28,7 +28,7 @@ if noKnowledge
     if size(ds, 1) <= 1
         [p, ~, FPs, certainty, method] = match_patterns(pattern, ds, 'ML', motionType, s, hyperParams);
     else
-        [p, lostDs, FPs, certainty, method] = match_patterns(pattern, ds, 'final3', motionType, s, hyperParams);
+        [p, lostDs, FPs, certainty, method] = match_patterns(pattern, ds, 'final4', motionType, s, hyperParams);
     end
     %[p, ~,  FPs, certainty, method] = match_patterns(pattern, detections - s.x(1:dim)', 'correct', s, hyperParams);
     %detections = detections(~FPs, :);
@@ -47,7 +47,7 @@ if noKnowledge
         if hyperParams.useAssignmentLength == 1
             certainty = hyperParams.certaintyFactor * certainty / (size(assignment, 2) + 1);
         end
-    elseif strcmp(method, 'final3')
+    elseif strcmp(method, 'final4')
         nDets = size(detections, 1);
         assignment = p;
         lostDet = zeros(nDets, 1);

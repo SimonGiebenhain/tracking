@@ -1,13 +1,13 @@
 %% load Data
 %load('trackingResults')
 
-filename = 'correctedVICON.csv';
-shouldReorder = 0;
-includeRMSE = 0;
-positions = correctedVICONpos;
-quats = correctedVICONquat;
-%positions = estimatedPositions;
-%quats = estimatedQuats;
+filename = 'tracks_all.csv';
+shouldReorder = 1;
+includeRMSE = 1;
+%positions = correctedVICONpos;
+%quats = correctedVICONquat;
+positions = estimatedPositions;
+quats = estimatedQuats;
 
 nObjects = size(positions, 1);
 T = size(positions, 2);

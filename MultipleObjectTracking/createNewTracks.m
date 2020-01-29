@@ -3,6 +3,13 @@ function [tracks, unassignedPatterns] = createNewTracks(detections, unassignedPa
 %   Detailed explanation goes here
 
 if size(detections, 1) > 1 && sum(unassignedPatterns) > 0  
+    if sum(unassignedPatterns) == 1
+       minClusterSize = 3; 
+       costOfNonAssignment = 0.5;
+    else
+       minClusterSize = 4; 
+       costOfNonAssignment = 0.75;
+    end
     %fprintf('Creatng new tracks')
     dim = size(patterns,3);
     epsilon = 55;
@@ -10,7 +17,7 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
     nClusters = 0;
     clusters = {};
     for i=1:length(clustersRaw)
-        if size(clustersRaw{i},1) > 3
+        if size(clustersRaw{i},1) >= minClusterSize
             %size(clustersRaw{i},1)
             while size(clustersRaw{i},1) > 4
                 %TODO split cluster
@@ -50,7 +57,7 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
         end
     end
     
-    costOfNonAssignment = 2; 
+     
     [patternToClusterAssignment, stillUnassignedPatterns, ~] = ...
         assignDetectionsToTracks(costMatrix, costOfNonAssignment);
     
