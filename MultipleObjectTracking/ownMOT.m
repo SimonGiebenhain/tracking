@@ -99,7 +99,7 @@ for t = 1:T
     deleteLostTracks();
     %TODO params
     if sum(unassignedPatterns) > 0 &&  length(detections(unassignedDetections,:)) > 1
-        [tracks, unassignedPatterns] = createNewTracks(detections(unassignedDetections,:), unassignedPatterns, tracks, patterns, params);
+        [tracks, unassignedPatterns] = createNewTracks(detections(unassignedDetections,:), unassignedPatterns, tracks, patterns, params, patternNames);
     end
     t
     if t == 60
@@ -197,13 +197,13 @@ end
                 end
                 s.pattern = squeeze(patterns(i,:,:));
                 tracks(i) = struct(...
-                    'id', nextId, ... %'center', , ...
+                    'id', i, ... 
+                    'name', patternName{i}, ...
                     'kalmanFilter', s, ...
                     'kalmanParams', kalmanParams, ...
                     'age', 1, ...
                     'totalVisibleCount', 1, ...
                     'consecutiveInvisibleCount', 0);
-                nextId = nextId + 1;
             end
         else
             emptyTrack.age = 0;
@@ -212,6 +212,7 @@ end
             
             for in =1:nObjects
                 emptyTrack.id = in;
+                emptyTrack.name = '';
                 emptyTrack.kalmanParams = [];
                 kalmanFilter.pattern = squeeze(patterns(in,:,:));
                 emptyTrack.kalmanFilter = kalmanFilter;
@@ -219,7 +220,7 @@ end
             end
             unassignedDetections = squeeze(D(1,:,:));
             unassignedDetections = reshape(unassignedDetections(~isnan(unassignedDetections)),[],dim);
-            [tracks, unassignedPatterns] = createNewTracks(unassignedDetections, unassignedPatterns, tracks, patterns, params);
+            [tracks, unassignedPatterns] = createNewTracks(unassignedDetections, unassignedPatterns, tracks, patterns, params, patternNames);
         end
     end
 
@@ -488,129 +489,7 @@ end
 % detection is a start of a new track. In practice, you can use other cues
 % to eliminate noisy detections, such as size, location, or appearance.
 
-    function createNewTracksOld()
-        if length(unassignedDetections) > 1 && sum(unassignedPatterns) > 0
-            epsilon = 100;
-            clustersRaw = clusterUnassignedDetections(detections(unassignedDetections,:), epsilon);
-            nClusters = 0;
-            for i=1:length(clustersRaw)
-                if size(clustersRaw{i},1) == 4
-                    clusters{i} = clustersRaw{i};
-                    nClusters = nClusters + 1;
-                elseif size(clustersRaw{i},1) == 3
-                    centers{i} = mean(clustersRaw{i}, 1);
-                    nClusters = nClusters + 1;
-                end
-            end
-            
-            if nClusters < 1
-                return
-            end
-            if isempty(centers)
-                costMatrix = zeros(sum(unassignedPatterns), length(clusters));
-                rotMatsMatrix = zeros(sum(unassignedPatterns), length(clusters), 3,3);
-                translationsMatrix = zeros(sum(unassignedPatterns), length(clusters), 3);
-                unassignedPatternsIdx = find(unassignedPatterns);
-                for i = 1:sum(unassignedPatterns)
-                    for j = 1:length(clusters)
-                        pattern = squeeze(patterns(unassignedPatternsIdx(i),:,:));
-                        % TODO bettern method that works for different number
-                        % of points as well
-                        [R, translation, MSE] = umeyama(pattern', detections(clusters{j},:)');
-                        costMatrix(i,j) = MSE;
-                        rotMatsMatrix(i,j,:,:) = R;
-                        translationsMatrix(i,j,:) = translation;
-                    end
-                end
-                
-                costOfNonAssignment = 3000;
-                [patternToClusterAssignment, stillUnassignedPatterns, ~] = ...
-                    assignDetectionsToTracks(costMatrix, costOfNonAssignment);
-                
-                
-                %for each (i,j) in patternToClusterAssignment createNewTrack
-                for i=1:size(patternToClusterAssignment,1)
-                    specificPatternIdx = patternToClusterAssignment(i,1);
-                    clusterIdx = patternToClusterAssignment(i,2);
-                    pos = squeeze( translationsMatrix(specificPatternIdx, clusterIdx,:) );
-                    quat = matToQuat( squeeze(rotMatsMatrix(specificPatternIdx, clusterIdx, :,:)) );
-                    
-                    % Create a Kalman filter object.
-                    %TODO adaptive initial Noise!!!!
-                    patternIdx = unassignedPatternsIdx(specificPatternIdx);
-                    pattern = squeeze( patterns(patternIdx,:,:));
-                    [s, kalmanParams] = setupKalman(pattern, -1, model, quatMotionType, measurementNoise, processNoise, initialNoise, patternNames{patternIdx});
-                    if strcmp(quatMotionType, 'brownian')
-                        s.x = [pos'; zeros(3,1); quat'];
-                        % TODO also estimate uncertainty
-                        s.P = eye(2*dim+4) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initQuatVar], [dim, dim, 4]);
-                    else
-                        s.x = [pos'; zeros(3,1); quat'; zeros(4,1)];
-                        % TODO also estimate uncertainty
-                        s.P = eye(2*dim+8) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initQuatVar; kalmanParams.initQuatMotionVar], [dim, dim, 4, 4]);
-                    end
-                    s.pattern = pattern;
-                    newTrack = struct(...
-                        'id', patternIdx, ...
-                        'kalmanFilter', s, ...
-                        'kalmanParams', kalmanParams, ...
-                        'age', 1, ...
-                        'totalVisibleCount', 1, ...
-                        'consecutiveInvisibleCount', 0);
-                    
-                    % Add it to the array of tracks.
-                    tracks(patternIdx) = newTrack;
-                    
-                    % Increment the next id.
-                    %nextId = nextId + 1;
-                    unassignedPatterns(patternIdx) = 0;
-                    
-                end
-                %TODO WTF is this case distinction?
-                % TODO add method to initialize 3 clustered unassigned
-                % detections, i.e. with match_patterns()
-            else
-                patternIdx = find(unassignedPatterns);
-                pattern = squeeze( patterns(patternIdx,:,:));
-                [s, kalmanParams] = setupKalman(pattern, -1, model, quatMotionType, measurementNoise, processNoise, initialNoise, patternNames{patternIdx});
-                if strcmp(quatMotionType, 'brownian')
-                    s.x = [centers{1}'; zeros(3,1); [sqrt(2);0;0;0]];
-                    % TODO also estimate uncertainty
-                    s.P = eye(2*dim+4) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initQuatVar], [dim, dim, 4]);
-                else
-                    s.x = [centers{1}'; zeros(3,1); [sqrt(2);0;0;0]; zeros(4,1)];
-                    % TODO also estimate uncertainty
-                    s.P = eye(2*dim+8) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initQuatVar; kalmanParams.initQuatMotionVar], [dim, dim, 4, 4]);
-                end
-                s.pattern = pattern;
-                newTrack = struct(...
-                    'id', patternIdx, ...
-                    'kalmanFilter', s, ...
-                    'kalmanParams', kalmanParams, ...
-                    'age', 1, ...
-                    'totalVisibleCount', 1, ...
-                    'consecutiveInvisibleCount', 0);
-                
-                % Add it to the array of tracks.
-                tracks(patternIdx) = newTrack;
-                
-                % Increment the next id.
-                %nextId = nextId + 1;
-                unassignedPatterns(patternIdx) = 0;
-                
-            end
-            
-            
-            
-            % then do pattern matching
-            % then maybe umeyama to get rotation an translation
-            % from that get initial center and rotation
-            % Question how many detections in a cluster do I need for it to
-            % work?
-            
-        end
-    end
-
+    % see MultipleObjectTracking/createNewTracks()
 
 %% Vizualization methods
 
