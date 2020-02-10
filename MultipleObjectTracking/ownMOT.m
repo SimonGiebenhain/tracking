@@ -77,7 +77,7 @@ colorsTrue = (colorsPredicted + 2) ./ (max(colorsPredicted,[],2) +2);
 keepOldTrajectory = 0;
 %shouldShowTruth = 1;
 vizHistoryLength = 200;
-initializeFigure();
+%initializeFigure();
 
 
 estimatedPositions = zeros(nObjects, T, 3);
@@ -105,7 +105,7 @@ for t = 1:T
     if t == 60
        t 
     end
-    displayTrackingResults();
+    %displayTrackingResults();
     
     % Store tracking results
     for ii = 1:nObjects

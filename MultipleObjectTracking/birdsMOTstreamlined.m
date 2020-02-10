@@ -41,14 +41,18 @@ quatMotionType = 'brownian';
 
 fprintf('Starting to track!\n')
 
-profile on
-[estimatedPositions, estimatedQuats] = ownMOT(formattedData(42000:end,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
+%profile on
+beginningFrame = 42000;
+[estimatedPositions, estimatedQuats] = ownMOT(formattedData(beginningFrame:end,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
 
 %[estimatedPositions, estimatedQuats] = ownMOT(formattedData(1000:end,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
 
-profile viewer
+%profile viewer
 
-% Save the results
-
+% Save the results in .mat file format
 %save([filePrefix, '_RESULTS.mat'], 'estimatedPositions', 'estimatedQuats')
+%%
+% Save file as .csv file, in VICON-style format
+resultsFilename = [filePrefix '_RESULTS.csv'];
+exportToCSV(resultsFilename, estimatedPositions, estimatedQuats, beginningFrame, patternNames, 1, 0);
 
