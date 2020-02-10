@@ -5,10 +5,10 @@ function [tracks, unassignedPatterns] = createNewTracks(detections, unassignedPa
 if size(detections, 1) > 1 && sum(unassignedPatterns) > 0  
     if sum(unassignedPatterns) == 1
        minClusterSize = 3; 
-       costOfNonAssignment = 0.5;
+       costOfNonAssignment = 1;
     else
        minClusterSize = 4; 
-       costOfNonAssignment = 0.75;
+       costOfNonAssignment = 2;
     end
     %fprintf('Creatng new tracks')
     dim = size(patterns,3);
@@ -66,47 +66,82 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
         specificPatternIdx = patternToClusterAssignment(i,1);
         clusterIdx = patternToClusterAssignment(i,2);
         pos = squeeze( translationsMatrix(specificPatternIdx, clusterIdx,:) );
-        quat = rotm2quat( squeeze(rotMatsMatrix(specificPatternIdx, clusterIdx, :,:)) );
+        if strcmp(params.model, 'LieGroup') 
+            rotm = squeeze(rotMatsMatrix(specificPatternIdx, clusterIdx, :,:));
+            l2Error = costMatrix(specificPatternIdx, clusterIdx);
+            
+            % Create a Kalman filter object.
+            %TODO adaptive initial Noise!!!!
+            patternIdx = unassignedPatternsIdx(specificPatternIdx);
+            pattern = squeeze( patterns(patternIdx,:,:));
+            [s, kalmanParams] = setupKalman(pattern, -1, params);
+            mu.X = [rotm pos; zeros(1,3) 1];
+            mu.v = zeros(3,1);
+            mu.a = zeros(3,1);
+            s.mu = mu;
+            certaintyFactor = min(l2Error^2, 1);
+            s.P = diag(repelem([certaintyFactor*params.initialNoise.initQuatVar; 
+                                certaintyFactor*params.initialNoise.initPositionVar; 
+                                params.initialNoise.initMotionVar; 
+                                params.initialNoise.initAccVar
+                               ],[dim, dim, dim, dim]));
+            s.pattern = pattern;
+            newTrack = struct(...
+                'id', patternIdx, ...
+                'kalmanFilter', s, ...
+                'kalmanParams', kalmanParams, ...
+                'age', 1, ...
+                'totalVisibleCount', 1, ...
+                'consecutiveInvisibleCount', 0);
+
+            % Add it to the array of tracks.
+            tracks(patternIdx) = newTrack;
+
+            unassignedPatterns(patternIdx) = 0;
         
-        % Create a Kalman filter object.
-        %TODO adaptive initial Noise!!!!
-        patternIdx = unassignedPatternsIdx(specificPatternIdx);
-        pattern = squeeze( patterns(patternIdx,:,:));
-        [s, kalmanParams] = setupKalman(pattern, -1, params);
-        if strcmp(params.quatMotionType, 'brownian')
-            if strcmp(params.motionType, 'constAcc')
-                s.x = [pos; zeros(3,1); zeros(3,1); quat'];
-                % TODO also estimate uncertainty
-                s.P = eye(3*dim+4) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initAccVar; kalmanParams.initQuatVar], [dim, dim, dim, 4]);
-            else
-                s.x = [pos; zeros(3,1); quat'];
-                % TODO also estimate uncertainty
-                s.P = eye(2*dim+4) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initQuatVar], [dim, dim, 4]);
-            end
         else
-            if strcmp(params.motionType, 'constAcc')
-                fprintf('not implemented yet')
+            quat = rotm2quat( squeeze(rotMatsMatrix(specificPatternIdx, clusterIdx, :,:)) );
+
+            % Create a Kalman filter object.
+            %TODO adaptive initial Noise!!!!
+            patternIdx = unassignedPatternsIdx(specificPatternIdx);
+            pattern = squeeze( patterns(patternIdx,:,:));
+            [s, kalmanParams] = setupKalman(pattern, -1, params);
+            if strcmp(params.quatMotionType, 'brownian')
+                if strcmp(params.motionType, 'constAcc')
+                    s.x = [pos; zeros(3,1); zeros(3,1); quat'];
+                    % TODO also estimate uncertainty
+                    s.P = eye(3*dim+4) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initAccVar; kalmanParams.initQuatVar], [dim, dim, dim, 4]);
+                else
+                    s.x = [pos; zeros(3,1); quat'];
+                    % TODO also estimate uncertainty
+                    s.P = eye(2*dim+4) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initQuatVar], [dim, dim, 4]);
+                end
             else
-                s.x = [pos'; zeros(3,1); quat'; zeros(4,1)];
-                % TODO also estimate uncertainty
-                s.P = eye(2*dim+8) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initQuatVar; kalmanParams.initQuatMotionVar], [dim, dim, 4, 4]);
+                if strcmp(params.motionType, 'constAcc')
+                    fprintf('not implemented yet')
+                else
+                    s.x = [pos'; zeros(3,1); quat'; zeros(4,1)];
+                    % TODO also estimate uncertainty
+                    s.P = eye(2*dim+8) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initQuatVar; kalmanParams.initQuatMotionVar], [dim, dim, 4, 4]);
+                end
             end
+            s.pattern = pattern;
+            newTrack = struct(...
+                'id', patternIdx, ...
+                'kalmanFilter', s, ...
+                'kalmanParams', kalmanParams, ...
+                'age', 1, ...
+                'totalVisibleCount', 1, ...
+                'consecutiveInvisibleCount', 0);
+
+            % Add it to the array of tracks.
+            tracks(patternIdx) = newTrack;
+
+            % Increment the next id.
+            %nextId = nextId + 1;
+            unassignedPatterns(patternIdx) = 0;
         end
-        s.pattern = pattern;
-        newTrack = struct(...
-            'id', patternIdx, ...
-            'kalmanFilter', s, ...
-            'kalmanParams', kalmanParams, ...
-            'age', 1, ...
-            'totalVisibleCount', 1, ...
-            'consecutiveInvisibleCount', 0);
-        
-        % Add it to the array of tracks.
-        tracks(patternIdx) = newTrack;
-        
-        % Increment the next id.
-        %nextId = nextId + 1;
-        unassignedPatterns(patternIdx) = 0;
         
     end    
 end

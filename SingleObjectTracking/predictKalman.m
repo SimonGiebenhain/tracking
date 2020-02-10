@@ -4,7 +4,6 @@ function s = predictKalman(s, noKnowledge, globalParams, model)
 
 R = globalParams.R;
 pattern = globalParams.pattern;
-H = globalParams.H;
 
 nMarkers = size(pattern,1);
 dim = size(pattern,2);
@@ -81,10 +80,15 @@ switch model
     case 'extended'
         % If state hasn't been initialized
         
-        
         % Prediction for state vector and covariance:
-        s.x = s.A*s.x;
-        s.P = s.A * s.P * s.A' + s.Q;
+        if strcmp(s.type, 'LG-EKF')
+            F = JacOfFonSE3CA(s.mu);
+            s.mu = comp(s.mu, expSE3ACvec(stateTrans(s.mu)));
+            s.P = F*s.P*F' + s.Q;
+        else
+            s.x = s.A*s.x;
+            s.P = s.A * s.P * s.A' + s.Q;
+        end
         
 end
 

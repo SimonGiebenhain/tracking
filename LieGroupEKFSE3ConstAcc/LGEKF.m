@@ -1,4 +1,5 @@
-pattern = [1 1 1 1; 1 0 0 1; -1 1 0 1; 0 0 -1 1];
+pattern = [1 1 1; 1 0 0; -1 1 0; 0 0 -1];
+pattern = [pattern ones(4,1)];
 theta = 0.3;
 XInit = [1 0 0 0; 0 cos(theta) -sin(theta) 0; 0 sin(theta) cos(theta) 0; 0 0 0 1];
 vInit = [0; 0; 0];
@@ -6,10 +7,12 @@ aInit = [0; 0; 0];
 muInit.X = XInit;
 muInit.v = vInit;
 muInit.a = aInit;
-PInit = 2*eye(12);
-R = 1.5*eye(12);
-Q = 1/3 * eye(16);
-
+% PInit = diag([1;1;1;10;10;10;5;5;5;3;3;3]);
+% R = diag([0.5;0.5;0.5;2;2;2;5;5;5;5;5;5]);
+% Q = diag(repmat([5; 5; 5; 5], 4, 1));
+PInit = 7*diag([0.3 0.3 0.3 0.5 0.5 0.5 0.2 0.2 0.2 0.2 0.2 0.2]);
+R = 2*diag([0.5 0.5 0.5 1 1 1 1 1 1 1 1 1]);
+Q = 1/2 * eye(16);
 %measurement function, h
 h = @(S) [measFunc(S,pattern(1,:)'); measFunc(S,pattern(2,:)'); measFunc(S,pattern(3,:)'); measFunc(S,pattern(4,:)')];
 
@@ -33,13 +36,18 @@ lossTrans = zeros(1000,1);
 tic
 
 for i=1:1000
-    theta = i*pi/100;
+    %theta = i*pi/100;
     x_off = sin(i/10);
     y_off = i / 30;
-    z_off = -cos(i/10);
-    rot_mat = [1 0 0 x_off; 0 cos(theta) -sin(theta) y_off; 0 sin(theta) cos(theta) z_off; 0 0 0 1];
+    z_off = (-cos(i/10));
+    q = [sin(i/100) cos(i/100)*2 (i-500)/100 -sin(i/100)^2];
+    q = q/sqrt(sum(q.^2));
+    %rot_mat = [1 0 0 x_off; 0 cos(theta) -sin(theta) y_off; 0 sin(theta) cos(theta) z_off; 0 0 0 1];
+    rot_mat = quat2rotm(q);
+    rot_mat = [rot_mat [x_off;y_off;z_off]];
+    rot_mat = [rot_mat; [0 0 0 1]];
     dets = (rot_mat * pattern');
-    dets = reshape(dets, 16,1);
+    dets = reshape(dets, 16,1) + normrnd(0, 0.005, 16, 1);
     
     [mu, P] = predict(mu, P, R);
     [mu, P] = update(dets, mu, P, H, h, Q);
@@ -57,11 +65,9 @@ plot(lossTrans)
 %plot((1:1000)*pi/300)
 
 
-
-
 function [mu, P] = predict(mu, P, R)
-mu = comp(mu, expSE3ACvec(stateTrans(mu)));
 F = JacOfFonSE3CA(mu);
+mu = comp(mu, expSE3ACvec(stateTrans(mu)));
 P = F*P*F' + R;
 end
 

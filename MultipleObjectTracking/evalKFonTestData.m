@@ -41,20 +41,21 @@ stdHyperParams.adaptiveNoise = 1;
 stdHyperParams.lambda = 0;
 stdHyperParams.simplePatternMatching = 0;
 
-stdHyperParams.costOfNonAsDtTA = 0.8;
+stdHyperParams.costOfNonAsDtTA = 0.7;
 stdHyperParams.certaintyFactor = 50;
 stdHyperParams.useAssignmentLength = 1;
-stdHyperParams.whenFPFilter = 0.6;
+stdHyperParams.minAssignmentThreshold = 0.9;
 stdHyperParams.thresholdFPFilter = 0.7;
 stdHyperParams.costOfNonAsDtMA = 0.095;
 stdHyperParams.eucDistWeight = 1/8;
-stdHyperParams.posNoise = 0.25;
-stdHyperParams.motNoise = 0.25;
-stdHyperParams.quatNoise = 0.075;
+stdHyperParams.posNoise = 0.005;
+stdHyperParams.motNoise = 0.008;
+stdHyperParams.accNoise = 0.008;
+stdHyperParams.quatNoise = 0.05;
 stdHyperParams.quatMotionNoise = 0.05;
 stdHyperParams.measurementNoise = 2;
 stdHyperParams.certaintyScale = 0.3;
-quatMotionType = 'brownian'
+quatMotionType = 'brownian';
 
 %%
 exN = 4;
@@ -73,7 +74,10 @@ qMat = permute(reshape(qMat, [100, 3, 3]), [3, 2, 1]);
 q = rotm2quat(qMat); 
 
 %initialStates = [p(1, :) 0 0 0 rotm2quat(reshape(q(1, :), 3, 3)') 0 0 0 0];
-initialStates = [p(1, :) 0 0 0 q(1, :) 0 0 0 0];
+initialStates.pos = p(1, :);
+initialStates.velocity = [0 0 0];
+initialStates.acceleration = [0 0 0];
+initialStates.quat = q(1, :);
 
 size(initialStates)
 [estimatedPositions, estimatedQuats] = ownMOT(squeeze(D(:, exN, :, :)), pats, {'pat'} ,1 , initialStates, 1, 0, -1, -1, quatMotionType, stdHyperParams);

@@ -163,6 +163,9 @@ switch model
         % The measurment covariance matrix
         R = obsNoise*eye(obsDim);
         s(1).R = R;
+        s(1).type = 'EKF';
+        %s(1).patternName = patternName;
+        
         
         globalParams.R = R;
         globalParams.H = H;
@@ -180,6 +183,31 @@ switch model
         % Do not specify an initial state
         s(1).x = nan;
         s(1).P = nan;
+        
+    case 'LieGroup'      
+        % working in homogenous coordinates, hence dim + 1 is used
+        obsDim = nMarkers*(dim+1);
+                   
+        % The process covariance matrix
+        s.Q = diag([repmat(processNoise.quat, dim, 1);
+                    repmat(processNoise.position, dim, 1);
+                    repmat(processNoise.motion, dim, 1);
+                    repmat(processNoise.acceleration, dim, 1)]);
+        
+
+        % The measurment covariance matrix
+        R = obsNoise*eye(obsDim);
+        globalParams.R = R;
+        globalParams.pattern = pattern;
+
+        % Do not specify an initial state
+        mu.X = nan;
+        mu.v = nan;
+        mu.a = nan;
+        s.mu = mu;
+        s.P = nan;
+        s.type = 'LG-EKF';
+        %s.patternName = patternName;
 end
 end
 

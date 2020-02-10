@@ -1,6 +1,6 @@
 %% Multi Object Tracking
 % The original code structure comes from the MATLAB tutorial for motion
-% based multi object tracking: 
+% based multi object tracking:
 % https://de.mathworks.com/help/vision/examples/motion-based-multiple-object-tracking.html
 
 % TODO
@@ -40,11 +40,11 @@ processNoise.acceleration = hyperParams.accNoise;
 processNoise.quat = hyperParams.quatNoise;
 processNoise.quatMotion = hyperParams.quatMotionNoise;
 measurementNoise = hyperParams.measurementNoise;
-model = 'extended';
-initialNoise.initPositionVar = 10;
+model = 'LieGroup'; % 'extended'; %
+initialNoise.initPositionVar = 1;
 initialNoise.initMotionVar = 20;
-initialNoise.initAccVar = 15;
-initialNoise.initQuatVar = 0.075;
+initialNoise.initAccVar = 20;
+initialNoise.initQuatVar = 0.01;
 initialNoise.initQuatMotionVar = 0.075;
 
 params.initialNoise = initialNoise;
@@ -87,7 +87,7 @@ falsePositives = zeros(T, 1);
 
 
 for t = 1:T
-    tic
+    %tic
     detections = squeeze(D(t,:,:));
     detections = reshape(detections(~isnan(detections)),[],dim);
     
@@ -101,25 +101,33 @@ for t = 1:T
     if sum(unassignedPatterns) > 0 &&  length(detections(unassignedDetections,:)) > 1
         [tracks, unassignedPatterns] = createNewTracks(detections(unassignedDetections,:), unassignedPatterns, tracks, patterns, params);
     end
-    %t
+    t
+    if t == 60
+       t 
+    end
     displayTrackingResults();
     
     % Store tracking results
     for ii = 1:nObjects
         if tracks(ii).age > 0
-            state = tracks(ii).kalmanFilter.x;
-            estimatedPositions(ii,t,:) = state(1:dim);
-            if strcmp(params.motionType, 'constAcc')
-                estimatedQuats(ii,t,:) = state(3*dim+1:3*dim+4);
+            if strcmp(model, 'LieGroup')
+                estimatedPositions(ii, t, :) = tracks(ii).kalmanFilter.mu.X(1:3, 4);
+                estimatedQuats(ii, t, :) = rotm2quat(tracks(ii).kalmanFilter.mu.X(1:3,1:3));
             else
-                estimatedQuats(ii,t,:) = state(2*dim+1:2*dim+4);
+                state = tracks(ii).kalmanFilter.x;
+                estimatedPositions(ii,t,:) = state(1:dim);
+                if strcmp(params.motionType, 'constAcc')
+                    estimatedQuats(ii,t,:) = state(3*dim+1:3*dim+4);
+                else
+                    estimatedQuats(ii,t,:) = state(2*dim+1:2*dim+4);
+                end
             end
         else
             estimatedPositions(ii,t,:) = ones(3,1) * NaN;
             estimatedQuats(ii,t,:) = ones(4,1) * NaN;
         end
     end
-    toc
+    %toc
 end
 
 
@@ -162,18 +170,30 @@ end
     function tracks = initializeTracks()
         if useVICONinit
             for i = 1:nObjects
-                [s, kalmanParams] = setupKalman(squeeze(patterns(i,:,:)), -1, model, quatMotionType, measurementNoise, processNoise, initialNoise, patternNames{i});
-                if strcmp(quatMotionType, 'brownian')
-                    s.x = initialStates(i,1:end-4)';
-                    s.P = eye(2*dim+4) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initQuatVar], [dim, dim, 4]);
-
-                elseif strcmp(params.motionType, 'constAcc')
-                    %TODO: add acceleration=0 in initial state
-                    s.x = initialStates(i,1:end-4);
-                    s.P = eye(3*dim+4) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initAccelerationVar; kalmanParams.initQuatVar], [dim, dim, dim, 4]);
+                [s, kalmanParams] = setupKalman(squeeze(patterns(i,:,:)), -1, params);
+                if strcmp(model, 'LieGroup')
+                    mu.X = [ quat2rotm(initialStates.quat(i,:)) initialStates.pos(i,:)'; [0 0 0 1] ];
+                    mu.v = initialStates.velocity(i,:)';
+                    mu.a = initialStates.acceleration(i,:)';
+                    s.mu = mu;
+                    s.P = diag(repelem([params.initialNoise.initQuatVar; 
+                                        params.initialNoise.initPositionVar; 
+                                        params.initialNoise.initMotionVar; 
+                                        params.initialNoise.initAccVar
+                                       ],[dim, dim, dim, dim]));
                 else
-                    s.x = initialStates(i,:)';
-                    s.P = eye(2*dim+8) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initQuatVar; kalmanParams.initQuatMotionVar], [dim, dim, 4, 4]);
+                    %if strcmp(quatMotionType, 'brownian')
+                    %    s.x = [initialStates.pos(i,:) initialStates.velocity(i,:) initialStates.quat(i,:)]'; %;initialStates(i,1:end-4)';
+                    %    s.P = eye(2*dim+4) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initQuatVar], [dim, dim, 4]);
+               
+                    if strcmp(params.motionType, 'constAcc')
+                        %TODO: add acceleration=0 in initial state
+                        s.x = [initialStates.pos(i,:) initialStates.velocity(i,:) initialStates.acceleration(i,:) initialStates.quat(i,:)]'; %initialStates(i,1:end-4);
+                        s.P = eye(3*dim+4) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initAccVar; kalmanParams.initQuatVar], [dim, dim, dim, 4]);
+                    else
+                        s.x = [initialStates.pos(i,:) initialStates.velocity(i,:) initialStates.acceleration(i,:) initialStates.quat(i,:) 0 0 0 0]';%initialStates(i,:)';
+                        s.P = eye(2*dim+8) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initQuatVar; kalmanParams.initQuatMotionVar], [dim, dim, 4, 4]);
+                    end
                 end
                 s.pattern = squeeze(patterns(i,:,:));
                 tracks(i) = struct(...
@@ -282,7 +302,7 @@ end
 % the new bounding box, and increases the age of the track and the total
 % visible count by 1. Finally, the function sets the invisible count to 0.
 %}
-    function updateAssignedTracks() 
+    function updateAssignedTracks()
         assignments = double(assignments);
         allAssignedTracksIdx = unique(floor((assignments(:,1)-1)/nMarkers) + 1);
         nAssignedTracks = length(allAssignedTracksIdx);
@@ -303,7 +323,11 @@ end
             
             % Correct the estimate of the object's location
             % using the new detection.
-            tracks(currentTrackIdx).kalmanFilter.z = reshape(detectedMarkersForCurrentTrack, [], 1);            
+            if strcmp(model, 'LieGroup')
+                tracks(currentTrackIdx).kalmanFilter.z = reshape(detectedMarkersForCurrentTrack', [], 1);
+            else
+                tracks(currentTrackIdx).kalmanFilter.z = reshape(detectedMarkersForCurrentTrack, [], 1);
+            end
             tracks(currentTrackIdx).kalmanFilter = correctKalman(tracks(currentTrackIdx).kalmanFilter, 1, tracks(currentTrackIdx).kalmanParams, 0, hyperParams, tracks(currentTrackIdx).age, params.motionType);
             
             % Replace predicted bounding box with detected
@@ -333,7 +357,7 @@ end
         %detectedMarkersForTracks = cell(nObjects);
         for idxx=1:nObjects
             if ~ismember(idxx, allAssignedTracksIdx)
-               continue; 
+                continue;
             end
             assignmentIdx = floor((assignments(:,1)-1)/nMarkers) + 1 == idxx;
             detectionIdx = assignments(assignmentIdx,2);
@@ -350,7 +374,7 @@ end
         updatedKFs = cell(nObjects);
         parfor idxx = 1:nObjects
             if ~ismember(idxx, allAssignedTracksIdx)
-               continue; 
+                continue;
             end
             %currentTrackIdx = allAssignedTracksIdx(idxx);
             %assignmentsIdx = floor((assignments(:,1)-1)/nMarkers) + 1 == idxx;
@@ -378,7 +402,7 @@ end
             %for g=1:size(assignment,2)
             %    markerAs(assignment(1, g)) = 1;
             %end
-          
+            
             
             %markerAssignemnts(currentTrackIdx, t, :) = markerAs;
             %falsePositives(t) = falsePositives(t) + (size(detectionIdx,1) - size(assignment,2));
@@ -392,18 +416,18 @@ end
             %tracks(trackIdx).center = getCenter(tracks(i).pattern, detectedMarkersForCurrentTrack, tracks(i).kalmanFilter);
             %tracks(trackIdx).markers = detectedMarkersForCurrentTrack;
             
-%             % Update track's age.
-%             tracks(idxx).age = tracks(idxx).age + 1;
-%             
-%             % Update visibility.
-%             tracks(idxx).totalVisibleCount = tracks(idxx).totalVisibleCount + 1;
-%             tracks(idxx).consecutiveInvisibleCount = 0;
+            %             % Update track's age.
+            %             tracks(idxx).age = tracks(idxx).age + 1;
+            %
+            %             % Update visibility.
+            %             tracks(idxx).totalVisibleCount = tracks(idxx).totalVisibleCount + 1;
+            %             tracks(idxx).consecutiveInvisibleCount = 0;
         end
         for idxx=1:nObjects
-           if ~ismember(idxx, allAssignedTracksIdx)
-              continue; 
-           end
-           tracks(idxx).kalmanFilter = updatedKFs{idxx};
+            if ~ismember(idxx, allAssignedTracksIdx)
+                continue;
+            end
+            tracks(idxx).kalmanFilter = updatedKFs{idxx};
         end
     end
 
@@ -542,37 +566,37 @@ end
                     unassignedPatterns(patternIdx) = 0;
                     
                 end
-            %TODO WTF is this case distinction?
-            % TODO add method to initialize 3 clustered unassigned
-            % detections, i.e. with match_patterns()
+                %TODO WTF is this case distinction?
+                % TODO add method to initialize 3 clustered unassigned
+                % detections, i.e. with match_patterns()
             else
-                    patternIdx = find(unassignedPatterns);
-                    pattern = squeeze( patterns(patternIdx,:,:));
-                    [s, kalmanParams] = setupKalman(pattern, -1, model, quatMotionType, measurementNoise, processNoise, initialNoise, patternNames{patternIdx});
-                    if strcmp(quatMotionType, 'brownian')
-                        s.x = [centers{1}'; zeros(3,1); [sqrt(2);0;0;0]];
-                        % TODO also estimate uncertainty
-                        s.P = eye(2*dim+4) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initQuatVar], [dim, dim, 4]);
-                    else
-                        s.x = [centers{1}'; zeros(3,1); [sqrt(2);0;0;0]; zeros(4,1)];
-                        % TODO also estimate uncertainty
-                    	s.P = eye(2*dim+8) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initQuatVar; kalmanParams.initQuatMotionVar], [dim, dim, 4, 4]);
-                    end
-                    s.pattern = pattern;
-                    newTrack = struct(...
-                        'id', patternIdx, ...
-                        'kalmanFilter', s, ...
-                        'kalmanParams', kalmanParams, ...
-                        'age', 1, ...
-                        'totalVisibleCount', 1, ...
-                        'consecutiveInvisibleCount', 0);
-                    
-                    % Add it to the array of tracks.
-                    tracks(patternIdx) = newTrack;
-                    
-                    % Increment the next id.
-                    %nextId = nextId + 1;
-                    unassignedPatterns(patternIdx) = 0;
+                patternIdx = find(unassignedPatterns);
+                pattern = squeeze( patterns(patternIdx,:,:));
+                [s, kalmanParams] = setupKalman(pattern, -1, model, quatMotionType, measurementNoise, processNoise, initialNoise, patternNames{patternIdx});
+                if strcmp(quatMotionType, 'brownian')
+                    s.x = [centers{1}'; zeros(3,1); [sqrt(2);0;0;0]];
+                    % TODO also estimate uncertainty
+                    s.P = eye(2*dim+4) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initQuatVar], [dim, dim, 4]);
+                else
+                    s.x = [centers{1}'; zeros(3,1); [sqrt(2);0;0;0]; zeros(4,1)];
+                    % TODO also estimate uncertainty
+                    s.P = eye(2*dim+8) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initQuatVar; kalmanParams.initQuatMotionVar], [dim, dim, 4, 4]);
+                end
+                s.pattern = pattern;
+                newTrack = struct(...
+                    'id', patternIdx, ...
+                    'kalmanFilter', s, ...
+                    'kalmanParams', kalmanParams, ...
+                    'age', 1, ...
+                    'totalVisibleCount', 1, ...
+                    'consecutiveInvisibleCount', 0);
+                
+                % Add it to the array of tracks.
+                tracks(patternIdx) = newTrack;
+                
+                % Increment the next id.
+                %nextId = nextId + 1;
+                unassignedPatterns(patternIdx) = 0;
                 
             end
             
@@ -590,8 +614,8 @@ end
 
 %% Vizualization methods
 
-    % This function sets up the figure.
-    %
+% This function sets up the figure.
+%
     function initializeFigure()
         figure;
         scatter3([minPos(1), maxPos(1)], [minPos(2), maxPos(2)], [minPos(3), maxPos(3)], '*')
@@ -610,8 +634,8 @@ end
         for k = 1:nObjects
             %birdsPositions{k} = plot3(NaN, NaN, NaN, 'o', 'MarkerSize', 10, 'MarkerEdgeColor', colors(k,:));
             for n = 1:nMarkers
-               markerPositions{k,n} = plot3(NaN, NaN, NaN, 'o', 'MarkerSize', 10, 'MarkerEdgeColor', colorsPredicted(k,:));
-               viconMarkerPositions{k,n} = plot3(NaN, NaN, NaN, 'square', 'MarkerSize', 12, 'MarkerEdgeColor', colorsTrue(k,:));
+                markerPositions{k,n} = plot3(NaN, NaN, NaN, 'o', 'MarkerSize', 10, 'MarkerEdgeColor', colorsPredicted(k,:));
+                viconMarkerPositions{k,n} = plot3(NaN, NaN, NaN, 'square', 'MarkerSize', 12, 'MarkerEdgeColor', colorsTrue(k,:));
             end
         end
         
@@ -631,14 +655,14 @@ end
                     
                     vizLength = length(newXTrue);
                     if ~keepOldTrajectory && vizLength > vizHistoryLength
-                       newXTrue = newXTrue(1,vizLength-vizHistoryLength:vizLength);
-                       newYTrue = newYTrue(1,vizLength-vizHistoryLength:vizLength);
-                       newZTrue = newZTrue(1,vizLength-vizHistoryLength:vizLength);
+                        newXTrue = newXTrue(1,vizLength-vizHistoryLength:vizLength);
+                        newYTrue = newYTrue(1,vizLength-vizHistoryLength:vizLength);
+                        newZTrue = newZTrue(1,vizLength-vizHistoryLength:vizLength);
                     end
                     
                     trueTrajectories{k}.XData = newXTrue;
                     trueTrajectories{k}.YData = newYTrue;
-                    trueTrajectories{k}.ZData = newZTrue; 
+                    trueTrajectories{k}.ZData = newZTrue;
                     
                     pattern = tracks(k).kalmanFilter.pattern;
                     trueRotMat = Rot(trueOrientation(k, t, :));
@@ -652,10 +676,16 @@ end
                 end
                 
                 if tracks(k).age > 0
-                    xPos = tracks(k).kalmanFilter.x(1);
-                    yPos = tracks(k).kalmanFilter.x(2);
-                    zPos = tracks(k).kalmanFilter.x(3);
-
+                    if strcmp(model, 'LieGroup')
+                        xPos = tracks(k).kalmanFilter.mu.X(1,4);
+                        yPos = tracks(k).kalmanFilter.mu.X(2,4);
+                        zPos = tracks(k).kalmanFilter.mu.X(3,4);
+                    else
+                        xPos = tracks(k).kalmanFilter.x(1);
+                        yPos = tracks(k).kalmanFilter.x(2);
+                        zPos = tracks(k).kalmanFilter.x(3);
+                    end
+                    
                     newXData = [birdsTrajectories{k}.XData xPos];
                     newYData = [birdsTrajectories{k}.YData yPos];
                     newZData = [birdsTrajectories{k}.ZData zPos];
@@ -663,25 +693,30 @@ end
                     % frames.
                     vizLength = length(newXData);
                     if ~keepOldTrajectory && vizLength > vizHistoryLength
-                       newXData = newXData(1,vizLength-vizHistoryLength:vizLength);
-                       newYData = newYData(1,vizLength-vizHistoryLength:vizLength);
-                       newZData = newZData(1,vizLength-vizHistoryLength:vizLength);
+                        newXData = newXData(1,vizLength-vizHistoryLength:vizLength);
+                        newYData = newYData(1,vizLength-vizHistoryLength:vizLength);
+                        newZData = newZData(1,vizLength-vizHistoryLength:vizLength);
                     end
                     birdsTrajectories{k}.XData = newXData;
                     birdsTrajectories{k}.YData = newYData;
                     birdsTrajectories{k}.ZData = newZData;
-                
+                    
                     %birdsPositions{k}.XData = xPos;
                     %birdsPositions{k}.YData = yPos;
                     %birdsPositions{k}.ZData = zPos;
                     
                     pattern = tracks(k).kalmanFilter.pattern;
-                    if strcmp(params.motionType, 'constAcc')
-                        quat = tracks(k).kalmanFilter.x(10:13);
+                    if strcmp(model, 'LieGroup')
+                        rotMat = tracks(k).kalmanFilter.mu.X(1:3, 1:3);
                     else
-                        quat = tracks(k).kalmanFilter.x(7:10);
+                        if strcmp(params.motionType, 'constAcc')
+                            quat = tracks(k).kalmanFilter.x(10:13);
+                        else
+                            quat = tracks(k).kalmanFilter.x(7:10);
+                        end
+                        rotMat = Rot(quat);
+                        
                     end
-                    rotMat = Rot(quat);
                     rotatedPattern = (rotMat * pattern')';
                     
                     for n = 1:nMarkers
@@ -690,14 +725,14 @@ end
                         markerPositions{k,n}.ZData = zPos + rotatedPattern(n,3);
                     end
                 end
-            end            
+            end
         end
         dets = squeeze(D(t, :, :));
         markersForVisualization{1}.XData = dets(:,1);
         markersForVisualization{1}.YData = dets(:,2);
         markersForVisualization{1}.ZData = dets(:,3);
         drawnow
-        %pause(0.02)
+        pause(0.05)
     end
 
 
