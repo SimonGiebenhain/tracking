@@ -3,13 +3,13 @@ function [tracks, unassignedPatterns] = createNewTracks(detections, unassignedPa
 %   Detailed explanation goes here
 
 if size(detections, 1) > 1 && sum(unassignedPatterns) > 0  
-    if sum(unassignedPatterns) == 1
+    %if sum(unassignedPatterns) == 1
        minClusterSize = 3; 
-       costOfNonAssignment = 1;
-    else
-       minClusterSize = 4; 
-       costOfNonAssignment = 2;
-    end
+       costOfNonAssignment = 0.5;
+    %else
+    %   minClusterSize = 4; 
+    %   costOfNonAssignment = 1;
+    %end
     %fprintf('Creatng new tracks')
     dim = size(patterns,3);
     epsilon = 55;
@@ -51,6 +51,9 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
             pattern = pattern(assignment > 0, :);
             dets = clusters{j};
             [R, translation, MSE] = umeyama(pattern', dets');
+            if size(dets, 1) == minClusterSize
+               MSE = MSE*2.5; 
+            end
             costMatrix(i,j) = MSE;
             rotMatsMatrix(i,j,:,:) = R;
             translationsMatrix(i,j,:) = translation;
