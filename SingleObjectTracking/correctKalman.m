@@ -143,12 +143,12 @@ if strcmp(s.type, 'LG-EKF')
     s.P = (eye(12)- K*H)*s.P;
 else
     %Correction based on observation
-    J = s.J;
+    Jac = s.J;
     subindex = @(A, rows) A(rows, :);     % for row sub indexing
     if strcmp(motionType, 'constAcc')
-        J = @(x) subindex(J(x(10), x(11), x(12), x(13)), detectionsIdx);
+        J = @(x) subindex(Jac(x(10), x(11), x(12), x(13)), detectionsIdx);
     else
-        J = @(x) subindex(J(x(7), x(8), x(9), x(10)), detectionsIdx);
+        J = @(x) subindex(Jac(x(7), x(8), x(9), x(10)), detectionsIdx);
     end
 
     %Evaluate Jacobian at current position

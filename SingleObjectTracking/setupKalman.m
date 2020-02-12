@@ -149,13 +149,12 @@ switch model
         
         % get the measurement function and its jacobian, both are function
         % handles and need to be supplied with a quaternion    
-        if exist('patternName', 'var')
-            nameParts = strsplit(patternName, '.');
-            prefix = nameParts{1};
-            [H, J] = getMeasurementFunction(pattern, quatMotionType, motionType, prefix);
-        else
-            [H, J] = getMeasurementFunction(pattern, quatMotionType, motionType);
-        end
+        J = @(q1, q2, q3, q4) EKFJacConstAcc(pattern(1,1), pattern(1,2), pattern(1,3),pattern(2,1),pattern(2,2),pattern(2,3),pattern(3,1),pattern(3,2),pattern(3,3),pattern(4,1),pattern(4,2),pattern(4,3),q1, q2, q3, q4);
+                             
+        H = @(xvec) reshape( (Rot(xvec(3*3+1:3*3+4)) * pattern')' + xvec(1:3)', [], 1 );
+
+        %[H, J] = getMeasurementFunction(pattern, quatMotionType, motionType);
+        
         
         s(1).H = H;
         s(1).J = J;

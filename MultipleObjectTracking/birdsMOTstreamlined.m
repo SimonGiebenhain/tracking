@@ -1,7 +1,7 @@
 %% load data and patterns
 % Also add folder with patterns to path of matlab!
-dataFilename = 'datasets/session8/Starling_Trials_10-12-2019_16-00-00_Trajectories_100.csv'; % 'datasets/session1/all.csv';
-patternDirectoryName = 'datasets/session2';
+dataFilename = 'datasets/session1/all.csv'; %'datasets/session8/Starling_Trials_10-12-2019_16-00-00_Trajectories_100.csv'; % 'datasets/session1/all.csv';
+patternDirectoryName = 'datasets/session1';
 filePrefix = strsplit(dataFilename, '.');
 filePrefix = filePrefix{1};
 if isfile([filePrefix, '.mat'])
@@ -28,8 +28,8 @@ fprintf('Loaded data successfully!\n')
 % patternNames(11) = [];
 % patternNames(7) = [];
 
-patterns(7,:,1) = 1000;
-patterns(11, :, 1) = 1000;
+%patterns(7,:,1) = 1000;
+%patterns(11, :, 1) = 1000;
 
 
     
@@ -44,8 +44,8 @@ stdHyperParams.costOfNonAsDtTA = 55;
 stdHyperParams.certaintyFactor = 1;
 stdHyperParams.useAssignmentLength = 1;
 stdHyperParams.minAssignmentThreshold = 55;
-stdHyperParams.costOfNonAsDtMA = 10;
-stdHyperParams.eucDistWeight = 1/5;
+stdHyperParams.costOfNonAsDtMA = 5;
+stdHyperParams.eucDistWeight = 1/10;
 stdHyperParams.posNoise = 10;
 stdHyperParams.motNoise = 20;
 stdHyperParams.accNoise = 20;

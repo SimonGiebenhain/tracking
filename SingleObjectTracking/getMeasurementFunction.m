@@ -22,28 +22,44 @@ function [H, J] = getMeasurementFunction(pattern, quatMotionType, motionType, na
             % Work woth symbolic variables in order to compute the jacobian
             % automatically.
             syms x y z vx vy vz ax ay az q1 q2 q3 q4 real;
+            %syms p11 p12 p13 real;
+            %syms p21 p22 p23 real;
+            %syms p31 p32 p33 real;
+            %syms p41 p42 p43 real;
+            
+            %pattern = [p11 p12 p13;
+            %           p21 p22 p23;
+            %           p31 p32 p33;
+            %           p41 p42 p43];
+            %syms m1 m2 m3 real;
+            %m = [m1;m2;m3];
 
             % Mapping from state space to measurement space
             H = reshape( (Rot([q1;q2;q3;q4]) * pattern')' + [x; y; z]', [], 1 );
+            %H = Rot([q1;q2;q3;q4]) * m + [x; y; z];
 
             % Let the Symbolic Math Toolbox calculate the jacobian.
             % The transform back to a regular matlab function.
             J = matlabFunction( jacobian(H, [x; y; z; vx; vy; vz; ax; ay; az; q1; q2; q3; q4])) ;
-            %J = matlabFunction( jacobian(H, [x; y; z; vx; vy; vz; q1; q2; q3; q4]), 'File', ['tracking/jacobian/' name] ) ;
+            %J = matlabFunction( jacobian(H, [x; y; z; vx; vy; vz; ax; ay; az; q1; q2; q3; q4]), 'File', 'tracking/SingleObjectTracking/EKFJacConstAcc') ;
 
             H = @(xvec) reshape( (Rot(xvec(3*3+1:3*3+4)) * pattern')' + xvec(1:3)', [], 1 );
+            %matlabFunction( H, 'File', 'tracking/SingleObjectTracking/EKFMeasFuncConstAcc')
+
         else
             % Work woth symbolic variables in order to compute the jacobian
             % automatically.
             syms x y z vx vy vz q1 q2 q3 q4 real;
+            syms m1 m2 m3 real;
+            m = [m1;m2;m3];
 
             % Mapping from state space to measurement space
-            H = reshape( (Rot([q1;q2;q3;q4]) * pattern')' + [x; y; z]', [], 1 );
+            H = Rot([q1;q2;q3;q4]) * m + [x; y; z];
 
             % Let the Symbolic Math Toolbox calculate the jacobian.
             % The transform back to a regular matlab function.
-            J = matlabFunction( jacobian(H, [x; y; z; vx; vy; vz; q1; q2; q3; q4])) ;
-            %J = matlabFunction( jacobian(H, [x; y; z; vx; vy; vz; q1; q2; q3; q4]), 'File', ['tracking/jacobian/' name] ) ;
+            %J = matlabFunction( jacobian(H, [x; y; z; vx; vy; vz; q1; q2; q3; q4])) ;
+            J = matlabFunction( jacobian(H, [x; y; z; vx; vy; vz; q1; q2; q3; q4]), 'File', 'tracking/SingleObjectTracking/EKFJac') ;
 
             H = @(xvec) reshape( (Rot(xvec(2*3+1:2*3+4)) * pattern')' + xvec(1:3)', [], 1 );
         end

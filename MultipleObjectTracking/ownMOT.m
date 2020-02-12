@@ -40,7 +40,7 @@ processNoise.acceleration = hyperParams.accNoise;
 processNoise.quat = hyperParams.quatNoise;
 processNoise.quatMotion = hyperParams.quatMotionNoise;
 measurementNoise = hyperParams.measurementNoise;
-model = 'LieGroup'; % 'extended'; %
+model = 'extended'; %'LieGroup'; % 
 initialNoise.initPositionVar = 1;
 initialNoise.initMotionVar = 20;
 initialNoise.initAccVar = 20;
@@ -115,7 +115,7 @@ for t = 1:T
             if strcmp(model, 'LieGroup')
                 estimatedPositions(ii, t, :) = tracks(ii).kalmanFilter.mu.X(1:3, 4);
                 estimatedQuats(ii, t, :) = rotm2quat(tracks(ii).kalmanFilter.mu.X(1:3,1:3));
-                rotationVariance(ii t) = tracks(ii).kalmanFilter.P(1,1);
+                rotationVariance(ii, t) = tracks(ii).kalmanFilter.P(1,1);
                 positionVariance(ii, t) = tracks(ii).kalmanFilter.P(4,4);
             else
                 state = tracks(ii).kalmanFilter.x;
