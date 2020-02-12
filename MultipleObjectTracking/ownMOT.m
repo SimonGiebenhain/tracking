@@ -77,13 +77,15 @@ colorsTrue = (colorsPredicted + 2) ./ (max(colorsPredicted,[],2) +2);
 keepOldTrajectory = 0;
 %shouldShowTruth = 1;
 vizHistoryLength = 200;
-%initializeFigure();
+initializeFigure();
 
 
 estimatedPositions = zeros(nObjects, T, 3);
 estimatedQuats = zeros(nObjects, T, 4);
 markerAssignemnts = zeros(nObjects, T, nMarkers);
 falsePositives = zeros(T, 1);
+positionVariance = zeros(nObjects, T);
+rotationVariance = zeros(nObjects, T);
 
 
 for t = 1:T
@@ -102,10 +104,10 @@ for t = 1:T
         [tracks, unassignedPatterns] = createNewTracks(detections(unassignedDetections,:), unassignedPatterns, tracks, patterns, params, patternNames);
     end
     t
-    if t == 60
-       t 
-    end
-    %displayTrackingResults();
+    %if t == 60
+    %   t 
+    %end
+    displayTrackingResults();
     
     % Store tracking results
     for ii = 1:nObjects
@@ -113,18 +115,25 @@ for t = 1:T
             if strcmp(model, 'LieGroup')
                 estimatedPositions(ii, t, :) = tracks(ii).kalmanFilter.mu.X(1:3, 4);
                 estimatedQuats(ii, t, :) = rotm2quat(tracks(ii).kalmanFilter.mu.X(1:3,1:3));
+                rotationVariance(ii t) = tracks(ii).kalmanFilter.P(1,1);
+                positionVariance(ii, t) = tracks(ii).kalmanFilter.P(4,4);
             else
                 state = tracks(ii).kalmanFilter.x;
                 estimatedPositions(ii,t,:) = state(1:dim);
+                positionVariance(ii,t) = tracks(ii).kalmanFilter.P(1,1);
                 if strcmp(params.motionType, 'constAcc')
                     estimatedQuats(ii,t,:) = state(3*dim+1:3*dim+4);
+                    rotationVariance(ii,t) = tracks(ii).kalmanFilter.P(3*dim+1, 3*dim+1);
                 else
                     estimatedQuats(ii,t,:) = state(2*dim+1:2*dim+4);
+                    rotationVariance(ii,t) = tracks(ii).kalmanFilter.P(2*dim+1, 2*dim+1);
                 end
             end
         else
             estimatedPositions(ii,t,:) = ones(3,1) * NaN;
             estimatedQuats(ii,t,:) = ones(4,1) * NaN;
+            rotationVariance(ii,t) = NaN;
+            positionVariance(ii,t) = NaN;
         end
     end
     %toc
@@ -611,7 +620,7 @@ end
         markersForVisualization{1}.YData = dets(:,2);
         markersForVisualization{1}.ZData = dets(:,3);
         drawnow
-        pause(0.05)
+        %pause(0.05)
     end
 
 
