@@ -85,7 +85,11 @@ resultsFilename = [filePrefix '_RESULTS.csv'];
 exportToCSV(resultsFilename, estimatedPositions, estimatedQuats, beginningFrame, patternNames, 1, 0);
 
 %%
-speed = 2;
-vizRes(formattedData(beginningFrame:endFrame,:,:), patterns, estimatedPositions, estimatedQuats, speed, 0)
+vizParams.vizSpeed = 10;
+vizParams.keepOldTrajectory = 1;
+vizParams.vizHistoryLength = 5000;
+vizParams.startFrame = 1000;
+vizParams.endFrame = 10000;
+vizRes(formattedData(beginningFrame:endFrame,:,:), patterns, estimatedPositions, estimatedQuats, vizParams, 0)
 
 

@@ -1,12 +1,27 @@
-function vizRes(D, patterns, estimatedPositions, estimatedQuats, shouldShowTruth, trueTrajectory, trueOrientation)
+function vizRes(D, patterns, estimatedPositions, estimatedQuats, vizParams, shouldShowTruth, trueTrajectory, trueOrientation)
 %UNTITLED Summary of this function goes here
 %   Detailed explanation goes here
 
-keepOldTrajectory = 0;
-vizHistoryLength = 200;
+keepOldTrajectory = vizParams.keepOldTrajectory;
+vizHistoryLength = vizParams.vizHistoryLength;
+vizSpeed = vizParams.vizSpeed;
+startFrame = vizParams.startFrame;
+endFrame = vizParams.endFrame;
 
 nObjects = size(patterns, 1);
 nMarkers = size(patterns, 2);
+
+% skip some frames if speed > 1
+if vizSpeed > 1
+    vizSpeed = ceil(vizSpeed);
+    estimatedQuats = estimatedQuats(:, startFrame:vizSpeed:endFrame, :);
+    estimatedPositions = estimatedPositions(:, startFrame:vizSpeed:endFrame, :);
+    D = D(startFrame:vizSpeed:endFrame, :, :);
+else
+    estimatedQuats = estimatedQuats(:, startFrame:endFrame, :);
+    estimatedPositions = estimatedPositions(:, startFrame:endFrame, :);
+    D = D(startFrame:endFrame, :, :);
+end
 
 detsForVisualization = cell(nObjects,1);
 birdsTrajectories = cell(nObjects,1);
@@ -18,9 +33,19 @@ viconMarkerPositions = cell(nObjects, nMarkers);
 colorsPredicted = distinguishable_colors(nObjects);
 colorsTrue = (colorsPredicted + 2) ./ (max(colorsPredicted,[],2) +2);
 
+
+maxX = max(estimatedPositions(:, :, 1), [], 'all');
+maxY = max(estimatedPositions(:, :, 2), [], 'all');
+maxZ = max(estimatedPositions(:, :, 3), [], 'all');
+minX = min(estimatedPositions(:, :, 1), [], 'all');
+minY = min(estimatedPositions(:, :, 2), [], 'all');
+minZ = min(estimatedPositions(:, :, 3), [], 'all');
+
+
 figure;
+scatter3([maxX, minX], [maxY, minY], [maxZ, minZ]);
 hold on;
-axis equal;
+%axis equal;
 if shouldShowTruth && exist('trueTrajectory', 'var')
     for k = 1:nObjects
         trueTrajectories{k} = plot3(trueTrajectory(k,1,1),trueTrajectory(k,1,2), trueTrajectory(k,1,3), 'Color', colorsTrue(k,:));
@@ -43,7 +68,7 @@ end
 
 
 grid on;
-axis equal;
+%axis equal;
 axis manual;
 
 %TODO loop t over all timesteps
@@ -109,9 +134,11 @@ for t=1:min(size(D,1), size(estimatedPositions,2))
         rotatedPattern = (rotMat * pattern')';
         
         for n = 1:nMarkers
+            
             markerPositions{k,n}.XData = xPos + rotatedPattern(n,1);
             markerPositions{k,n}.YData = yPos + rotatedPattern(n,2);
             markerPositions{k,n}.ZData = zPos + rotatedPattern(n,3);
+            
         end
         dets = squeeze(D(t,(k-1)*nMarkers+1:k*nMarkers,:));
         detsForVisualization{k}.XData = dets(:,1);
@@ -119,7 +146,9 @@ for t=1:min(size(D,1), size(estimatedPositions,2))
         detsForVisualization{k}.ZData = dets(:,3);
     end
     drawnow
-    %pause(0.1)
+    if vizSpeed < 1
+        pause(1-vizSpeed);
+    end
 end
 end
 
