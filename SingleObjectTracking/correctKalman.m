@@ -78,7 +78,7 @@ if noKnowledge
         if vNorm >= 25
             certainty = certainty / 2;
         elseif vNorm < 10
-            certainty = 5*certainty;
+            certainty = 3*certainty;
         end
     elseif strcmp(method, 'final3')
         nDets = size(detections, 1);
@@ -95,7 +95,7 @@ if noKnowledge
         lostDet(lostDs) = 1;
         if hyperParams.useAssignmentLength == 1
             certainty = (certainty/hyperParams.certaintyScale)^3 / (size(assignment, 2) + 1);
-            certainty = max(0.1, certainty);
+            certainty = max(0.005, certainty);
             certainty = min(100, certainty);
         end
     else

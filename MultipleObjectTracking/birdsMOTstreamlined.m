@@ -45,7 +45,7 @@ stdHyperParams.certaintyFactor = 1;
 stdHyperParams.useAssignmentLength = 1;
 stdHyperParams.minAssignmentThreshold = 55;
 stdHyperParams.costOfNonAsDtMA = 10;
-stdHyperParams.eucDistWeight = 1/5;
+stdHyperParams.eucDistWeight = 1/3;
 stdHyperParams.posNoise = 5;
 stdHyperParams.motNoise = 5;
 stdHyperParams.accNoise = 5;
@@ -59,7 +59,8 @@ fprintf('Starting to track!\n')
 
 %profile on
 beginningFrame = 1;%2500+7000;
-endFrame = 6000; size(formattedData,1);
+endFrame = size(formattedData,1);
+stdHyperParams.visualizeTracking = 1;
 [estimatedPositions, estimatedQuats, positionVariance, rotationVariance] = ownMOT(formattedData(beginningFrame:endFrame,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
 %[estimatedPositions, estimatedQuats] = ownMOT(formattedData(1000:end,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
 
@@ -68,7 +69,7 @@ endFrame = 6000; size(formattedData,1);
 colors = distinguishable_colors(10);
 figure; hold on;
 for i=1:10
-    plot(smoothdata(positionVariance(i,:)), 'color', colors(i,:))
+    plot(smoothdata(positionVariance(i,:), 'movmedian', 30), 'color', colors(i,:))
 end
 
 hold off;
@@ -82,4 +83,9 @@ hold off;
 % Save file as .csv file, in VICON-style format
 resultsFilename = [filePrefix '_RESULTS.csv'];
 exportToCSV(resultsFilename, estimatedPositions, estimatedQuats, beginningFrame, patternNames, 1, 0);
+
+%%
+speed = 2;
+vizRes(formattedData(beginningFrame:endFrame,:,:), patterns, estimatedPositions, estimatedQuats, speed, 0)
+
 

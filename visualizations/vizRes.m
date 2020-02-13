@@ -19,8 +19,8 @@ colorsPredicted = distinguishable_colors(nObjects);
 colorsTrue = (colorsPredicted + 2) ./ (max(colorsPredicted,[],2) +2);
 
 figure;
-scatter3([-2,2], [-2, 2], [-2, 2], '*')
 hold on;
+axis equal;
 if shouldShowTruth && exist('trueTrajectory', 'var')
     for k = 1:nObjects
         trueTrajectories{k} = plot3(trueTrajectory(k,1,1),trueTrajectory(k,1,2), trueTrajectory(k,1,3), 'Color', colorsTrue(k,:));
@@ -119,7 +119,7 @@ for t=1:min(size(D,1), size(estimatedPositions,2))
         detsForVisualization{k}.ZData = dets(:,3);
     end
     drawnow
-    pause(0.1)
+    %pause(0.1)
 end
 end
 

@@ -1,4 +1,4 @@
-function [assignment, lostDets, FPs, certainty, method] = match_patterns(whole_pattern, detected_pattern, method, motionType, kalmanFilter, hyperParams)
+function [assignment, lostDets, FPs, certainty, method] = match_patterns(whole_pattern, detected_pattern, method, rotMat, hyperParams)
 %MATCH_PATTERNS Find corresponing points in two sets of points
 %
 %   assignment = MATCH_PATTERNS(whole_pattern, detected_pattern, 'ML', rotMat)
@@ -25,13 +25,7 @@ function [assignment, lostDets, FPs, certainty, method] = match_patterns(whole_p
 lostDets = -1;
 FPs = -1;
 dim = size(whole_pattern,2);
-if strcmp(motionType, 'constAcc')
-    quatIdx = 3*dim+1:3*dim+4;
-else
-    quatIdx = 2*dim+1:2*dim+4;
-end
 if strcmp(method, 'correct')
-    rotMat = Rot(kalmanFilter.x(quatIdx));
     rotatedPattern = (rotMat*whole_pattern')';
     
     FPs = zeros(size(detected_pattern,1),1);
@@ -96,7 +90,6 @@ switch method
         end
         [assignment, bi_cost] = munkers(cost_matrix);
     case 'ML'
-        rotMat = Rot(kalmanFilter.x(quatIdx));
         rotatedPattern = (rotMat*whole_pattern')';
         cost_matrix = pdist2(detected_pattern, rotatedPattern);
         [assignment, c] = munkers(cost_matrix);
@@ -123,25 +116,8 @@ switch method
             dets = det_pat(p,:);
             cost(iii) = sqrt(sum((sqDistDetections(p,p) - sqDistPattern).^2, 'all', 'omitnan'));
             
-            %if lambda > 0
-            %     anglesDetections = getInternalAngles(dets);
-            %     angleDiff = (anglesDetections - anglesPattern).^2;
-            %     cost(iii) = cost(iii) + lambda * sqrt(sum(angleDiff(~isnan(angleDiff))));
-            %end
+            cost(iii) = cost(iii) + lambda * sqrt(sum(angleDiff(~isnan(angleDiff))));
             
-            
-            %for in = 1:4
-            %    if all(~isnan(dets(in,:)))
-            %        x = kalmanFilter.x;
-            %        F = HLin(in:4:end,:);
-            %        covMat = F * kalmanFilter.P * F';
-            %        negLogL = -reallog(mvnpdf(dets(in,:), (F*x)', round(covMat,4)))';
-            %        %if negLogL < Inf
-            %        %    negLogL
-            %        %end
-            %        cost(iii) = cost(iii) + sum(negLogL);
-            %    end
-            %end
             
             eucDist = (dets - rotatedPattern).^2;
             eucDist = reshape( eucDist(~isnan(eucDist)), [], 3);
@@ -160,14 +136,12 @@ switch method
         certainty = c;
     case 'final'
         if hyperParams.simplePatternMatching == 1
-            rotMat = Rot(kalmanFilter.x(quatIdx));
             rotatedPattern = (rotMat*whole_pattern')';
             cost_matrix = pdist2(detected_pattern, rotatedPattern);
             [assignment, c] = munkers(cost_matrix);
             certainty = c;
             method = 'ML';
         else
-            rotMat = Rot(kalmanFilter.x(quatIdx));
             rotatedPattern = (rotMat*whole_pattern')';
             sqDistPattern = squareform(pdist(whole_pattern));
             
@@ -224,14 +198,12 @@ switch method
         end
     case 'final2'
         if hyperParams.simplePatternMatching == 1
-            rotMat = Rot(kalmanFilter.x(quatIdx));
             rotatedPattern = (rotMat*whole_pattern')';
             cost_matrix = pdist2(detected_pattern, rotatedPattern);
             [assignment, c] = munkers(cost_matrix);
             certainty = c;
             method = 'ML';
         else
-            rotMat = Rot(kalmanFilter.x(quatIdx));
             rotatedPattern = (rotMat*whole_pattern')';
             sqDistMarkers = squareform(pdist(whole_pattern));
             sqDistDetections = squareform(pdist(detected_pattern));
@@ -294,14 +266,12 @@ switch method
         end
     case 'final3'
         if hyperParams.simplePatternMatching == 1
-            rotMat = Rot(kalmanFilter.x(quatIdx));
             rotatedPattern = (rotMat*whole_pattern')';
             cost_matrix = pdist2(detected_pattern, rotatedPattern);
             [assignment, c] = munkers(cost_matrix);
             certainty = c;
             method = 'ML';
         else
-            rotMat = Rot(kalmanFilter.x(quatIdx));
             rotatedPattern = (rotMat*whole_pattern')';
             sqDistMarkers = squareform(pdist(whole_pattern));
             sqDistDetections = squareform(pdist(detected_pattern));
@@ -364,7 +334,6 @@ switch method
         end
     case 'final4'
         if hyperParams.simplePatternMatching == 1
-            rotMat = Rot(kalmanFilter.x(quatIdx));
             rotatedPattern = (rotMat*whole_pattern')';
             cost_matrix = pdist2(detected_pattern, rotatedPattern);
             [assignment, c] = munkers(cost_matrix);
@@ -372,10 +341,9 @@ switch method
             method = 'ML';
         else
             
-            minNumDetsToConsider = 2;
-            maxNumFPsToConsider = 2;
+            minNumDetsToConsider = 1;
+            maxNumFPsToConsider = 3;
             
-            rotMat = Rot(kalmanFilter.x(quatIdx));
             rotatedPattern = (rotMat*whole_pattern')';
             sqDistMarkers = squareform(pdist(whole_pattern));
             sqDistDetections = squareform(pdist(detected_pattern));
@@ -439,7 +407,13 @@ switch method
                 end
                 internalDist = mean(vecnorm(leftChunkInternal - rightChunkInternal, 2, 3), 2);
                 eucDist = mean(vecnorm(leftChunkEuc - rightChunkEuc, 2, 3), 2);
-                cost(beginningOfChunk:endOfChunk) = cost(beginningOfChunk:endOfChunk) + internalDist + hyperParams.eucDistWeight*eucDist;
+                eucWeight = hyperParams.eucDistWeight;
+                if numPoints <= 2
+                    eucWeight = eucWeight*1.5;
+                elseif numPoints == 4
+                    eucWeight = eucWeight/2;
+                end
+                cost(beginningOfChunk:endOfChunk) = cost(beginningOfChunk:endOfChunk) + internalDist + eucWeight*eucDist;
             end
             
             [c, minIdx] = min(cost);
@@ -454,8 +428,6 @@ switch method
         end
     case 'noKnowledge'
         costNonAssignment = 50;
-        
-        lambda = 10;
         nMarkers = size(whole_pattern,1);
         allPerms = perms(1:nMarkers);
         cost = zeros(size(allPerms, 1),1);
@@ -465,7 +437,7 @@ switch method
             det_pat = detected_pattern;
         end
         
-        anglesPattern = getInternalAngles(whole_pattern);
+        %anglesPattern = getInternalAngles(whole_pattern);
         sqDistPattern = squareform(pdist(whole_pattern));
         sqDistDetections = squareform(pdist(det_pat));
         
@@ -476,9 +448,9 @@ switch method
             dets = det_pat(p,:);
             
             cost(iii) = sqrt(sum((sqDistDetections(p,p) - sqDistPattern).^2, 'all', 'omitnan'));
-            anglesDetections = getInternalAngles(dets);
-            angleDiff = (anglesDetections - anglesPattern).^2;
-            cost(iii) = cost(iii) + lambda * sqrt(sum(angleDiff(~isnan(angleDiff))));
+            %anglesDetections = getInternalAngles(dets);
+            %angleDiff = (anglesDetections - anglesPattern).^2;
+            %cost(iii) = cost(iii) + lambda * sqrt(sum(angleDiff(~isnan(angleDiff))));
             
             
             if sum(any(isnan(dets),2)) == 1 || sum(any(isnan(dets),2)) == 2

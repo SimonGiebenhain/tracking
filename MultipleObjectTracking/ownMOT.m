@@ -42,8 +42,8 @@ processNoise.quatMotion = hyperParams.quatMotionNoise;
 measurementNoise = hyperParams.measurementNoise;
 model = 'LieGroup'; % 'extended'; %
 initialNoise.initPositionVar = 1;
-initialNoise.initMotionVar = 20;
-initialNoise.initAccVar = 20;
+initialNoise.initMotionVar = 30;
+initialNoise.initAccVar = 30;
 initialNoise.initQuatVar = 0.01;
 initialNoise.initQuatMotionVar = 0.075;
 
@@ -75,9 +75,12 @@ viconMarkerPositions = cell(nObjects, nMarkers);
 colorsPredicted = distinguishable_colors(nObjects);
 colorsTrue = (colorsPredicted + 2) ./ (max(colorsPredicted,[],2) +2);
 keepOldTrajectory = 0;
+visualizeTracking = hyperParams.visualizeTracking;
 %shouldShowTruth = 1;
 vizHistoryLength = 200;
-%initializeFigure();
+if visualizeTracking == 1
+    initializeFigure();
+end
 
 
 estimatedPositions = zeros(nObjects, T, 3);
@@ -107,7 +110,9 @@ for t = 1:T
     %if t == 530
     %   t 
     %end
-    %displayTrackingResults();
+    if visualizeTracking == 1
+        displayTrackingResults();
+    end
     
     % Store tracking results
     for ii = 1:nObjects
@@ -115,18 +120,22 @@ for t = 1:T
             if strcmp(model, 'LieGroup')
                 estimatedPositions(ii, t, :) = tracks(ii).kalmanFilter.mu.X(1:3, 4);
                 estimatedQuats(ii, t, :) = rotm2quat(tracks(ii).kalmanFilter.mu.X(1:3,1:3));
-                rotationVariance(ii, t) = tracks(ii).kalmanFilter.P(1,1);
-                positionVariance(ii, t) = tracks(ii).kalmanFilter.P(4,4);
+                P = tracks(ii).kalmanFilter.P;
+                rotationVariance(ii, t) = (P(1,1) + P(2,2) + P(3,3)) / 3;
+                positionVariance(ii, t) = (P(4,4) + P(5,5) + P(6,6)) / 3;
             else
                 state = tracks(ii).kalmanFilter.x;
+                P = tracks(ii).kalmanFilter.P;
                 estimatedPositions(ii,t,:) = state(1:dim);
-                positionVariance(ii,t) = tracks(ii).kalmanFilter.P(1,1);
+                positionVariance(ii,t) = (P(1,1) + P(2,2) + P(3,3)) / 3;
                 if strcmp(params.motionType, 'constAcc')
                     estimatedQuats(ii,t,:) = state(3*dim+1:3*dim+4);
-                    rotationVariance(ii,t) = tracks(ii).kalmanFilter.P(3*dim+1, 3*dim+1);
+                    rotationVariance(ii,t) = (P(3*dim+1, 3*dim+1) + P(3*dim+2, 3*dim+2) + ... 
+                                              P(3*dim+3, 3*dim+3) + P(3*dim+4, 3*dim+4)) / 4;
                 else
                     estimatedQuats(ii,t,:) = state(2*dim+1:2*dim+4);
-                    rotationVariance(ii,t) = tracks(ii).kalmanFilter.P(2*dim+1, 2*dim+1);
+                    rotationVariance(ii,t) = (P(2*dim+1, 2*dim+1) + P(2*dim+2, 2*dim+2) + ...
+                                              P(2*dim+3, 2*dim+3) + P(2*dim+4, 2*dim+4)) / 4;
                 end
             end
         else
@@ -467,7 +476,7 @@ end
             return;
         end
         
-        invisibleForTooLong = 15;
+        invisibleForTooLong = 20;
         ageThreshold = 1;
         visibilityFraction = 0.5;
         
@@ -486,6 +495,9 @@ end
                 % Mark track as lost, i.e. set age to 0
                 % TODO: Also wipe other attributes
                 tracks(lostIdx(i)).age = 0;
+                
+                estimatedPositions(lostIdx(i), t-invisibleForTooLong:t-1, :) = NaN;
+                estimatedQuats(lostIdx(i), t-invisibleForTooLong:t-1, :) = NaN;
             end
         end
     end
@@ -564,6 +576,7 @@ end
                 end
                 
                 if tracks(k).age > 0
+                    
                     if strcmp(model, 'LieGroup')
                         xPos = tracks(k).kalmanFilter.mu.X(1,4);
                         yPos = tracks(k).kalmanFilter.mu.X(2,4);
@@ -588,6 +601,7 @@ end
                     birdsTrajectories{k}.XData = newXData;
                     birdsTrajectories{k}.YData = newYData;
                     birdsTrajectories{k}.ZData = newZData;
+                    birdsTrajectories{k}.Color = colorsPredicted(k,:);
                     
                     %birdsPositions{k}.XData = xPos;
                     %birdsPositions{k}.YData = yPos;
@@ -612,6 +626,14 @@ end
                         markerPositions{k,n}.YData = yPos + rotatedPattern(n,2);
                         markerPositions{k,n}.ZData = zPos + rotatedPattern(n,3);
                     end
+                else
+                    %TODO: remove lost track from visualization
+                    for n=1:nMarkers
+                       markerPositions{k,n}.XData = NaN;
+                       markerPositions{k,n}.YData = NaN; 
+                       markerPositions{k,n}.ZData = NaN; 
+                    end
+                    birdsTrajectories{k}.Color = colorsTrue(k,:);
                 end
             end
         end
@@ -620,7 +642,7 @@ end
         markersForVisualization{1}.YData = dets(:,2);
         markersForVisualization{1}.ZData = dets(:,3);
         drawnow
-        %pause(0.05)
+        %pause(0.5)
     end
 
 
