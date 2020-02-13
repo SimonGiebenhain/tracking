@@ -50,11 +50,18 @@ function [H, J] = getMeasurementFunction(pattern, quatMotionType, motionType, na
             % Work woth symbolic variables in order to compute the jacobian
             % automatically.
             syms x y z vx vy vz q1 q2 q3 q4 real;
-            syms m1 m2 m3 real;
-            m = [m1;m2;m3];
+            syms p11 p12 p13 real;
+            syms p21 p22 p23 real;
+            syms p31 p32 p33 real;
+            syms p41 p42 p43 real;
+            
+            pattern = [p11 p12 p13;
+                      p21 p22 p23;
+                      p31 p32 p33;
+                      p41 p42 p43];
 
             % Mapping from state space to measurement space
-            H = Rot([q1;q2;q3;q4]) * m + [x; y; z];
+            H = reshape( (Rot([q1;q2;q3;q4]) * pattern')' + [x; y; z]', [], 1 );
 
             % Let the Symbolic Math Toolbox calculate the jacobian.
             % The transform back to a regular matlab function.

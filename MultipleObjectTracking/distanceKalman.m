@@ -8,7 +8,7 @@ else
     if strcmp(motionType, 'constAcc')
         expectedMarkerLocations = (Rot(kalmanFilter.x(3*3+1:3*3+4)) * kalmanFilter.pattern' + kalmanFilter.x(1:3))';
     else
-        fprintf('distanceKalman: no acc. used!')
+        %fprintf('distanceKalman: no acc. used!')
         expectedMarkerLocations = (Rot(kalmanFilter.x(2*3+1:2*3+4)) * kalmanFilter.pattern' + kalmanFilter.x(1:3))';
     end
 end

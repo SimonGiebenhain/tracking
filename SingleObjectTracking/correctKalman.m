@@ -42,6 +42,7 @@ if noKnowledge
                 quatIdx = 2*dim+1:2*dim+4;
             end
             [p, ~, FPs, certainty, method] = match_patterns(pattern, ds, 'ML', Rot(s.x(quatIdx)), hyperParams);
+            s.z = reshape(detections, [], 1);
         end
     else
         if strcmp(s.type, 'LG-EKF')
@@ -73,13 +74,29 @@ if noKnowledge
         if hyperParams.useAssignmentLength == 1
             certainty = hyperParams.certaintyFactor * certainty / (size(assignment, 2) + 1);
         end
-    elseif strcmp(method, 'final4')
+        
+        if vNorm >= 25
+            certainty = certainty / 2;
+        elseif vNorm < 10
+            certainty = 5*certainty;
+        end
+    elseif strcmp(method, 'final3')
         nDets = size(detections, 1);
         assignment = p;
         lostDet = zeros(nDets, 1);
         lostDet(lostDs) = 1;
         if hyperParams.useAssignmentLength == 1
             certainty = (certainty/hyperParams.certaintyScale)^2 / (size(assignment, 2) + 1);
+        end
+    elseif strcmp(method, 'final4')
+        nDets = size(detections, 1);
+        assignment = p;
+        lostDet = zeros(nDets, 1);
+        lostDet(lostDs) = 1;
+        if hyperParams.useAssignmentLength == 1
+            certainty = (certainty/hyperParams.certaintyScale)^3 / (size(assignment, 2) + 1);
+            certainty = max(0.1, certainty);
+            certainty = min(100, certainty);
         end
     else
         fprintf('unknown method encountered')
@@ -118,25 +135,25 @@ end
 if strcmp(s.type, 'LG-EKF')
     z = [detections ones(size(detections,1),1)];
     z = reshape(z', [],1);
-
+    
     h = @(S) [measFunc(S,[pattern(1,:)';1]);
-              measFunc(S,[pattern(2,:)';1]);
-              measFunc(S,[pattern(3,:)';1]);
-              measFunc(S,[pattern(4,:)';1])];
-
+        measFunc(S,[pattern(2,:)';1]);
+        measFunc(S,[pattern(3,:)';1]);
+        measFunc(S,[pattern(4,:)';1])];
+    
     zPred = h(s.mu);
-
+    
     jac = @(m, mu) [
         HLinSE3AC(m(1,1), m(1,2), m(1,3), mu(1,1), mu(1,2), mu(1,3), mu(2,1), mu(2,2), mu(2,3), mu(3,1), mu(3,2), mu(3,3));
         HLinSE3AC(m(2,1), m(2,2), m(2,3), mu(1,1), mu(1,2), mu(1,3), mu(2,1), mu(2,2), mu(2,3), mu(3,1), mu(3,2), mu(3,3));
         HLinSE3AC(m(3,1), m(3,2), m(3,3), mu(1,1), mu(1,2), mu(1,3), mu(2,1), mu(2,2), mu(2,3), mu(3,1), mu(3,2), mu(3,3));
         HLinSE3AC(m(4,1), m(4,2), m(4,3), mu(1,1), mu(1,2), mu(1,3), mu(2,1), mu(2,2), mu(2,3), mu(3,1), mu(3,2), mu(3,3))
         ];
-
+    
     H = @(S) jac(s.pattern, S.X);
     H = H(s.mu);
     H = H(detectionsIdx, :);
-
+    
     K = s.P*H'/(H*s.P*H'+s.R);
     m = K*(z(~lostIdx)-zPred(detectionsIdx));
     s.mu = comp(s.mu, expSE3ACvec(m));
@@ -150,15 +167,15 @@ else
     else
         J = @(x) subindex(Jac(x(7), x(8), x(9), x(10)), detectionsIdx);
     end
-
+    
     %Evaluate Jacobian at current position
     J = J(s.x);
     % Compute Kalman gain factor:
     K = s.P*J'/(J*s.P*J'+s.R);
-
+    
     z = s.H(s.x);
     s.x = s.x + K*(s.z(~lostIdx)-z(detectionsIdx));
-
+    
     % TODO immer machen? oder nur wenn detection?
     % Correct covariance matrix estimate
     s.P = s.P - K*J*s.P;

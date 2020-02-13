@@ -40,28 +40,39 @@ stdHyperParams.adaptiveNoise = 1;
 stdHyperParams.lambda = 0;
 stdHyperParams.simplePatternMatching = 0;
 
-stdHyperParams.costOfNonAsDtTA = 55;
+stdHyperParams.costOfNonAsDtTA = 75;
 stdHyperParams.certaintyFactor = 1;
 stdHyperParams.useAssignmentLength = 1;
 stdHyperParams.minAssignmentThreshold = 55;
-stdHyperParams.costOfNonAsDtMA = 5;
-stdHyperParams.eucDistWeight = 1/10;
-stdHyperParams.posNoise = 10;
-stdHyperParams.motNoise = 20;
-stdHyperParams.accNoise = 20;
-stdHyperParams.quatNoise = 0.05;
+stdHyperParams.costOfNonAsDtMA = 10;
+stdHyperParams.eucDistWeight = 1/5;
+stdHyperParams.posNoise = 5;
+stdHyperParams.motNoise = 5;
+stdHyperParams.accNoise = 5;
+stdHyperParams.quatNoise = 0.01;
 stdHyperParams.quatMotionNoise = 1;
-stdHyperParams.measurementNoise = 65;
-stdHyperParams.certaintyScale = 3;
+stdHyperParams.measurementNoise = 150;
+stdHyperParams.certaintyScale = 5;
 quatMotionType = 'brownian';
 
 fprintf('Starting to track!\n')
 
 %profile on
 beginningFrame = 1;%2500+7000;
-[estimatedPositions, estimatedQuats] = ownMOT(formattedData(beginningFrame:end,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
-
+endFrame = 6000; size(formattedData,1);
+[estimatedPositions, estimatedQuats, positionVariance, rotationVariance] = ownMOT(formattedData(beginningFrame:endFrame,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
 %[estimatedPositions, estimatedQuats] = ownMOT(formattedData(1000:end,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
+
+
+%%
+colors = distinguishable_colors(10);
+figure; hold on;
+for i=1:10
+    plot(smoothdata(positionVariance(i,:)), 'color', colors(i,:))
+end
+
+hold off;
+%%
 
 %profile viewer
 

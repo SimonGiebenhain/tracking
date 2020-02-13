@@ -6,7 +6,7 @@
 % TODO
 % Explanation goes here
 
-function [estimatedPositions, estimatedQuats, markerAssignemnts, falsePositives] = ownMOT(D, patterns, patternNames, useVICONinit, initialStates, nObjects, shouldShowTruth, trueTrajectory, trueOrientation, quatMotionType, hyperParams)
+function [estimatedPositions, estimatedQuats, positionVariance, rotationVariance, markerAssignemnts, falsePositives] = ownMOT(D, patterns, patternNames, useVICONinit, initialStates, nObjects, shouldShowTruth, trueTrajectory, trueOrientation, quatMotionType, hyperParams)
 % OWNMOT does multi object tracking
 %   @D all observations/detections in the format:
 %       T x maxDetectionsPerFrame x 3
@@ -40,7 +40,7 @@ processNoise.acceleration = hyperParams.accNoise;
 processNoise.quat = hyperParams.quatNoise;
 processNoise.quatMotion = hyperParams.quatMotionNoise;
 measurementNoise = hyperParams.measurementNoise;
-model = 'extended'; %'LieGroup'; % 
+model = 'LieGroup'; % 'extended'; %
 initialNoise.initPositionVar = 1;
 initialNoise.initMotionVar = 20;
 initialNoise.initAccVar = 20;
@@ -77,7 +77,7 @@ colorsTrue = (colorsPredicted + 2) ./ (max(colorsPredicted,[],2) +2);
 keepOldTrajectory = 0;
 %shouldShowTruth = 1;
 vizHistoryLength = 200;
-initializeFigure();
+%initializeFigure();
 
 
 estimatedPositions = zeros(nObjects, T, 3);
@@ -104,10 +104,10 @@ for t = 1:T
         [tracks, unassignedPatterns] = createNewTracks(detections(unassignedDetections,:), unassignedPatterns, tracks, patterns, params, patternNames);
     end
     t
-    %if t == 60
+    %if t == 530
     %   t 
     %end
-    displayTrackingResults();
+    %displayTrackingResults();
     
     % Store tracking results
     for ii = 1:nObjects
@@ -467,7 +467,7 @@ end
             return;
         end
         
-        invisibleForTooLong = 10;
+        invisibleForTooLong = 15;
         ageThreshold = 1;
         visibilityFraction = 0.5;
         
