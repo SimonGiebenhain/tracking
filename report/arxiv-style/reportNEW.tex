@@ -99,6 +99,7 @@ This paper introduces two Multiple Object Tracking methods which work on unlabel
 	\begin{subfigure}[b]{0.455\textwidth}
 			\includegraphics[width=\textwidth]{img/detailed_data.png}
 		\caption{top-down, close-up}
+		\label{detections_problems}
 	\end{subfigure}
 	\vspace{\baselineskip}
 	\caption{\textbf{Detections and tracking results} - Gray stars represent detections. Colorful circles show the points where markers of tracked birds are expected, based on tracked position and orientation. The lines show past movement of birds. (a) Shows some birds flying towards the ground, while others are stationary. (b) Gives a detailed view of four birds. One can see a false positive detection next to the dark blue bird. Lots of detections are missing, e.g. only one of the four markers of the red bird are currently visible.}
@@ -151,7 +152,7 @@ The data was captured inside of a large room with a 2D array of infrared cameras
 
 
 %TODO: move this section after Problem Formulation and Notation???
-\section{The Basics of Single and Multi Object Tracking}
+\section{Single and Multi Object Tracking}
 %TODO rework introduction to section
 This section shortly summarizes common approaches for MOT, and shows the direction of current research in this area. 
 %TODO: outline difficulties of MOT
@@ -294,48 +295,55 @@ The assumptions made to make the KF work are strong. Especially the linearity of
 
 
 \subsection{Multiple Object Tracking}
-%TODO: somethin general about MOT, like difficulties, etc.
-% TODO also differences between section MOT algorithms and similarity measure, i.e. two different threads of research
-
 
 Most of the MOT research focuses on tracking pedestrians or vehicles, as surveillance and autonomous vehicles are two driving industry applications for MOT. According to \cite{mot_lit_rev}, 70\% of research efforts are devoted to pedestrians. These approaches all work on video data and usually apply a tracking-by-detection paradigm, also called detection based tracking (DBT), where an object detector locates objects of interest in each frame and the MOT algorithm associates these detections to the maintained tracks. This procedure is called detection-to-track-assignment or data association. This way the algorithm can focus on the information nearby the detected objects and discard seemingly irrelevant information. The detection-to-track-assignment is the most crucial step in these approaches and commonly performed with information geographic information and visual features drawn from the detected bounding boxes. \cite{tracking_the_trackers} found  that the most defining feature of the best performing models on the MOT15 benchmark (\cite{MOT15}) and MOT16 benchmark (\cite{MOT16}) is a good similarity measure using appearance features.
 
 \subsubsection{Challenges in Multiple Object Tracking}
+Compared to SOT most MOT scenarios are much more challenging, as scenes are often troubled by occlusion of objects, which both results in very close and intersecting tracks, making identity switches a potential problem. Furthermore occlusions can cause missing detections. Recovering a track after it was not detected for multiple frames is challenging. As most MOT approaches are detection based, error of the object detector can produce false positive detections, sometimes called false alarms in the literature. \\
+Additionally multiple technical problems arise in MOT. First, the number of objects is not know beforehand and can change during the course of tracking. Therefore the algorithms have to handle births (the initialization of new tracks) and deaths (the discontinuations of tracks). The detection-to-track-assignment is a combinatorial problem, while the exact state estimation is a continuous estimation problem. The mixture of discrete, continuous and varying cardinality poses challenges in designing MOT algorithms.\\
+There seem to be two threads of research in MOT, as two different literature reviews of MOT hardly overlap at all. The literature review \cite{MTT} is mainly focused on MOT from an algorithmic perspective. The MOT problem is specified very general. Point detections are considered as the only input, which is why geographic location is the only source of information of the algorithms. A quick overview over the main algorithms is given in section \ref{mot_algorithms}. \\
+Contrary the MOT literature review \cite{mot_lit_rev} focuses on designing a strong similarity measure between objects. The underlying MOT algorithm is not mentioned at all. They assume that when working with visual information focusing on visual appearance is more valuable than relying on a more complicated MOT algorithm. In the latter review the underlying MOT algorithm is solely heuristics based and the detection-to-track-assignment is done by minimizing assignment cost given by the similarity measure. These ideas are presented in section \ref{similarity}. 
 
+
+
+%TODO some MOT assumption like probability for FA, and detections etc.
 \subsubsection{MOT algorithms}
 \label{mot_algorithms}
-The most simple MOT algorithm, sometimes called Global Nearest Neighbor (GNN), handles the detection-to-track-assignment, which is also called data association in MOT literature, by assigning the detections to the spatially nearest object. While this is a very simple procedure and performs poorly in overly crowded scenes, it works well on three-dimensional data, as demonstrated in \cite{3d_kalman} or in this work. The remainder of this subsection list more sophisticated methods for MOT, which all focus on the data association procedure. \\ %TODO death and birth
+The most simple MOT algorithm, sometimes called Global Nearest Neighbor (GNN), handles the detection-to-track-assignment, which is also called data association in MOT literature, by assigning the detections to the spatially nearest object. While this is a very simple procedure and performs poorly in overly crowded scenes, it works well on three-dimensional data, as demonstrated in \cite{3d_kalman} or in this work. Birth and death of tracks are usually handled with some simple heuristics in this simple method.\\
+
+The remainder of this subsection list more sophisticated methods for MOT. For these methods more assumptions have to be made in order to model missing detections and false positive detections. The most common assumption are for example that an object produces a detection with $p_D$ and remains undetected otherwise. Furthermore the number of false positive detections is assumed to be \emph{Poisson} distributed with mean $\lambda_F$.
 
 %TODO: citation?
 \paragraph{Probabilistic Data Association} Probabilistic Data Association (PDA) is very similar to GNN, but uses soft instead of hard assignments and is used in SOT scenarios with false positive detections and missing detections. Instead of assigning the nearest detection to a track, an average over detections is assigned, weighted by association probabilities. In a MOT setting PDA suffers from conflicting assignments, as each detection can influence the average of multiple tracks, which is clearly undesirable.
 
 %TODO citation of original and more recent version
-\paragraph{Joint Probabilistic Data Association} Joint Probabilistic Data Association (JPDA) is an extension of PDA, which resolves conflicting assignments by looking at the association problem in a joint fashion. Due to this the computational cost is exponential in the number of tracks and detections. Furthermore multiple assumptions, like a know number of tracks or at most one measurement per track, are made. 
-%TODO citation of original and tree based.
-\paragraph{Multiple Hypothesis Tracking} Multiple Hypothesis Tracking (MHT) uses a delayed decision approach, hoping that future measurements will disambiguate the association problem. Instead of making a final detection-to-track-assignment at each time step, MHT propagates a subset of assignment hypothesis, each representing one possible explanation of the data. The hypothesis are organized in a tree structure. In order to inhibit exponential growth of hypothesis, several pruning strategies, like removing low likelihood hypothesis or only allowing to have multiple hypothesis for a certain maximum of steps in the past. 
+\paragraph{Joint Probabilistic Data Association} Joint Probabilistic Data Association (JPDA) \cite{JPDA} is an extension of PDA, which resolves conflicting assignments by looking at the association problem in a joint fashion. Due to this the computational cost is exponential in the number of tracks and detections. Furthermore multiple assumptions, like a known number of tracks or at most one measurement per track, are made. 
 
-\paragraph{Random Finite Sets} The theory of Random Finite Sets (RFS) and the Finite Set Statistics (FISST) first introduced by Mahler %TODO cite,
-allows to reformulate the bayesian filtering approach described in section \ref{bayesian_recursion}. In the RFS approach all object states are combined in sets. Contrary to the GNN, JPDA and MHT, the RFS approach is not focused around the data association.\\
- As solving the integral in %TODO ref bayesian filtering formula
-is computationally intractable, approximate solutions like the PHD filter were proposed. %TODO cite PHD filter.
-As these methods work on sets of states, tracks are treated as indistinguishable. The GLMB %TODO cite GLMB 
-is a version which resolves this problem.
+%TODO citation of original and tree based.
+\begin{sloppypar}
+
+\paragraph{Multiple Hypothesis Tracking} Multiple Hypothesis Tracking (MHT) \cite{MHT} uses a delayed decision approach, hoping that future measurements will disambiguate the association problem. Instead of making a final detection-to-track-assignment at each time step, MHT propagates a subset of assignment hypothesis, each representing one possible explanation of the data. The hypothesis are organized in a tree structure. In order to inhibit exponential growth of hypothesis, several pruning strategies, like removing low likelihood hypothesis or only allowing to have multiple hypothesis for a certain maximum of steps in the past. 
+\end{sloppypar}
+
+\paragraph{Random Finite Sets} The theory of Random Finite Sets (RFS) and the Finite Set Statistics (FISST) \cite{FISST} allows to reformulate the bayesian filtering approach described in section \ref{bayesian_recursion}. In the RFS approach the states of all objects are combined in a set. Contrary to the GNN, JPDA and MHT, the RFS approach is not focused around the data association. As solving the bayesian recursion directly is computationally intractable, approximate solutions like the PHD filter were proposed \cite{PHD}.As these methods work on sets of states, tracks are treated as indistinguishable. The Generalized Labeled Multi-Bernoulli (GLMB) filter \cite{GLMB}is a version which resolves this problem.
 
 \subsubsection{Similarity Measures} 
-%TODO how to do the actual comparison?
-The algorithms described in the previous section are designed to work on detections of objects and could be extended to include more information in their metric than euclidean distance. Commonly the source of information are distinguished into three categories: appearance, motion and interaction. 
+\label{similarity}
+%TODO how to do the actual comparison? i.e. mention boosting
+This section describes sources of information which are valuable for MOT. Commonly the source of information are distinguished into three categories: appearance, motion and interaction.  While appearance and interaction features are usually applied in a simple GNN framework, they could be used to construct a more powerful metric for one of the algorithms described in the previous section. A decent motion model is part of every proper MOT algorithm, but is listed here for completeness.
 
-\paragraph{Appearance} When working with video data, images clearly constitute a rich source of information. Visual information especially becomes crucial in crowded scenes, where tracking without visual information becomes ill-posed. In classical systems visual information of interest were for example color histograms, histograms of gradients (HOG), depth information or even optical flow. This information can then be incorporated into a metric, which defines a new notion of distance between two objects. Since designing visual features by hand is very tedious, nowadays deep learning methods are used to extract and compare visual appearance. Section \ref{dl_aided_mot} describes the uses of deep learning in MOT in more detail. 
+\paragraph{Appearance} When working with video data, images clearly constitute a rich source of information. Visual information especially becomes crucial in crowded scenes, where tracking without visual information can become impossible. In classical systems visual information of interest were for example color histograms, histograms of gradients (HOG), depth information or even optical flow. This information can then be incorporated into a metric, which defines a new notion of distance between two objects. Since designing visual features by hand is very tedious, nowadays deep learning methods, like convolutional neural networks (CNNs), are preferred to extract visual features due to their representational power. Using pretrained CNNs makes fine tuning relatively efficient. Section \ref{dl_aided_mot} describes the uses of deep learning in more detail.
 
-\paragraph{Motion Model} The algorithms stated in section \ref{mot_algorithms} by default use the euclidean distance as similarity measure. In order to reason about the new states given new measurements, it is desirable to have a motion model, which can reliably predict the positions of objects in future frames. Thereby the search space is reduced and the detection-to-track-assignment becomes more accurate. As a perfect motion model is impossibly complex and some actions cannot be explained by the available data, simple motion models are mostly used. The most common models, like nearly constant velocity or acceleration models, inherently make the assumption that objects move relatively smooth and without sudden changes in speed.
+\paragraph{Motion Model} The algorithms stated in section \ref{mot_algorithms} by default use the euclidean distance as similarity measure. In order to reason about the new states given new measurements, it is desirable to have a motion model, which can reliably predict the positions of objects in future frames. Thereby the search space is reduced and the detection-to-track-assignment becomes more accurate. As a perfect motion model is impossibly complex and some actions cannot be explained by the available data, simple motion models are mostly used. The most common models, like nearly constant velocity or acceleration models, inherently make the assumption that objects move relatively smooth and without sudden changes in speed. Deep learning methods are a promising method to construct more expressive motion models, without hand crafting rules for specific settings.
 
-%Cite something maybe?
-\paragraph{Interaction Model} In MOT scenarios the interaction between objects can provide important information for tracking. For example when tracking pedestrians one can make the safe assumption that pedestrians will avoid crashing into each other. Concepts like repulsion can therefore give valuable information. Furthermore concepts like attraction could be of interest when tracking swarms of animals. While animals too have a certain minimum distance they like to keep to each other, they also do not wander far from the group.
-
+\paragraph{Interaction Model} In MOT scenarios the interaction between objects can provide important information for tracking. For example when tracking pedestrians one can make the safe assumption that pedestrians will avoid crashing into each other. Concepts like repulsion can therefore give valuable information. Furthermore concepts like attraction could be of interest when tracking swarms of animals. While animals, too, have a certain minimum distance they like to keep to each other, they also do not wander far from the group. Designing more complex interaction rules by hand is however tedious and deep learning seems like an alternative again, although it is less obvious to design a suitable architecture.
 
 \subsubsection{Deep Learning Aided MOT}
 \label{dl_aided_mot}
 
+As stated in the previous section, hand crafting appearance features is outperformed by the use of CNNs. The design of powerful motion and interaction models is also difficult. This section gives a quick overview of the application of deep learning in MOT. A detailed description of such models is, however, out of scope for this work. Instead I refer the reader to  \cite{dl_in_mot}, a detailed survey of deep learning in MOT.
+
+One of the most prominent directions of research is using deep learning to compute the affinity between an existing track and a new detection and then utilize the HA to perform an optimal assignment. Siamese CNNs accept two inputs and transform them with shared weights until finally merging or comparing the features in some way and are the most popular variant to compute affinities, for example \cite{dual_matching}, \cite{siamese}. These models can be trained with the softmax activation and cross entropy loss, where matching examples have label 1 and non-matching examples have a label 0. In these scenarios it is possible do online training while tracking, where positive examples are drawn from the tracked object and negative examples are drawn from random crops or different tracked objects.
 
 
 \subsubsection{Learning MOT End-to-End}
@@ -352,6 +360,7 @@ The work of \cite{3d_kalman}  uses a regular KF for tracking objects in three-di
 
 
 \subsection{Attitude Estimation}
+%TODO don't forget to mention that no need for deep learning
 
 %\begin{figure}[ht]
 %	\centering
@@ -395,7 +404,13 @@ which minimize some desired error. The Multiple Object Tracking Accuracy (MOTA) 
 
 I constrain the problem to the specificities of the bird data by fixing the dimensionality $d=3$ and the number of markers per pattern $K=4$. Having $d=3$ also seems to be the most applicable case in general.
 
+%TODO state difficulty of this problem again, i.e. labelling of detections
 
+
+% TODO don't forget references to related work section,
+% TODO i.e. formulation of KF possible, but only up to unknown permutations in measurement function
+% TODO multiple measurements make advanced MOT algorithm non-trivial, but in 3d simple GNN should be sufficient, but focus on DtMA
+% TODO neural network could help with handcrafted DtMA assignment
 \section{My Approaches}
 \label{approaches}
 I followed two major approaches to solve the specific MOT problem described above, a KF approach and a modern deep learning approach. Both approaches are embedded in the same MOT framework, a tracking-by-detection framework which uses multiple SOTs combined with some simple heuristics to mange multiple tracks. The framework is depicted in figure \ref{flow_chart}. In the following I describe the components of this framework in more detail.
