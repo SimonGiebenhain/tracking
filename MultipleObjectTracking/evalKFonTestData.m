@@ -2,8 +2,8 @@
 % which the neural network was evaluated.
 
 %% load data
-load('tracking/modernMethods/data/artificial_none.mat')
-load('tracking/modernMethods/data/artificial_higher.mat')
+%load('tracking/modernMethods/data/artificial_none.mat')
+load('tracking/modernMethods/data/birdlike_higher.mat')
 
 detections = detections;% / 4.5565;
 patterns = patterns;% / 4.5565;
@@ -36,6 +36,27 @@ size(D)
     
     
 %% test MOT
+% stdHyperParams.doFPFiltering = 1;
+% stdHyperParams.adaptiveNoise = 1;
+% stdHyperParams.lambda = 0;
+% stdHyperParams.simplePatternMatching = 0;
+% 
+% stdHyperParams.costOfNonAsDtTA = 0.7;
+% stdHyperParams.certaintyFactor = 50;
+% stdHyperParams.useAssignmentLength = 1;
+% stdHyperParams.minAssignmentThreshold = 0.9;
+% stdHyperParams.thresholdFPFilter = 0.7;
+% stdHyperParams.costOfNonAsDtMA = 0.095;
+% stdHyperParams.eucDistWeight = 1/8;
+% stdHyperParams.posNoise = 0.002;
+% stdHyperParams.motNoise = 0.002;
+% stdHyperParams.accNoise = 0.001;
+% stdHyperParams.quatNoise = 0.5;
+% %stdHyperParams.quatMotionNoise = 0.5;
+% stdHyperParams.measurementNoise = 2;
+% stdHyperParams.certaintyScale = 0.3;
+% stdHyperParams.visualizeTracking = 1;
+% quatMotionType = 'brownian';
 stdHyperParams.doFPFiltering = 1;
 stdHyperParams.adaptiveNoise = 1;
 stdHyperParams.lambda = 0;
@@ -44,21 +65,22 @@ stdHyperParams.simplePatternMatching = 0;
 stdHyperParams.costOfNonAsDtTA = 0.7;
 stdHyperParams.certaintyFactor = 50;
 stdHyperParams.useAssignmentLength = 1;
-stdHyperParams.minAssignmentThreshold = 0.9;
-stdHyperParams.thresholdFPFilter = 0.7;
+stdHyperParams.minAssignmentThreshold = 0.7;
 stdHyperParams.costOfNonAsDtMA = 0.095;
-stdHyperParams.eucDistWeight = 1/8;
-stdHyperParams.posNoise = 0.005;
-stdHyperParams.motNoise = 0.008;
-stdHyperParams.accNoise = 0.008;
-stdHyperParams.quatNoise = 0.05;
-stdHyperParams.quatMotionNoise = 0.05;
-stdHyperParams.measurementNoise = 2;
+stdHyperParams.eucDistWeight = 1/10;
+stdHyperParams.posNoise = 0.01;
+stdHyperParams.motNoise = 0.01;
+stdHyperParams.accNoise = 0.01;
+stdHyperParams.quatNoise = 0.02;
+stdHyperParams.quatMotionNoise = -1;
+stdHyperParams.measurementNoise = 0.2;
 stdHyperParams.certaintyScale = 0.3;
+stdHyperParams.visualizeTracking = 0;
 quatMotionType = 'brownian';
+stdHyperParams.modelType = 'extended';
 
 %%
-exN = 4;
+exN = 9;
 if length(size(patterns)) == 4
     pats = reshape(patterns(1, exN, :, :), 1, 4, 3);
 else
@@ -69,9 +91,8 @@ size(pats)
 p = squeeze(pos(:, exN, :));
 %q = squeeze(quats(:, 1, :));
 
-qMat = squeeze(quats(:, exN, :));
-qMat = permute(reshape(qMat, [100, 3, 3]), [3, 2, 1]);
-q = rotm2quat(qMat); 
+qMat = squeeze(quats(:, exN, :, :));
+q = rotm2quat(squeeze(qMat(1, :, :))); 
 
 %initialStates = [p(1, :) 0 0 0 rotm2quat(reshape(q(1, :), 3, 3)') 0 0 0 0];
 initialStates.pos = p(1, :);
@@ -80,34 +101,86 @@ initialStates.acceleration = [0 0 0];
 initialStates.quat = q(1, :);
 
 size(initialStates)
-[estimatedPositions, estimatedQuats] = ownMOT(squeeze(D(:, exN, :, :)), pats, {'pat'} ,1 , initialStates, 1, 0, -1, -1, quatMotionType, stdHyperParams);
+[estimatedPositions, estimatedQuats] = ownMOT(squeeze(D(1:1:100, exN, :, :)), pats, {'pat'} ,1 , initialStates, 1, 0, -1, -1, quatMotionType, stdHyperParams);
 save('tracking/modernMethods/KF_higher.mat', 'estimatedPositions', 'estimatedQuats')
+estimatedQuats = squeeze(estimatedQuats);
+for t=1:100
+   estimatedQuats(t, :) = estimatedQuats(t, :) / sqrt(sum((estimatedQuats(t, :).^2)));
+end
+
 figure;
 hold on;
 plot(squeeze(estimatedPositions))
-plot(p)
+plot(p(1:1:end, :))
 hold off;
 %vizRes(squeeze(D(:, exN, :,:)), pats, estimatedPositions, estimatedQuats, 1, permute(pos(:, exN, :), [2, 1, 3]), permute(quats(:, exN, :), [2, 1, 3]))
 %%
-predPos = zeros(250, T, 3);
-predQuats = zeros(250, T, 4);
-profile on
-for n=1:100
+N = 1000;
+predPos = zeros(N, T, 3);
+predQuats = zeros(N, T, 4);
+errorPlot = zeros(N, T);
+for n=1:N
     n
-    
     if length(size(patterns)) == 4
         pats = reshape(patterns(1, n, :, :), 1, 4, 3);
     else
         pats = reshape(patterns(n, :, :), 1, 4, 3);
     end
     p = squeeze(pos(:, n, :));
-    q = squeeze(quats(:, n, :));
-    initialStates = [p(1, :) 0 0 0 rotm2quat(reshape(q(1, :), 3, 3)') 0 0 0 0];
+    q = squeeze(quats(:, n, :, :));
+    initialStates.pos = p(1,:);
+    initialStates.velocity = [0 0 0];
+    initialStates.acceleration = [0 0 0];
+    initialStates.quat = rotm2quat(squeeze(q(1, :, :)));
+    %initialStates = [p(1, :) 0 0 0 rotm2quat(reshape(q(1, :), 3, 3)') 0 0 0 0];
     [estimatedPositions, estimatedQuats] = ownMOT(squeeze(D(:, n, :, :)), pats, {'pat'} ,1 , initialStates, 1, 0, -1, -1, quatMotionType, stdHyperParams);
+    for t=1:T
+       pat = squeeze(patterns(n, :, :)); 
+       eQ = squeeze(estimatedQuats(1, t, :));
+       eQ = eQ / norm(eQ);
+       eRM = quat2rotm(eQ');
+       errorPlot(n, t) = mean(( (eRM * pat')' - (squeeze(quats(t, n, :, :)) * pat')' ).^2, 'all');
+    end
     predPos(n, :, :) = squeeze(estimatedPositions);
     predQuats(n, :, :) = squeeze(estimatedQuats);
 end
-profile viewer
+
+%%
+
+CI95 = zeros(T, 1);
+
+for t=1:T
+   data = sort(errorPlot(:, t));
+   idx = floor(N*0.95);
+   CI95(t) = data(idx);
+end
+
+CI90 = zeros(T, 1);
+
+for t=1:T
+   data = sort(errorPlot(:, t));
+   idx = floor(N*0.9);
+   CI90(t) = data(idx);
+end
+
+CI99 = zeros(T, 1);
+
+for t=1:T
+   data = sort(errorPlot(:, t));
+   idx = floor(N*0.99);
+   CI99(t) = data(idx);
+end
+
+figure;
+plot(smoothdata(errorPlot', 'gauss', 10), 'color', [0, 0, 1, 0.15], 'LineWidth', 0.25)
+hold on;
+plot(CI90, 'LineWidth', 3, 'Color', [0.9290    0.6940    0.1250], 'LineStyle', '--')
+plot(CI95, 'LineWidth', 3, 'Color', [0.7500         0    0.7500], 'LineStyle', ':')
+plot(CI99, 'LineWidth', 3, 'Color', [0.8500    0.3250    0.0980], 'LineStyle', '-.')
+
+
+
+%plot(smoothdata(smoothdata(errorPlot', 'movmedian', 10), 'movmean', 10))
 % %%
 % predPos = zeros(floor(N/23), T, 3);
 % predQuats = zeros(floor(N/23), T, 4);
@@ -121,7 +194,7 @@ profile viewer
 %     predQuats(floor(n/23), :, :) = squeeze(estimatedQuats);
 % end
 %%
-save('test_KFresult_birdlike_none.mat', 'predPos', 'predQuats')
+save('test_EKF_res', 'errorPlot')
 
 %%
 load('test_KFresult_artificial_higher.mat')

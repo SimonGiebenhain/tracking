@@ -25,8 +25,8 @@ if noKnowledge
     end
     if age > 10 && hyperParams.doFPFiltering == 1
         norms = sqrt(sum(ds.^2, 2));
-        threshold = hyperParams.minAssignmentThreshold + vNorm*5;
-        if nnz(norms > threshold) < nDets || nnz(norms > threshold) == 1
+        threshold = hyperParams.minAssignmentThreshold + (vNorm/3)^2;
+        if nnz(norms > threshold) < nDets %|| nnz(norms > threshold) == 1
             ds(norms > threshold, :) = [];
             detections(norms > threshold, :) = [];
         end
@@ -94,9 +94,15 @@ if noKnowledge
         lostDet = zeros(nDets, 1);
         lostDet(lostDs) = 1;
         if hyperParams.useAssignmentLength == 1
-            certainty = (certainty/hyperParams.certaintyScale)^3 / (size(assignment, 2) + 1);
-            certainty = max(0.005, certainty);
-            certainty = min(100, certainty);
+            if size(assignment, 2) >= 2
+                divisor = size(assignment, 2)^2+1;
+            else
+                divisor = 3;
+            end
+            certainty = (certainty/hyperParams.certaintyScale)^2 / divisor;
+            %certainty = (certainty/hyperParams.certaintyScale)^2 / (2*size(assignment, 2) + 1);
+            certainty = max(0.0005, certainty);
+            certainty = min(150, certainty);
         end
     else
         fprintf('unknown method encountered')

@@ -10,7 +10,7 @@ else
     % Also add folder with patterns to path of matlab!
     [formattedData, patternsPlusNames] = readVICONcsv(dataFilename, patternDirectoryName);
 end
-patterns = zeros(10,4,3);
+patterns = zeros(length(patternsPlusNames),4,3);
 patternNames = {};
 for i=1:length(patternsPlusNames)
     patterns(i,:,:) = patternsPlusNames(i).pattern;
@@ -40,26 +40,29 @@ stdHyperParams.adaptiveNoise = 1;
 stdHyperParams.lambda = 0;
 stdHyperParams.simplePatternMatching = 0;
 
-stdHyperParams.costOfNonAsDtTA = 75;
+stdHyperParams.costOfNonAsDtTA = 85; %65; %35;
 stdHyperParams.certaintyFactor = 1;
 stdHyperParams.useAssignmentLength = 1;
-stdHyperParams.minAssignmentThreshold = 55;
+stdHyperParams.minAssignmentThreshold = 30;
 stdHyperParams.costOfNonAsDtMA = 10;
 stdHyperParams.eucDistWeight = 1/3;
-stdHyperParams.posNoise = 5;
-stdHyperParams.motNoise = 5;
+stdHyperParams.posNoise = 10;
+stdHyperParams.motNoise = 10;
 stdHyperParams.accNoise = 5;
-stdHyperParams.quatNoise = 0.01;
+stdHyperParams.quatNoise = 0.02;
 stdHyperParams.quatMotionNoise = 1;
-stdHyperParams.measurementNoise = 150;
-stdHyperParams.certaintyScale = 5;
+stdHyperParams.measurementNoise = 45;
+stdHyperParams.certaintyScale = 6.5;
+
+stdHyperParams.modelType = 'LieGroup';
+
 quatMotionType = 'brownian';
 
 fprintf('Starting to track!\n')
 
 %profile on
-beginningFrame = 1;%2500+7000;
-endFrame = size(formattedData,1);
+beginningFrame = 7000;%2000+4000;
+endFrame = 10000+4000;%size(formattedData,1);
 stdHyperParams.visualizeTracking = 1;
 [estimatedPositions, estimatedQuats, positionVariance, rotationVariance] = ownMOT(formattedData(beginningFrame:endFrame,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
 %[estimatedPositions, estimatedQuats] = ownMOT(formattedData(1000:end,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
@@ -86,10 +89,10 @@ exportToCSV(resultsFilename, estimatedPositions, estimatedQuats, beginningFrame,
 
 %%
 vizParams.vizSpeed = 10;
-vizParams.keepOldTrajectory = 1;
-vizParams.vizHistoryLength = 5000;
-vizParams.startFrame = 1000;
-vizParams.endFrame = 10000;
+vizParams.keepOldTrajectory = 0;
+vizParams.vizHistoryLength = 500;
+vizParams.startFrame = 7000;
+vizParams.endFrame = -1;
 vizRes(formattedData(beginningFrame:endFrame,:,:), patterns, estimatedPositions, estimatedQuats, vizParams, 0)
 
 

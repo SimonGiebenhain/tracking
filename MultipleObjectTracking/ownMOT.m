@@ -40,11 +40,11 @@ processNoise.acceleration = hyperParams.accNoise;
 processNoise.quat = hyperParams.quatNoise;
 processNoise.quatMotion = hyperParams.quatMotionNoise;
 measurementNoise = hyperParams.measurementNoise;
-model = 'LieGroup'; % 'extended'; %
-initialNoise.initPositionVar = 1;
-initialNoise.initMotionVar = 30;
-initialNoise.initAccVar = 30;
-initialNoise.initQuatVar = 0.01;
+model =  hyperParams.modelType; %'extended'; %'LieGroup'; %
+initialNoise.initPositionVar = 5;
+initialNoise.initMotionVar = 50;
+initialNoise.initAccVar = 50;
+initialNoise.initQuatVar = 0.05;
 initialNoise.initQuatMotionVar = 0.075;
 
 params.initialNoise = initialNoise;
@@ -107,9 +107,9 @@ for t = 1:T
         [tracks, unassignedPatterns] = createNewTracks(detections(unassignedDetections,:), unassignedPatterns, tracks, patterns, params, patternNames);
     end
     t
-    %if t == 530
-    %   t 
-    %end
+    if t == 1300
+       t 
+    end
     if visualizeTracking == 1
         displayTrackingResults();
     end
@@ -216,7 +216,7 @@ end
                 s.pattern = squeeze(patterns(i,:,:));
                 tracks(i) = struct(...
                     'id', i, ... 
-                    'name', patternName{i}, ...
+                    'name', patternNames{i}, ...
                     'kalmanFilter', s, ...
                     'kalmanParams', kalmanParams, ...
                     'age', 1, ...
@@ -476,7 +476,7 @@ end
             return;
         end
         
-        invisibleForTooLong = 20;
+        invisibleForTooLong = 15;
         ageThreshold = 1;
         visibilityFraction = 0.5;
         
@@ -496,8 +496,8 @@ end
                 % TODO: Also wipe other attributes
                 tracks(lostIdx(i)).age = 0;
                 
-                estimatedPositions(lostIdx(i), t-invisibleForTooLong:t-1, :) = NaN;
-                estimatedQuats(lostIdx(i), t-invisibleForTooLong:t-1, :) = NaN;
+                estimatedPositions(lostIdx(i), max(1,t-invisibleForTooLong):t-1, :) = NaN;
+                estimatedQuats(lostIdx(i), max(1, t-invisibleForTooLong):t-1, :) = NaN;
             end
         end
     end
@@ -603,10 +603,6 @@ end
                     birdsTrajectories{k}.ZData = newZData;
                     birdsTrajectories{k}.Color = colorsPredicted(k,:);
                     
-                    %birdsPositions{k}.XData = xPos;
-                    %birdsPositions{k}.YData = yPos;
-                    %birdsPositions{k}.ZData = zPos;
-                    
                     pattern = tracks(k).kalmanFilter.pattern;
                     if strcmp(model, 'LieGroup')
                         rotMat = tracks(k).kalmanFilter.mu.X(1:3, 1:3);
@@ -627,13 +623,12 @@ end
                         markerPositions{k,n}.ZData = zPos + rotatedPattern(n,3);
                     end
                 else
-                    %TODO: remove lost track from visualization
-                    for n=1:nMarkers
-                       markerPositions{k,n}.XData = NaN;
-                       markerPositions{k,n}.YData = NaN; 
-                       markerPositions{k,n}.ZData = NaN; 
-                    end
-                    birdsTrajectories{k}.Color = colorsTrue(k,:);
+                   for n=1:nMarkers
+                      markerPositions{k,n}.XData = NaN;
+                      markerPositions{k,n}.YData = NaN; 
+                      markerPositions{k,n}.ZData = NaN; 
+                   end
+                   birdsTrajectories{k}.Color = colorsTrue(k,:);
                 end
             end
         end
@@ -642,7 +637,7 @@ end
         markersForVisualization{1}.YData = dets(:,2);
         markersForVisualization{1}.ZData = dets(:,3);
         drawnow
-        %pause(0.5)
+        %pause(0.1)
     end
 
 
