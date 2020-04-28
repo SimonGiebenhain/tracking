@@ -214,6 +214,7 @@ end
                     end
                 end
                 s.pattern = squeeze(patterns(i,:,:));
+                s.flying = -1;
                 tracks(i) = struct(...
                     'id', i, ... 
                     'name', patternNames{i}, ...
@@ -342,12 +343,24 @@ end
             
             % Correct the estimate of the object's location
             % using the new detection.
+            s = tracks(currentTrackIdx).kalmanFilter;
             if strcmp(model, 'LieGroup')
-                tracks(currentTrackIdx).kalmanFilter.z = reshape(detectedMarkersForCurrentTrack', [], 1);
+                s.z = reshape(detectedMarkersForCurrentTrack', [], 1);
+                tracks(currentTrackIdx).kalmanFilter = correctKalman(s, 1, tracks(currentTrackIdx).kalmanParams, 0, hyperParams, tracks(currentTrackIdx).age, params.motionType);
+                if norm( s.mu.v ) > 35
+                    tracks(currentTrackIdx).kalmanFilter.flying = min(s.flying + 2, 10);
+                elseif norm( s.mu.v ) > 22.5
+                    tracks(currentTrackIdx).kalmanFilter.flying = min(s.flying + 1, 10);
+                elseif norm( s.mu.v ) < 10
+                    tracks(currentTrackIdx).kalmanFilter.flying = max(-1, s.flying -2);
+                end
             else
-                tracks(currentTrackIdx).kalmanFilter.z = reshape(detectedMarkersForCurrentTrack, [], 1);
+                s.z = reshape(detectedMarkersForCurrentTrack, [], 1);
+                tracks(currentTrackIdx).kalmanFilter = correctKalman(s, 1, tracks(currentTrackIdx).kalmanParams, 0, hyperParams, tracks(currentTrackIdx).age, params.motionType);
+                error('flying indication not implemented for quaternion version')
             end
-            tracks(currentTrackIdx).kalmanFilter = correctKalman(tracks(currentTrackIdx).kalmanFilter, 1, tracks(currentTrackIdx).kalmanParams, 0, hyperParams, tracks(currentTrackIdx).age, params.motionType);
+            
+            
             
             % Replace predicted bounding box with detected
             % bounding box.
@@ -621,6 +634,11 @@ end
                         markerPositions{k,n}.XData = xPos + rotatedPattern(n,1);
                         markerPositions{k,n}.YData = yPos + rotatedPattern(n,2);
                         markerPositions{k,n}.ZData = zPos + rotatedPattern(n,3);
+                        if tracks(k).kalmanFilter.flying > 0
+                            markerPositions{k,n}.Marker = 's';
+                        else
+                            markerPositions{k,n}.Marker = 'o';
+                        end
                     end
                 else
                    for n=1:nMarkers

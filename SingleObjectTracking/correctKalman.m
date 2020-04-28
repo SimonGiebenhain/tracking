@@ -15,20 +15,27 @@ if noKnowledge
     if strcmp(s.type, 'LG-EKF')
         detections = reshape(s.z, dim, [])';
         nDets = size(detections, 1);
+        expectedPositions = measFuncNonHomogenous(s.mu, s.pattern);
+        dists = min(pdist2(detections, expectedPositions), [], 2);
         ds = detections - s.mu.X(1:3, 4)';
         vNorm = sqrt(sum((s.mu.v).^2));
+        aNorm = sqrt(sum((s.mu.a).^2));
+
     else
         detections = reshape(s.z, [], dim);
         nDets = size(detections, 1);
+        expectedPositions = measFuncNonHomogenous(s.mu, s.pattern);
+        dists = min(pdist2(detections, expectedPositions), [], 2);
         ds = detections - s.x(1:dim)';
         vNorm = sqrt(sum(s.x(dim+1:2*dim).^2));
+        aNorm = sqrt(sum(s.x(2*dim+1:3*dim).^2));
+
     end
     if age > 10 && hyperParams.doFPFiltering == 1
-        norms = sqrt(sum(ds.^2, 2));
-        threshold = hyperParams.minAssignmentThreshold + (vNorm/3)^2;
-        if nnz(norms > threshold) < nDets %|| nnz(norms > threshold) == 1
-            ds(norms > threshold, :) = [];
-            detections(norms > threshold, :) = [];
+        threshold = hyperParams.minAssignmentThreshold + (vNorm/3)^2;% + (aNorm)^2;
+        if nnz(dists > threshold) < nDets %|| nnz(dists > threshold) == 1
+            ds(dists > threshold, :) = [];
+            detections(dists > threshold, :) = [];
         end
     end
     
