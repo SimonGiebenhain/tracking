@@ -107,7 +107,7 @@ for t = 1:T
         [tracks, unassignedPatterns] = createNewTracks(detections(unassignedDetections,:), unassignedPatterns, tracks, patterns, params, patternNames);
     end
     t
-    if t == 1300
+    if t == 3000
        t 
     end
     if visualizeTracking == 1
@@ -215,6 +215,7 @@ end
                 end
                 s.pattern = squeeze(patterns(i,:,:));
                 s.flying = -1;
+                s.consecutiveInvisibleCount = 0;
                 tracks(i) = struct(...
                     'id', i, ... 
                     'name', patternNames{i}, ...
@@ -374,7 +375,7 @@ end
             
             % Update visibility.
             tracks(currentTrackIdx).totalVisibleCount = tracks(currentTrackIdx).totalVisibleCount + 1;
-            tracks(currentTrackIdx).consecutiveInvisibleCount = 0;
+            tracks(currentTrackIdx).consecutiveInvisibleCount = tracks(currentTrackIdx).kalmanFilter.consecutiveInvisibleCount;
         end
     end
 
@@ -474,7 +475,8 @@ end
             unassignedTrackIdx = allUnassignedTracksIdx(i);
             if tracks(unassignedTrackIdx).age > 0
                 tracks(unassignedTrackIdx).age = tracks(unassignedTrackIdx).age + 1;
-                tracks(unassignedTrackIdx).consecutiveInvisibleCount = tracks(unassignedTrackIdx).consecutiveInvisibleCount + 1;
+                tracks(unassignedTrackIdx).kalmanFilter.consecutiveInvisibleCount = tracks(unassignedTrackIdx).kalmanFilter.consecutiveInvisibleCount + 1;
+                tracks(unassignedTrackIdx).consecutiveInvisibleCount = tracks(unassignedTrackIdx).kalmanFilter.consecutiveInvisibleCount;
             end
         end
     end
@@ -485,11 +487,12 @@ end
 % that have been invisible for too many frames overall.
 
     function deleteLostTracks()
+        
         if isempty(tracks)
             return;
         end
         
-        invisibleForTooLong = 15;
+        invisibleForTooLong = 25;
         ageThreshold = 1;
         visibilityFraction = 0.5;
         

@@ -1,7 +1,7 @@
 %% load data and patterns
 % Also add folder with patterns to path of matlab!
-dataFilename = 'datasets/session1/all.csv'; %'datasets/session8/Starling_Trials_10-12-2019_16-00-00_Trajectories_100.csv'; % 'datasets/session1/all.csv';
-patternDirectoryName = 'datasets/session1';
+dataFilename = 'datasets/session8/Starling_Trials_10-12-2019_16-00-00_Trajectories_100.csv'; % 'datasets/session1/all.csv';
+patternDirectoryName = 'datasets/session8';
 filePrefix = strsplit(dataFilename, '.');
 filePrefix = filePrefix{1};
 if isfile([filePrefix, '.mat'])
@@ -10,6 +10,7 @@ else
     % Also add folder with patterns to path of matlab!
     [formattedData, patternsPlusNames] = readVICONcsv(dataFilename, patternDirectoryName);
 end
+patternsPlusNames = read_patterns(patternDirectoryName);
 patterns = zeros(length(patternsPlusNames),4,3);
 patternNames = {};
 for i=1:length(patternsPlusNames)
@@ -40,18 +41,18 @@ stdHyperParams.adaptiveNoise = 1;
 stdHyperParams.lambda = 0;
 stdHyperParams.simplePatternMatching = 0;
 
-stdHyperParams.costOfNonAsDtTA = 85; %65; %35;
+stdHyperParams.costOfNonAsDtTA = 50; %session1: 85
 stdHyperParams.certaintyFactor = 1;
 stdHyperParams.useAssignmentLength = 1;
-stdHyperParams.minAssignmentThreshold = 12; %30;
+stdHyperParams.minAssignmentThreshold = 30; %30;
 stdHyperParams.costOfNonAsDtMA = 10;
-stdHyperParams.eucDistWeight = 1/3;
+stdHyperParams.eucDistWeight = 1/3;%1/3;
 stdHyperParams.posNoise = 10;
 stdHyperParams.motNoise = 10;
 stdHyperParams.accNoise = 5;
-stdHyperParams.quatNoise = 0.02;
+stdHyperParams.quatNoise = 0.052;
 stdHyperParams.quatMotionNoise = 1;
-stdHyperParams.measurementNoise = 45;
+stdHyperParams.measurementNoise = 50;
 stdHyperParams.certaintyScale = 6.5;
 
 stdHyperParams.modelType = 'LieGroup';
@@ -61,8 +62,8 @@ quatMotionType = 'brownian';
 fprintf('Starting to track!\n')
 
 %profile on
-beginningFrame = 7000;%2000+4000;
-endFrame = 10000+4000;%size(formattedData,1);
+beginningFrame = 4000;%7800+ blau macht sehr komische sachen;5300 %+ 1000 jittery;%%2000+4000;
+endFrame = size(formattedData,1);
 stdHyperParams.visualizeTracking = 1;
 [estimatedPositions, estimatedQuats, positionVariance, rotationVariance] = ownMOT(formattedData(beginningFrame:endFrame,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
 %[estimatedPositions, estimatedQuats] = ownMOT(formattedData(1000:end,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);

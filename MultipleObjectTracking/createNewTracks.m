@@ -1,13 +1,15 @@
 function [tracks, unassignedPatterns] = createNewTracks(detections, unassignedPatterns, tracks, patterns, params, patternNames)
 %CREATENEWTRACKS Summary of this function goes here
 %   Detailed explanation goes here
-
-if size(detections, 1) > 1 && sum(unassignedPatterns) > 0 
+invisCounts = [tracks(:).consecutiveInvisibleCount];
+invis = invisCounts >= 5;
+unassignedPatterns = unassignedPatterns | invis';
+if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
     
     %minClusterSize = 3; 
        %costOfNonAssignment = 0.5;
-    minClusterSize = 3;
-    costOfNonAssignment = 0.75;
+    minClusterSize = 4;
+    costOfNonAssignment = 0.5;
        
     
     %if sum(unassignedPatterns) == 1
@@ -59,7 +61,7 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
             dets = clusters{j};
             [R, translation, MSE] = umeyama(pattern', dets');
             if size(dets, 1) == 3
-               MSE = MSE*4; 
+               MSE = MSE*3; 
             end
             costMatrix(i,j) = MSE;
             rotMatsMatrix(i,j,:,:) = R;
@@ -67,7 +69,6 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
         end
     end
     
-     
     [patternToClusterAssignment, stillUnassignedPatterns, ~] = ...
         assignDetectionsToTracks(costMatrix, costOfNonAssignment);
     
@@ -97,6 +98,7 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
                                ],[dim, dim, dim, dim]));
             s.pattern = pattern;
             s.flying = -1;
+            s.consecutiveInvisibleCount = 0;
             newTrack = struct(...
                 'id', patternIdx, ...
                 'name', patternNames{patternIdx}, ...
