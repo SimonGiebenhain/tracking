@@ -462,7 +462,7 @@ switch method
             end
             
         end
-        [c, minIdx] = min(cost);
+        [certainty, minIdx] = min(cost);
         assignment = allPerms(minIdx,:);
 end
 

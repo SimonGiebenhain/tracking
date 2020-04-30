@@ -61,11 +61,12 @@ if useVICONinit
 else
     unassignedPatterns = ones(nObjects, 1);
 end
-tracks = initializeTracks();
+[tracks, ghostTracks] = initializeTracks();
 
 
 
 markersForVisualization = cell(1,1);
+ghostBirdsVis = cell(1,1);
 birdsTrajectories = cell(nObjects,1);
 trueTrajectories = cell(nObjects,1);
 %birdsPositions = cell(nObjects,1);
@@ -97,14 +98,14 @@ for t = 1:T
     detections = reshape(detections(~isnan(detections)),[],dim);
     
     predictNewLocationsOfTracks();
-    [assignments, unassignedTracks, unassignedDetections] = detectionToTrackAssignment();
+    [assignedTracks, unassignedTracks, assignedGhostTracks, unassignedGhostTracks, unassignedDetections] = detectionToTrackAssignment();
     
     updateAssignedTracks();
     updateUnassignedTracks();
     deleteLostTracks();
     %TODO params
     if sum(unassignedPatterns) > 0 &&  length(detections(unassignedDetections,:)) > 1
-        [tracks, unassignedPatterns] = createNewTracks(detections(unassignedDetections,:), unassignedPatterns, tracks, patterns, params, patternNames);
+        [tracks, ghostTracks, unassignedPatterns] = createNewTracks(detections(unassignedDetections,:), unassignedPatterns, tracks, patterns, params, patternNames, ghostTracks);
     end
     t
     if t == 3000
@@ -185,7 +186,7 @@ end
 % frames.
 %}
 
-    function tracks = initializeTracks()
+    function [tracks, ghostTracks] = initializeTracks()
         if useVICONinit
             for i = 1:nObjects
                 [s, kalmanParams] = setupKalman(squeeze(patterns(i,:,:)), -1, params);
@@ -240,9 +241,10 @@ end
             end
             unassignedDetections = squeeze(D(1,:,:));
             unassignedDetections = reshape(unassignedDetections(~isnan(unassignedDetections)),[],dim);
-            [tracks, unassignedPatterns] = createNewTracks(unassignedDetections, unassignedPatterns, tracks, patterns, params, patternNames);
+            [tracks, ghostTracks, unassignedPatterns] = createNewTracks(unassignedDetections, unassignedPatterns, tracks, patterns, params, patternNames);
         end
     end
+
 
 %% Predict New Locations of Existing Tracks
 % Use the Kalman filter to predict the centroid of each track in the
@@ -255,7 +257,16 @@ end
                 tracks(i).kalmanFilter = predictKalman(tracks(i).kalmanFilter, 1, tracks(i).kalmanParams, 'extended');
             end
         end
+        
+        for i = 1:length(ghostTracks)
+           if ghostTracks(i).age > 0
+              ghostKF = ghostTracks(i).kalmanFilter;
+              ghostKF.x = ghostKF.F * ghostKF.x;
+              ghostKF.P = ghostKF.F * ghostKF.P * ghostKF.F' + ghostKF.Q;
+           end
+        end
     end
+
 
 %% Assign Detections to Tracks
 %{
@@ -291,26 +302,44 @@ end
 % indices of tracks and detections that remained unassigned.
 %}
 
-    function [assignments, unassignedTracks, unassignedDetections] = detectionToTrackAssignment()
+    function [assignedTracks, unassignedTracks, assignedGhostTracks, unassignedGhostTracks, unassignedDetections] = detectionToTrackAssignment()
         
-        nTracks = length(tracks);
+        nTracks = length(tracks)+length(ghostTracks);
         nDetections = size(detections, 1);
         
         % Compute the cost of assigning each detection to each marker.
         cost = zeros(nTracks*nMarkers, nDetections);
         for i = 1:nTracks
-            if tracks(i).age > 0
-                %TODO: something more sophisticated here would be useful!
-                %TODO: bc. costOfNonAssignment can mess up
-                cost((i-1)*nMarkers+1:i*nMarkers, :) = distanceKalman(tracks(i).kalmanFilter, detections, params.motionType);
+            if i <= length(tracks)
+                if tracks(i).age > 0
+                    %TODO: something more sophisticated here would be useful!
+                    %TODO: bc. costOfNonAssignment can mess up
+                    cost((i-1)*nMarkers+1:i*nMarkers, :) = distanceKalman(tracks(i).kalmanFilter, detections, params.motionType);
+                else
+                    cost((i-1)*nMarkers+1:i*nMarkers, :) = Inf;
+                end
             else
-                cost((i-1)*nMarkers+1:i*nMarkers, :) = Inf;
+                %TODO allow max of nMarkers markers to be assigned to
+                %ghost bird??
+                if ghostTracks(i-length(tracks)).age > 0
+                    cost((i-1)*nMarkers+1:i*nMarkers, :) = repmat(...
+                        pdist2( ghostTracks(i-length(tracks)).kalmanFilter.x(1:3)', detections), ...
+                                                                  [nMarkers, 1]);
+                else
+                   cost((i-1)*nMarkers+1:i*nMarkers, :) = Inf; 
+                end
+                
             end
         end
         
         % Solve the assignment problem.
-        costOfNonAssignment = hyperParams.costOfNonAsDtTA; %TODO mit measurementNoise=150 hat auch 50 geklappt
-        [assignments, unassignedTracks, unassignedDetections] = assignDetectionsToTracks(cost, costOfNonAssignment);
+        costOfNonAssignment = hyperParams.costOfNonAsDtTA;
+        [assignments, unassignments, unassignedDetections] = assignDetectionsToTracks(cost, costOfNonAssignment);
+        % Partition results into tracks and ghost tracks correspondingly
+        assignedTracks = assignments(assignments(:, 1) <= length(tracks)*nMarkers, :);
+        assignedGhostTracks = assignments(assignments(:, 1) > length(tracks)*nMarkers, :);
+        unassignedTracks = unassignments(unassignments <= length(tracks)*nMarkers);
+        unassignedGhostTracks = unassignments(unassignments > length(tracks)*nMarkers);
         falsePositives(t) = falsePositives(t) + size(unassignedDetections, 1);
     end
 
@@ -324,13 +353,13 @@ end
 % visible count by 1. Finally, the function sets the invisible count to 0.
 %}
     function updateAssignedTracks()
-        assignments = double(assignments);
-        allAssignedTracksIdx = unique(floor((assignments(:,1)-1)/nMarkers) + 1);
+        assignedTracks = double(assignedTracks);
+        allAssignedTracksIdx = unique(floor((assignedTracks(:,1)-1)/nMarkers) + 1);
         nAssignedTracks = length(allAssignedTracksIdx);
         for i = 1:nAssignedTracks
             currentTrackIdx = allAssignedTracksIdx(i);
-            assignmentsIdx = floor((assignments(:,1)-1)/nMarkers) + 1 == currentTrackIdx;
-            detectionIdx = assignments(assignmentsIdx,2);
+            assignmentsIdx = floor((assignedTracks(:,1)-1)/nMarkers) + 1 == currentTrackIdx;
+            detectionIdx = assignedTracks(assignmentsIdx,2);
             
             detectedMarkersForCurrentTrack = detections(detectionIdx, :);
             
@@ -361,15 +390,6 @@ end
                 error('flying indication not implemented for quaternion version')
             end
             
-            
-            
-            % Replace predicted bounding box with detected
-            % bounding box.
-            
-            %TODO should be contained in klamanFilter object
-            %tracks(trackIdx).center = getCenter(tracks(i).pattern, detectedMarkersForCurrentTrack, tracks(i).kalmanFilter);
-            %tracks(trackIdx).markers = detectedMarkersForCurrentTrack;
-            
             % Update track's age.
             tracks(currentTrackIdx).age = tracks(currentTrackIdx).age + 1;
             
@@ -377,6 +397,92 @@ end
             tracks(currentTrackIdx).totalVisibleCount = tracks(currentTrackIdx).totalVisibleCount + 1;
             tracks(currentTrackIdx).consecutiveInvisibleCount = tracks(currentTrackIdx).kalmanFilter.consecutiveInvisibleCount;
         end
+        
+        assignedGhostTracks(:, 1) = assignedGhostTracks(:, 1) - length(tracks)*nMarkers;
+        assignedGhostTracks = double(assignedGhostTracks);
+        allAssignedGhostTracksIdx = unique(floor((assignedGhostTracks(:,1)-1)/nMarkers) + 1);
+        nAssignedGhostTracks = length(allAssignedGhostTracksIdx);
+        deletedGhostTracks = zeros(length(ghostTracks),1);
+        for i = 1:nAssignedGhostTracks
+            currentGhostTrackIdx = allAssignedGhostTracksIdx(i);
+            assignmentsIdx = floor((assignedGhostTracks(:,1)-1)/nMarkers) + 1 == currentGhostTrackIdx;
+            detectionIdx = assignedGhostTracks(assignmentsIdx,2);
+            detectedMarkersForCurrentGhostTrack = detections(detectionIdx, :);
+            
+                       
+            % TODO maybe remove detections that are to far apart from the
+            % rest
+            
+            % TODO decide wether 3 or 4 are both OK!
+            
+            % if (3 or) 4 detections assigned: run pattern matching and
+            %   umeyama, if good fit, init real track!
+            if size(detectedMarkersForCurrentGhostTrack, 1) >= 4
+                unassignedPatternIdx = find(unassignedPatterns);
+                matchingCosts = zeros(length(unassignedPatternIdx), 1);
+                rotations = zeros(length(unassignedPatternIdx), 3, 3);
+                translations = zeros(length(unassignedPatternIdx), 3);
+                for j=1:length(unassignedPatternIdx)
+                   pattern = squeeze(patterns(unassignedPatternIdx(j), :, :));
+                   p = match_patterns(pattern, detectedMarkersForCurrentGhostTrack, 'noKnowledge');
+                   assignment = zeros(4,1);
+                   assignment(p) = 1:length(p);
+                   assignment = assignment(1:size(detectedMarkersForCurrentGhostTrack,1));
+                   pattern = pattern(assignment,:);
+                   pattern = pattern(assignment > 0, :);
+                   [R, translation, MSE] = umeyama(pattern', detectedMarkersForCurrentGhostTrack');
+                   matchingCosts(j) = MSE;
+                   rotations(j, :, :) = R;
+                   translations(j, :) = translation;
+                end
+
+                [minCost, minIdx] = min(matchingCosts);
+                if minCost < 0.5
+                    patternIdx = unassignedPatternIdx(minIdx);
+                    pattern = squeeze(patterns(patternIdx, :, :));
+                    newTrack = createLGEKFtrack(squeeze(rotations(minIdx, :, :)), ...
+                                squeeze(translations(minIdx, :))', MSE, patternIdx, pattern, patternNames{patternIdx}, params);
+                    tracks(patternIdx) = newTrack;
+                    unassignedPatterns(patternIdx) = 0;
+                    % mark ghosst bird as deleted and delete after loop
+                    deletedGhostTracks(currentGhostTrackIdx) = 1;
+                    % continue loop, as we don't have to update position of
+                    % ghost bird
+                    continue;
+
+                end
+            end
+            
+            
+            
+            maxDistToGhost = 40;
+                        distToGhost = pdist2(ghostTracks(currentGhostTrackIdx).kalmanFilter.x(1:3)', ...
+                                 detectedMarkersForCurrentGhostTrack);                 
+            detectedMarkersForCurrentGhostTrack = ... 
+                detectedMarkersForCurrentGhostTrack(distToGhost' < maxDistToGhost, :);
+           
+            % Correct the estimate of the object's location
+            % using the new detection.
+            kF = ghostTracks(currentGhostTrackIdx).kalmanFilter;
+            % detections are average of assigned observations
+            z = mean(detectedMarkersForCurrentGhostTrack, 1);
+            % do kalman correct equations
+            y = z - kF.H * kF.x;
+            S = kF.H * kF.P * kF.H' + kF.R;
+            K = kF.P * kF.H' / S;
+            kF.x = kF.x + K*y;
+            kF.P = (eye(9) - K*kF.H)*kF.P;
+             
+            % Update track's age.
+            ghostTracks(currentGhostTrackIdx).age = ghostTracks(currentGhostTrackIdx).age + 1;
+            
+            % Update visibility.
+            ghostTracks(currentGhostTrackIdx).totalVisibleCount = ghostTracks(currentGhostTrackIdx).totalVisibleCount + 1;
+            ghostTracks(currentGhostTrackIdx).consecutiveInvisibleCount = 0;
+        end  
+        
+        % finally delete ghostTracks that were successfully identified
+        ghostTracks(deletedGhostTracks==1) = [];
     end
 
     function updateAssignedTracksMultiThreaded()
@@ -464,6 +570,7 @@ end
         end
     end
 
+
 %% Update Unassigned Tracks
 % Mark each unassigned track as invisible, and increase its age by 1.
 
@@ -479,7 +586,20 @@ end
                 tracks(unassignedTrackIdx).consecutiveInvisibleCount = tracks(unassignedTrackIdx).kalmanFilter.consecutiveInvisibleCount;
             end
         end
+        
+        unassignedGhostTracks(:, 1) = unassignedGhostTracks(:, 1) - length(tracks)*nMarkers;
+        unassignedGhostTracks = double(unassignedGhostTracks);
+        allUnassignedGhostTracksIdx = unique(floor((unassignedGhostTracks-1)/nMarkers) + 1);
+        nUnassignedGhostTracks = length(allUnassignedGhostTracksIdx);
+        for i = 1:nUnassignedGhostTracks
+            unassignedGhostTrackIdx = allUnassignedGhostTracksIdx(i);
+            if tracks(unassignedGhostTrackIdx).age > 0
+                tracks(unassignedGhostTrackIdx).age = tracks(unassignedTrackIdx).age + 1;
+                tracks(unassignedGhostTrackIdx).consecutiveInvisibleCount = tracks(unassignedTrackIdx).consecutiveInvisibleCount + 1;
+            end
+        end
     end
+
 
 %% Delete Lost Tracks
 % The |deleteLostTracks| function deletes tracks that have been invisible
@@ -487,10 +607,6 @@ end
 % that have been invisible for too many frames overall.
 
     function deleteLostTracks()
-        
-        if isempty(tracks)
-            return;
-        end
         
         invisibleForTooLong = 25;
         ageThreshold = 1;
@@ -516,9 +632,10 @@ end
                 estimatedQuats(lostIdx(i), max(1, t-invisibleForTooLong):t-1, :) = NaN;
             end
         end
+        
+        lostGhostsIdx = [ghostTracks(:).consecutiveInvisibleCount] >= invisibleForTooLong;
+        ghostTracks(lostGhostsIdx == 1) = [];        
     end
-
-
 
 
 %% Create New Tracks
@@ -528,6 +645,7 @@ end
 
     % see MultipleObjectTracking/createNewTracks()
 
+    
 %% Vizualization methods
 
 % This function sets up the figure.
@@ -547,6 +665,7 @@ end
         end
         dets = squeeze(D(1,:,:));
         markersForVisualization{1} = plot3(dets(:,1),dets(:,2), dets(:,3), '*', 'MarkerSize', 5, 'MarkerEdgeColor', [0.5; 0.5; 0.5]);
+        ghostBirdsVis{1} = plot3(NaN*zeros(12,1), NaN*zeros(12,1), NaN*zeros(12,1), 'o', 'MarkerSize', 13, 'MarkerEdgeColor', [0.5; 0.5; 0.5]);
         for k = 1:nObjects
             %birdsPositions{k} = plot3(NaN, NaN, NaN, 'o', 'MarkerSize', 10, 'MarkerEdgeColor', colors(k,:));
             for n = 1:nMarkers
@@ -653,10 +772,20 @@ end
                 end
             end
         end
+        
         dets = squeeze(D(t, :, :));
         markersForVisualization{1}.XData = dets(:,1);
         markersForVisualization{1}.YData = dets(:,2);
         markersForVisualization{1}.ZData = dets(:,3);
+        
+        ghostsPos = NaN*zeros(12,3);
+        for n=1:length(ghostTracks)
+            ghostsPos(n, :) = ghostTracks(n).kalmanFilter.x(1:3)';
+        end
+        ghostBirdsVis{1}.XData = ghostsPos(:, 1);
+        ghostBirdsVis{1}.YData = ghostsPos(:, 2);
+        ghostBirdsVis{1}.ZData = ghostsPos(:, 3);
+
         drawnow
         %pause(0.1)
     end
