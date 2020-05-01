@@ -64,7 +64,6 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
         end
     end
     
-    nGhostTracks = 1;
     if nClusters >= 1
         
         costMatrix = zeros(sum(unassignedPatterns), length(potentialBirds));
@@ -190,8 +189,7 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
                 'age', 1, ...
                 'totalVisibleCount', 1, ...
                 'consecutiveInvisibleCount', 0);
-            ghostTracks(nGhostTracks) = ghostTrack;
-            nGhostTracks = nGhostTracks + 1;
+            ghostTracks(length(ghostTracks) + 1) = ghostTrack;
         end
     end
     
@@ -205,8 +203,7 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
             'age', 1, ...
             'totalVisibleCount', 1, ...
             'consecutiveInvisibleCount', 0);
-        ghostTracks(nGhostTracks) = ghostTrack;
-        nGhostTracks = nGhostTracks + 1;
+        ghostTracks(length(ghostTracks) + 1) = ghostTrack;
     end
 end
 
@@ -226,7 +223,7 @@ kF.P = eye(9) .* repelem([params.initialNoise.initPositionVar;
 kF.Q = eye(9) .* repelem([params.processNoise.position;
     params.processNoise.motion;
     params.processNoise.acceleration], 3);
-kF.R = eye(3) * params.measurementNoise;
+kF.R = eye(3) * params.measurementNoise*5;
 kF.H = [eye(3) zeros(3,6)];
 kF.F = [eye(3) eye(3) 1/2*eye(3);
     zeros(3) eye(3) eye(3);

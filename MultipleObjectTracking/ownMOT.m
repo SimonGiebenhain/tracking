@@ -100,15 +100,15 @@ for t = 1:T
     predictNewLocationsOfTracks();
     [assignedTracks, unassignedTracks, assignedGhostTracks, unassignedGhostTracks, unassignedDetections] = detectionToTrackAssignment();
     
-    updateAssignedTracks();
+    deletedGhostTracks = updateAssignedTracks();
     updateUnassignedTracks();
-    deleteLostTracks();
+    deleteLostTracks(deletedGhostTracks);
     %TODO params
     if sum(unassignedPatterns) > 0 &&  length(detections(unassignedDetections,:)) > 1
         [tracks, ghostTracks, unassignedPatterns] = createNewTracks(detections(unassignedDetections,:), unassignedPatterns, tracks, patterns, params, patternNames, ghostTracks);
     end
     t
-    if t == 3000
+    if t == 2650
        t 
     end
     if visualizeTracking == 1
@@ -263,6 +263,7 @@ end
               ghostKF = ghostTracks(i).kalmanFilter;
               ghostKF.x = ghostKF.F * ghostKF.x;
               ghostKF.P = ghostKF.F * ghostKF.P * ghostKF.F' + ghostKF.Q;
+              ghostTracks(i).kalmanFilter = ghostKF;
            end
         end
     end
@@ -322,7 +323,7 @@ end
                 %TODO allow max of nMarkers markers to be assigned to
                 %ghost bird??
                 if ghostTracks(i-length(tracks)).age > 0
-                    cost((i-1)*nMarkers+1:i*nMarkers, :) = repmat(...
+                    cost((i-1)*nMarkers+1:i*nMarkers, :) = 1.5*repmat(...
                         pdist2( ghostTracks(i-length(tracks)).kalmanFilter.x(1:3)', detections), ...
                                                                   [nMarkers, 1]);
                 else
@@ -352,7 +353,7 @@ end
 % the new bounding box, and increases the age of the track and the total
 % visible count by 1. Finally, the function sets the invisible count to 0.
 %}
-    function updateAssignedTracks()
+    function deletedGhostTracks = updateAssignedTracks()
         assignedTracks = double(assignedTracks);
         allAssignedTracksIdx = unique(floor((assignedTracks(:,1)-1)/nMarkers) + 1);
         nAssignedTracks = length(allAssignedTracksIdx);
@@ -455,34 +456,47 @@ end
             
             
             
-            maxDistToGhost = 40;
-                        distToGhost = pdist2(ghostTracks(currentGhostTrackIdx).kalmanFilter.x(1:3)', ...
-                                 detectedMarkersForCurrentGhostTrack);                 
-            detectedMarkersForCurrentGhostTrack = ... 
-                detectedMarkersForCurrentGhostTrack(distToGhost' < maxDistToGhost, :);
+%             maxDistToGhost = 75;
+%                         distToGhost = pdist2(ghostTracks(currentGhostTrackIdx).kalmanFilter.x(1:3)', ...
+%                                  detectedMarkersForCurrentGhostTrack);                 
+%             detectedMarkersForCurrentGhostTrack = ... 
+%                 detectedMarkersForCurrentGhostTrack(distToGhost' < maxDistToGhost, :);
+%             
+            if size(detectedMarkersForCurrentGhostTrack, 1) > 0
            
-            % Correct the estimate of the object's location
-            % using the new detection.
-            kF = ghostTracks(currentGhostTrackIdx).kalmanFilter;
-            % detections are average of assigned observations
-            z = mean(detectedMarkersForCurrentGhostTrack, 1);
-            % do kalman correct equations
-            y = z - kF.H * kF.x;
-            S = kF.H * kF.P * kF.H' + kF.R;
-            K = kF.P * kF.H' / S;
-            kF.x = kF.x + K*y;
-            kF.P = (eye(9) - K*kF.H)*kF.P;
-             
-            % Update track's age.
-            ghostTracks(currentGhostTrackIdx).age = ghostTracks(currentGhostTrackIdx).age + 1;
-            
-            % Update visibility.
-            ghostTracks(currentGhostTrackIdx).totalVisibleCount = ghostTracks(currentGhostTrackIdx).totalVisibleCount + 1;
-            ghostTracks(currentGhostTrackIdx).consecutiveInvisibleCount = 0;
+                % Correct the estimate of the object's location
+                % using the new detection.
+                kF = ghostTracks(currentGhostTrackIdx).kalmanFilter;
+                % detections are average of assigned observations
+                z = mean(detectedMarkersForCurrentGhostTrack, 1)';
+                % do kalman correct equations
+                y = z - kF.H * kF.x;
+                S = kF.H * kF.P * kF.H' + kF.R;
+                K = kF.P * kF.H' / S;
+                kF.x = kF.x + K*y;
+                if any(isnan(kF.x))
+                    kF.x
+                end
+                kF.P = (eye(9) - K*kF.H)*kF.P;
+
+                ghostTracks(currentGhostTrackIdx).kalmanFilter = kF;
+
+                % Update track's age.
+                ghostTracks(currentGhostTrackIdx).age = ghostTracks(currentGhostTrackIdx).age + 1;
+
+                % Update visibility.
+                ghostTracks(currentGhostTrackIdx).totalVisibleCount = ghostTracks(currentGhostTrackIdx).totalVisibleCount + 1;
+                ghostTracks(currentGhostTrackIdx).consecutiveInvisibleCount = 0;
+            else
+                % If detection wasn't assigned to ghost after all
+                % increase consecutive invisible count
+                ghostTracks(currentGhostTrackIdx).consecutiveInvisibleCount = ghostTracks(currentGhostTrackIdx).consecutiveInvisibleCount + 1;
+                ghostTracks(currentGhostTrackIdx).age = ghostTracks(currentGhostTrackIdx).age + 1;
+            end
         end  
         
         % finally delete ghostTracks that were successfully identified
-        ghostTracks(deletedGhostTracks==1) = [];
+        %ghostTracks(deletedGhostTracks==1) = [];
     end
 
     function updateAssignedTracksMultiThreaded()
@@ -577,6 +591,11 @@ end
     function updateUnassignedTracks()
         unassignedTracks = double(unassignedTracks);
         allUnassignedTracksIdx = unique(floor((unassignedTracks-1)/nMarkers) + 1);
+        assignedTracks = double(assignedTracks);
+        allAssignedTracksIdx = unique(floor((assignedTracks(:,1)-1)/nMarkers) + 1);
+        allUnassignedTracksIdx = setdiff(allUnassignedTracksIdx, allAssignedTracksIdx);
+        % Remove the assigned tracks from unassigned tracks, when only
+        % partially observed
         nUnassignedTracks = length(allUnassignedTracksIdx);
         for i = 1:nUnassignedTracks
             unassignedTrackIdx = allUnassignedTracksIdx(i);
@@ -587,15 +606,20 @@ end
             end
         end
         
+        assignedGhostTracks(:, 1) = assignedGhostTracks(:, 1) - length(tracks)*nMarkers;
+        assignedGhostTracks = double(assignedGhostTracks);
+        allAssignedGhostTracksIdx = unique(floor((assignedGhostTracks(:,1)-1)/nMarkers) + 1);
         unassignedGhostTracks(:, 1) = unassignedGhostTracks(:, 1) - length(tracks)*nMarkers;
         unassignedGhostTracks = double(unassignedGhostTracks);
         allUnassignedGhostTracksIdx = unique(floor((unassignedGhostTracks-1)/nMarkers) + 1);
+        % remove partially observed tracks from unassigned list
+        allUnassignedGhostTracksIdx = setdiff(allUnassignedGhostTracksIdx, allAssignedGhostTracksIdx);
         nUnassignedGhostTracks = length(allUnassignedGhostTracksIdx);
         for i = 1:nUnassignedGhostTracks
             unassignedGhostTrackIdx = allUnassignedGhostTracksIdx(i);
-            if tracks(unassignedGhostTrackIdx).age > 0
-                tracks(unassignedGhostTrackIdx).age = tracks(unassignedTrackIdx).age + 1;
-                tracks(unassignedGhostTrackIdx).consecutiveInvisibleCount = tracks(unassignedTrackIdx).consecutiveInvisibleCount + 1;
+            if ghostTracks(unassignedGhostTrackIdx).age > 0
+                ghostTracks(unassignedGhostTrackIdx).age = ghostTracks(unassignedGhostTrackIdx).age + 1;
+                ghostTracks(unassignedGhostTrackIdx).consecutiveInvisibleCount = ghostTracks(unassignedGhostTrackIdx).consecutiveInvisibleCount + 1;
             end
         end
     end
@@ -606,7 +630,7 @@ end
 % for too many consecutive frames. It also deletes recently created tracks
 % that have been invisible for too many frames overall.
 
-    function deleteLostTracks()
+    function deleteLostTracks(deletedGhostTracks)
         
         invisibleForTooLong = 25;
         ageThreshold = 1;
@@ -634,6 +658,7 @@ end
         end
         
         lostGhostsIdx = [ghostTracks(:).consecutiveInvisibleCount] >= invisibleForTooLong;
+        lostGhostsIdx = lostGhostsIdx | deletedGhostTracks';
         ghostTracks(lostGhostsIdx == 1) = [];        
     end
 
