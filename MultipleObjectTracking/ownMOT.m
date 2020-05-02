@@ -91,7 +91,6 @@ falsePositives = zeros(T, 1);
 positionVariance = zeros(nObjects, T);
 rotationVariance = zeros(nObjects, T);
 
-
 for t = 1:T
     %tic
     detections = squeeze(D(t,:,:));
@@ -108,9 +107,12 @@ for t = 1:T
         [tracks, ghostTracks, unassignedPatterns] = createNewTracks(detections(unassignedDetections,:), unassignedPatterns, tracks, patterns, params, patternNames, ghostTracks);
     end
     t
-    if t == 2650
-       t 
+    if t == 3200 || t==2440
+       t %gelb
     end
+    if t == 8200
+       t % total chaos
+    end % 8700grün
     if visualizeTracking == 1
         displayTrackingResults();
     end
@@ -323,7 +325,7 @@ end
                 %TODO allow max of nMarkers markers to be assigned to
                 %ghost bird??
                 if ghostTracks(i-length(tracks)).age > 0
-                    cost((i-1)*nMarkers+1:i*nMarkers, :) = 1.5*repmat(...
+                    cost((i-1)*nMarkers+1:i*nMarkers, :) = 1.3*repmat(...
                         pdist2( ghostTracks(i-length(tracks)).kalmanFilter.x(1:3)', detections), ...
                                                                   [nMarkers, 1]);
                 else
@@ -438,7 +440,7 @@ end
                 end
 
                 [minCost, minIdx] = min(matchingCosts);
-                if minCost < 0.5
+                if minCost < 0.7
                     patternIdx = unassignedPatternIdx(minIdx);
                     pattern = squeeze(patterns(patternIdx, :, :));
                     newTrack = createLGEKFtrack(squeeze(rotations(minIdx, :, :)), ...
@@ -456,28 +458,29 @@ end
             
             
             
-%             maxDistToGhost = 75;
-%                         distToGhost = pdist2(ghostTracks(currentGhostTrackIdx).kalmanFilter.x(1:3)', ...
-%                                  detectedMarkersForCurrentGhostTrack);                 
-%             detectedMarkersForCurrentGhostTrack = ... 
-%                 detectedMarkersForCurrentGhostTrack(distToGhost' < maxDistToGhost, :);
-%             
+             maxDistToGhost = 65;
+                         distToGhost = pdist2(ghostTracks(currentGhostTrackIdx).kalmanFilter.x(1:3)', ...
+                                  detectedMarkersForCurrentGhostTrack);                 
+             detectedMarkersForCurrentGhostTrack = ... 
+                 detectedMarkersForCurrentGhostTrack(distToGhost' < maxDistToGhost, :);
+             
             if size(detectedMarkersForCurrentGhostTrack, 1) > 0
            
                 % Correct the estimate of the object's location
                 % using the new detection.
                 kF = ghostTracks(currentGhostTrackIdx).kalmanFilter;
+                numDetsGhost = size(detectedMarkersForCurrentGhostTrack, 1);
                 % detections are average of assigned observations
                 z = mean(detectedMarkersForCurrentGhostTrack, 1)';
                 % do kalman correct equations
                 y = z - kF.H * kF.x;
-                S = kF.H * kF.P * kF.H' + kF.R;
+                S = kF.H * kF.P * kF.H' + kF.R/numDetsGhost;
                 K = kF.P * kF.H' / S;
                 kF.x = kF.x + K*y;
                 if any(isnan(kF.x))
                     kF.x
                 end
-                kF.P = (eye(9) - K*kF.H)*kF.P;
+                kF.P = (eye(3) - K*kF.H)*kF.P;
 
                 ghostTracks(currentGhostTrackIdx).kalmanFilter = kF;
 
@@ -633,16 +636,15 @@ end
     function deleteLostTracks(deletedGhostTracks)
         
         invisibleForTooLong = 25;
-        ageThreshold = 1;
+        invisibleForTooLongGhosts = 10;
+
+        ageThreshold = 10;
         visibilityFraction = 0.5;
         
-        % Compute the fraction of the track's age for which it was visible.
         ages = [tracks(:).age];
-        totalVisibleCounts = [tracks(:).totalVisibleCount];
-        visibility = totalVisibleCounts ./ ages;
-        
+
         % Find the indices of 'lost' tracks.
-        lostIdxBool = (( ages < ageThreshold & visibility < visibilityFraction) | [tracks(:).consecutiveInvisibleCount] >= invisibleForTooLong) & (ages > 0);
+        lostIdxBool = ([tracks(:).consecutiveInvisibleCount] >= invisibleForTooLong) & (ages > 0);
         lostIdx = find(lostIdxBool);
         if ~isempty(lostIdx)
             for i=1:length(lostIdx)
@@ -657,7 +659,11 @@ end
             end
         end
         
-        lostGhostsIdx = [ghostTracks(:).consecutiveInvisibleCount] >= invisibleForTooLong;
+        % Compute the fraction of the track's age for which it was visible.
+        ages = [ghostTracks(:).age];
+        totalVisibleCounts = [ghostTracks(:).totalVisibleCount];
+        visibility = totalVisibleCounts ./ ages;
+        lostGhostsIdx = ( ages < ageThreshold & visibility < visibilityFraction) | [ghostTracks(:).consecutiveInvisibleCount] >= invisibleForTooLongGhosts;
         lostGhostsIdx = lostGhostsIdx | deletedGhostTracks';
         ghostTracks(lostGhostsIdx == 1) = [];        
     end

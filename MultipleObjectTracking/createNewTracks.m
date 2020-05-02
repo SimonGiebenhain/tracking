@@ -13,6 +13,9 @@ if exist('ghostTracks','var') ~= 1
     ghostTracks(:, 1) = [];
 end
 
+minDistToBird = 90;
+
+
 
 % birds which were invisible for the last 5 frames or more are allowed to
 % be re-initialized
@@ -25,7 +28,7 @@ unassignedPatterns = unassignedPatterns | invis';
 if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
     
     minClusterSize = 4;
-    costOfNonAssignment = 0.5;
+    costOfNonAssignment = 0.7;
     
     
     %if sum(unassignedPatterns) == 1
@@ -181,9 +184,49 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
             
         end
         
+        positions = 10000*ones(length(tracks)+length(ghostTracks),3);
+        for i=1:length(tracks)
+            if tracks(i).age > 0
+                positions(i,:) = tracks(i).kalmanFilter.mu.X(1:3, 4);
+            end
+        end
+        for i=1:length(ghostTracks)
+           positions(length(tracks)+i, :) = ghostTracks(i).kalmanFilter.x(1:3); 
+        end
+        
         % for each unassigned cluster create a ghost bird
         for i=1:size(unassignedClusters)
-            kF = constructGhostKF(potentialBirds{unassignedClusters(i)}, params);
+            pos = mean(potentialBirds{unassignedClusters(i)}, 1);
+            dists = pdist2(pos, positions);
+            if min(dists, [], 2) > minDistToBird
+                kF = constructGhostKF(pos, params);
+                ghostTrack = struct(...
+                    'kalmanFilter', kF, ...
+                    'age', 1, ...
+                    'totalVisibleCount', 1, ...
+                    'consecutiveInvisibleCount', 0);
+                ghostTracks(length(ghostTracks) + 1) = ghostTrack;
+            end
+        end
+    end
+        
+    %for each potential Ghost create a ghost bird
+    if exist('positions','var') ~= 1
+        positions = 10000*ones(length(tracks)+length(ghostTracks),3);
+        for i=1:length(tracks)
+            if tracks(i).age > 0
+                positions(i,:) = tracks(i).kalmanFilter.mu.X(1:3, 4);
+            end
+        end
+        for i=1:length(ghostTracks)
+           positions(length(tracks)+i, :) = ghostTracks(i).kalmanFilter.x(1:3); 
+        end
+    end
+    for i=1:size(potentialGhosts)
+        pos = mean(potentialGhosts{i}, 1);
+        dists = pdist2(pos, positions);
+        if min(dists, [], 2) > minDistToBird
+            kF = constructGhostKF(pos, params);
             ghostTrack = struct(...
                 'kalmanFilter', kF, ...
                 'age', 1, ...
@@ -192,41 +235,37 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
             ghostTracks(length(ghostTracks) + 1) = ghostTrack;
         end
     end
-    
-    %for each potential Ghost create a ghost bird
-    
-    
-    for i=1:size(potentialGhosts)
-        kF = constructGhostKF(potentialGhosts{i}, params);
-        ghostTrack = struct(...
-            'kalmanFilter', kF, ...
-            'age', 1, ...
-            'totalVisibleCount', 1, ...
-            'consecutiveInvisibleCount', 0);
-        ghostTracks(length(ghostTracks) + 1) = ghostTrack;
-    end
 end
 
 end
 
-function kF = constructGhostKF(dets, params)
+function kF = constructGhostKF(pos, params)
 % setup simple Kalman filter, with position, velocity and
 % acceleration
 % the state transition function implements a
 % constant-acceleration-motion-model
 % the measurement function is selects the position from the state
 % and measurements are the mean of all assigne detections
-kF.x = [mean(dets, 1) 0 0 0 0 0 0]';
-kF.P = eye(9) .* repelem([params.initialNoise.initPositionVar;
-    params.initialNoise.initMotionVar;
-    params.initialNoise.initAccVar], 3);
-kF.Q = eye(9) .* repelem([params.processNoise.position;
-    params.processNoise.motion;
-    params.processNoise.acceleration], 3);
-kF.R = eye(3) * params.measurementNoise*5;
-kF.H = [eye(3) zeros(3,6)];
-kF.F = [eye(3) eye(3) 1/2*eye(3);
-    zeros(3) eye(3) eye(3);
-    zeros(3) zeros(3) eye(3)];
+
+kF.x = pos';
+kF.P = eye(3) .* repelem(params.initialNoise.initPositionVar, 3);
+kF.Q = eye(3) .* repelem(params.processNoise.position, 3);
+kF.R = eye(3) * params.measurementNoise/2;
+kF.H = eye(3);
+kF.F = eye(3);
+
+
+% kF.x = [pos 0 0 0 0 0 0]';
+% kF.P = eye(9) .* repelem([params.initialNoise.initPositionVar;
+%     params.initialNoise.initMotionVar;
+%     params.initialNoise.initAccVar], 3);
+% kF.Q = eye(9) .* repelem([params.processNoise.position;
+%     params.processNoise.motion;
+%     params.processNoise.acceleration], 3);
+% kF.R = eye(3) * params.measurementNoise*5;
+% kF.H = [eye(3) zeros(3,6)];
+% kF.F = [eye(3) eye(3) 1/2*eye(3);
+%     zeros(3) eye(3) eye(3);
+%     zeros(3) zeros(3) eye(3)];
 end
 

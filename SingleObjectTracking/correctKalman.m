@@ -33,7 +33,7 @@ else
 end
 if age > 10 && hyperParams.doFPFiltering == 1
     threshold = hyperParams.minAssignmentThreshold + (vNorm/3)^2;% + (aNorm)^2;
-    if nnz(dists > threshold) < nDets || (s.flying < 1 && s.consecutiveInvisibleCount == 0 && nnz(dists > threshold) == 1)
+    if nnz(dists > threshold) < nDets %|| (s.flying < 1 && s.consecutiveInvisibleCount == 0 && nnz(dists > threshold) == 1)
         ds(dists > threshold, :) = [];
         detections(dists > threshold, :) = [];
     end
