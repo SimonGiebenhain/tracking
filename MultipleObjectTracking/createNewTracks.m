@@ -69,6 +69,13 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
     
     if nClusters >= 1
         
+        %TODO: add clusters of size 3 and 4 to potential birds
+        %TODO: for every pattern see if all similars patterns are alredy
+        %   initialized, if so: also try to match 3-clusters, else discard
+        %   3-clsuters
+        %TODO: check for similar patterns: invisible birds also count as
+        %non-initialized (at east once invisble for a few frames)
+        
         costMatrix = zeros(sum(unassignedPatterns), length(potentialBirds));
         rotMatsMatrix = zeros(sum(unassignedPatterns), length(potentialBirds), 3,3);
         translationsMatrix = zeros(sum(unassignedPatterns), length(potentialBirds), 3);

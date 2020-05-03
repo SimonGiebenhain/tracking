@@ -51,17 +51,15 @@ stdHyperParams.simplePatternMatching = 0;
 % Idea:
 %   - lower measurement error (maybe remove isFlying indicator, which
 %   increases measurment error while flying)
-%   - 3200 gelb, 8700 grün
 %   - work on backwards pass and max acc. and vel.
 %   - (try switching motion model for ghost birds; already decent without)
 
-%TODO: different invisible for too long depending on is flying status or not
-%   while still getting observtions
-%TODO: add FP-filtered dets back for creating new tracks
 %TODO: hin und her wackeln irgendwie vermeiden!!
-%TODO: wenn alle bis auf einen; leichter identifizieren
+%TODO: wenn alle bis auf einen; leichter identifizieren -> test wie match
+%patterns zwischeneinander abschließt
 %TODO: certainty speichern: zB. bei 4 detections wie gut ist der fit ->
 %   iD-switches könnten damit bemerkt werden
+%TODO: wie kann man verhindern, dass von detections weg beschleunigt wird?
 
 stdHyperParams.costOfNonAsDtTA = 50; %session1: 85
 stdHyperParams.certaintyFactor = 1;

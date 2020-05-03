@@ -54,6 +54,8 @@ params.processNoise = processNoise;
 params.quatMotionType = quatMotionType;
 params.motionType = 'constAcc';
 
+patternSimilarityThreshold = 1.1;
+similarPatterns = getSimilarPatterns(patterns, patternSimilarityThreshold);
 
 nextId = 1;
 if useVICONinit
@@ -99,18 +101,19 @@ for t = 1:T
     predictNewLocationsOfTracks();
     [assignedTracks, unassignedTracks, assignedGhostTracks, unassignedGhostTracks, unassignedDetections] = detectionToTrackAssignment();
     
-    deletedGhostTracks = updateAssignedTracks();
+    [deletedGhostTracks, rejectedDetections] = updateAssignedTracks();
     updateUnassignedTracks();
     deleteLostTracks(deletedGhostTracks);
+    unusedDets = [detections(unassignedDetections, :); rejectedDetections];
     %TODO params
-    if sum(unassignedPatterns) > 0 &&  length(detections(unassignedDetections,:)) > 1
-        [tracks, ghostTracks, unassignedPatterns] = createNewTracks(detections(unassignedDetections,:), unassignedPatterns, tracks, patterns, params, patternNames, ghostTracks);
+    if sum(unassignedPatterns) > 0 &&  length(unusedDets) > 1
+        [tracks, ghostTracks, unassignedPatterns] = createNewTracks(unusedDets, unassignedPatterns, tracks, patterns, params, patternNames, ghostTracks);
     end
     t
     if t == 3200 || t==2440
        t %gelb
     end
-    if t == 8200
+    if t == 8700
        t % total chaos
     end % 8700grün
     if visualizeTracking == 1
@@ -355,7 +358,10 @@ end
 % the new bounding box, and increases the age of the track and the total
 % visible count by 1. Finally, the function sets the invisible count to 0.
 %}
-    function deletedGhostTracks = updateAssignedTracks()
+    function [deletedGhostTracks, allRejectedDetections] = updateAssignedTracks()
+        
+        allRejectedDetections = zeros(0, 3);
+        
         assignedTracks = double(assignedTracks);
         allAssignedTracksIdx = unique(floor((assignedTracks(:,1)-1)/nMarkers) + 1);
         nAssignedTracks = length(allAssignedTracksIdx);
@@ -379,7 +385,8 @@ end
             s = tracks(currentTrackIdx).kalmanFilter;
             if strcmp(model, 'LieGroup')
                 s.z = reshape(detectedMarkersForCurrentTrack', [], 1);
-                tracks(currentTrackIdx).kalmanFilter = correctKalman(s, 1, tracks(currentTrackIdx).kalmanParams, 0, hyperParams, tracks(currentTrackIdx).age, params.motionType);
+                [tracks(currentTrackIdx).kalmanFilter, rejectedDetections] = correctKalman(s, 1, tracks(currentTrackIdx).kalmanParams, 0, hyperParams, tracks(currentTrackIdx).age, params.motionType);
+                allRejectedDetections(end + 1: end + size(rejectedDetections, 1), :) = rejectedDetections;
                 if norm( s.mu.v ) > 35
                     tracks(currentTrackIdx).kalmanFilter.flying = min(s.flying + 2, 10);
                 elseif norm( s.mu.v ) > 22.5
@@ -460,9 +467,11 @@ end
             
              maxDistToGhost = 65;
                          distToGhost = pdist2(ghostTracks(currentGhostTrackIdx).kalmanFilter.x(1:3)', ...
-                                  detectedMarkersForCurrentGhostTrack);                 
+                                  detectedMarkersForCurrentGhostTrack);      
+             allRejectedDetections(end + 1: end + nnz(distToGhost > maxDistToGhost), :) = ...
+                 detectedMarkersForCurrentGhostTrack(distToGhost > maxDistToGhost, :);
              detectedMarkersForCurrentGhostTrack = ... 
-                 detectedMarkersForCurrentGhostTrack(distToGhost' < maxDistToGhost, :);
+                 detectedMarkersForCurrentGhostTrack(distToGhost' <= maxDistToGhost, :);
              
             if size(detectedMarkersForCurrentGhostTrack, 1) > 0
            
