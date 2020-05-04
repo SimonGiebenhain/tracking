@@ -54,8 +54,8 @@ params.processNoise = processNoise;
 params.quatMotionType = quatMotionType;
 params.motionType = 'constAcc';
 
-patternSimilarityThreshold = 1.1;
-similarPatterns = getSimilarPatterns(patterns, patternSimilarityThreshold);
+patternSimilarityThreshold = 1.5;
+similarPairs = getSimilarPatterns(patterns, patternSimilarityThreshold);
 
 nextId = 1;
 if useVICONinit
@@ -107,13 +107,13 @@ for t = 1:T
     unusedDets = [detections(unassignedDetections, :); rejectedDetections];
     %TODO params
     if sum(unassignedPatterns) > 0 &&  length(unusedDets) > 1
-        [tracks, ghostTracks, unassignedPatterns] = createNewTracks(unusedDets, unassignedPatterns, tracks, patterns, params, patternNames, ghostTracks);
+        [tracks, ghostTracks, unassignedPatterns] = createNewTracks(unusedDets, unassignedPatterns, tracks, patterns, params, patternNames, similarPairs, ghostTracks);
     end
     t
-    if t == 3200 || t==2440
-       t %gelb
+    if t == 3200 || t==2280 || t==1400
+       t %rot
     end
-    if t == 8700
+    if t == 8500 || t==9990
        t % total chaos
     end % 8700grün
     if visualizeTracking == 1
@@ -246,7 +246,7 @@ end
             end
             unassignedDetections = squeeze(D(1,:,:));
             unassignedDetections = reshape(unassignedDetections(~isnan(unassignedDetections)),[],dim);
-            [tracks, ghostTracks, unassignedPatterns] = createNewTracks(unassignedDetections, unassignedPatterns, tracks, patterns, params, patternNames);
+            [tracks, ghostTracks, unassignedPatterns] = createNewTracks(unassignedDetections, unassignedPatterns, tracks, patterns, params, patternNames, similarPairs);
         end
     end
 
@@ -413,21 +413,46 @@ end
         allAssignedGhostTracksIdx = unique(floor((assignedGhostTracks(:,1)-1)/nMarkers) + 1);
         nAssignedGhostTracks = length(allAssignedGhostTracksIdx);
         deletedGhostTracks = zeros(length(ghostTracks),1);
+        
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                   %%%%%%%% TODO: also use similarPairs %%%%%%%%
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        
+        % Determine patterns without unassigned, similar patterns
+        safePatternsBool = zeros(length(patterns));
+        assignedPatternsIdx = find(~unassignedPatterns);
+        for p=1:nAssignedGhostTracks
+            patIdx = allAssignedGhostTracksIdx(p);
+            conflicts = similarPairs(similarPairs(:, 1) == patIdx, 2);
+            conflicts = [conflicts; similarPairs(similarPairs(:, 2) == patIdx, 1)];
+            conflicts = setdiff(conflicts, assignedPatternsIdx);
+            if isempty(conflicts)
+                safePatternsBool(patIdx) = 1;
+            end
+        end
+        
         for i = 1:nAssignedGhostTracks
             currentGhostTrackIdx = allAssignedGhostTracksIdx(i);
             assignmentsIdx = floor((assignedGhostTracks(:,1)-1)/nMarkers) + 1 == currentGhostTrackIdx;
             detectionIdx = assignedGhostTracks(assignmentsIdx,2);
             detectedMarkersForCurrentGhostTrack = detections(detectionIdx, :);
             
-                       
+            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
             % TODO maybe remove detections that are to far apart from the
-            % rest
+            % rest, especially with 5 dets
+            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
             
-            % TODO decide wether 3 or 4 are both OK!
-            
-            % if (3 or) 4 detections assigned: run pattern matching and
+            % if  4 detections assigned: run pattern matching and
             %   umeyama, if good fit, init real track!
-            if size(detectedMarkersForCurrentGhostTrack, 1) >= 4
+            % if 2 detections assigned: only run pattern_matching if all
+            % simialr patterns are already assigned, in order to avoid
+            % id-switches
+            if size(detectedMarkersForCurrentGhostTrack, 1) >= 4 || ...
+                    ( size(detectedMarkersForCurrentGhostTrack, 1) == 3 && safePatternsBool(currentGhostTrackIdx))
                 unassignedPatternIdx = find(unassignedPatterns);
                 matchingCosts = zeros(length(unassignedPatternIdx), 1);
                 rotations = zeros(length(unassignedPatternIdx), 3, 3);
@@ -447,7 +472,7 @@ end
                 end
 
                 [minCost, minIdx] = min(matchingCosts);
-                if minCost < 0.7
+                if minCost < 1.25 %TODO add to paramters and unify with param in createNewTracks(.)!!!!
                     patternIdx = unassignedPatternIdx(minIdx);
                     pattern = squeeze(patterns(patternIdx, :, :));
                     newTrack = createLGEKFtrack(squeeze(rotations(minIdx, :, :)), ...
@@ -621,7 +646,7 @@ end
         assignedGhostTracks(:, 1) = assignedGhostTracks(:, 1) - length(tracks)*nMarkers;
         assignedGhostTracks = double(assignedGhostTracks);
         allAssignedGhostTracksIdx = unique(floor((assignedGhostTracks(:,1)-1)/nMarkers) + 1);
-        unassignedGhostTracks(:, 1) = unassignedGhostTracks(:, 1) - length(tracks)*nMarkers;
+        unassignedGhostTracks(:) = unassignedGhostTracks(:) - length(tracks)*nMarkers;
         unassignedGhostTracks = double(unassignedGhostTracks);
         allUnassignedGhostTracksIdx = unique(floor((unassignedGhostTracks-1)/nMarkers) + 1);
         % remove partially observed tracks from unassigned list

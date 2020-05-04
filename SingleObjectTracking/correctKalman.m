@@ -1,4 +1,4 @@
-function [s, assignment] = correctKalman(s, noKnowledge, globalParams, missedDetections, hyperParams, age, motionType)
+function [s, rejectedDetections] = correctKalman(s, noKnowledge, globalParams, missedDetections, hyperParams, age, motionType)
 %CORRECTKALMAN Summary of this function goes here
 %   Detailed explanation goes here
 
@@ -7,6 +7,8 @@ pattern = globalParams.pattern;
 
 nMarkers = size(pattern,1);
 dim = size(pattern,2);
+
+rejectedDetections = zeros(0, 3);
 
 % If we don't know which detections are missing, we need to come up
 % with a prediction for what detections are missing (the detections of which marker that is), i.e. we need to
@@ -31,9 +33,10 @@ else
     aNorm = sqrt(sum(s.x(2*dim+1:3*dim).^2));
     
 end
-if age > 10 && hyperParams.doFPFiltering == 1
+if age > 5 && hyperParams.doFPFiltering == 1
     threshold = hyperParams.minAssignmentThreshold + (vNorm/3)^2;% + (aNorm)^2;
     if nnz(dists > threshold) < nDets %|| (s.flying < 1 && s.consecutiveInvisibleCount == 0 && nnz(dists > threshold) == 1)
+        rejectedDetections = detections(dists > threshold, :);
         ds(dists > threshold, :) = [];
         detections(dists > threshold, :) = [];
     end
