@@ -54,8 +54,13 @@ params.processNoise = processNoise;
 params.quatMotionType = quatMotionType;
 params.motionType = 'constAcc';
 
-patternSimilarityThreshold = 1.25;
-similarPairs = getSimilarPatterns(patterns, patternSimilarityThreshold);
+params.minDistToBird = hyperParams.minDistToBird;
+params.initThreshold = hyperParams.initThreshold;
+params.initThreshold4 = hyperParams.initThreshold4;
+
+
+similarPairs = getSimilarPatterns(patterns, hyperParams.patternSimilarityThreshold);
+
 
 nextId = 1;
 if useVICONinit
@@ -105,7 +110,7 @@ for t = 1:T
     updateUnassignedTracks();
     deleteLostTracks(deletedGhostTracks);
     unusedDets = [detections(unassignedDetections, :); rejectedDetections];
-    %TODO params
+
     if sum(unassignedPatterns) > 0 &&  length(unusedDets) > 1
         [tracks, ghostTracks, unassignedPatterns] = createNewTracks(unusedDets, unassignedPatterns, tracks, patterns, params, patternNames, similarPairs, ghostTracks);
     end
@@ -362,6 +367,9 @@ end
         
         allRejectedDetections = zeros(0, 3);
         
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        % Update tracks.
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         assignedTracks = double(assignedTracks);
         allAssignedTracksIdx = unique(floor((assignedTracks(:,1)-1)/nMarkers) + 1);
         nAssignedTracks = length(allAssignedTracksIdx);
@@ -408,19 +416,21 @@ end
             tracks(currentTrackIdx).consecutiveInvisibleCount = tracks(currentTrackIdx).kalmanFilter.consecutiveInvisibleCount;
         end
         
+        
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        % Try to identify ghost tracks with pattern.
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        
         assignedGhostTracks(:, 1) = assignedGhostTracks(:, 1) - length(tracks)*nMarkers;
         assignedGhostTracks = double(assignedGhostTracks);
         allAssignedGhostTracksIdx = unique(floor((assignedGhostTracks(:,1)-1)/nMarkers) + 1);
         nAssignedGhostTracks = length(allAssignedGhostTracksIdx);
         deletedGhostTracks = zeros(length(ghostTracks),1);
         
-        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-                   %%%%%%%% TODO: also use similarPairs %%%%%%%%
-        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         
-        % Determine patterns without unassigned, similar patterns
+        % Unassigned patterns that are not similar to any other unassigned
+        % pattern can be used to safely initialize a new track
+        % Determine these patterns.
         safePatternsBool = zeros(length(patterns), 1);
         assignedPatternsIdx = find(~unassignedPatterns);
         unassignedPatternsIdx = find(unassignedPatterns);
@@ -434,19 +444,13 @@ end
             end
         end
         
+        
         for i = 1:nAssignedGhostTracks
             currentGhostTrackIdx = allAssignedGhostTracksIdx(i);
             assignmentsIdx = floor((assignedGhostTracks(:,1)-1)/nMarkers) + 1 == currentGhostTrackIdx;
             detectionIdx = assignedGhostTracks(assignmentsIdx,2);
             detectedMarkersForCurrentGhostTrack = detections(detectionIdx, :);
             nAssgnDets = size(detectedMarkersForCurrentGhostTrack, 1);
-            
-            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-            % TODO maybe remove detections that are to far apart from the
-            % rest, especially with 5 dets
-            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
             
             % if  4 detections assigned: run pattern matching and
             %   umeyama, if good fit, init real track!
@@ -477,7 +481,13 @@ end
                 end
 
                 [minCost, minIdx] = min(matchingCosts);
-                if minCost < 1  %TODO add to paramters and unify with param in createNewTracks(.)!!!!
+                if ~isempty(minCost) && ...
+                    (  ( minCost < params.initThreshold4 && nAssgnDets == 4 )  || ...
+                        ( minCost < params.initThreshold && nAssgnDets == 3 )  )
+                    if nAssgnDets == 3
+                        
+                        nAssgnDets
+                    end
                     patternIdx = unassignedandSafeIdx(minIdx);
                     pattern = squeeze(patterns(patternIdx, :, :));
                     newTrack = createLGEKFtrack(squeeze(rotations(minIdx, :, :)), ...
@@ -492,10 +502,12 @@ end
 
                 end
             end
+             
             
-            
-            
-             maxDistToGhost = 65;
+            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+            % update remaining ghost tracks
+            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+             maxDistToGhost = hyperParams.ghostFPFilterDist;
                          distToGhost = pdist2(ghostTracks(currentGhostTrackIdx).kalmanFilter.x(1:3)', ...
                                   detectedMarkersForCurrentGhostTrack);      
              allRejectedDetections(end + 1: end + nnz(distToGhost > maxDistToGhost), :) = ...
@@ -687,10 +699,8 @@ end
         lostIdx = find(lostIdxBool);
         if ~isempty(lostIdx)
             for i=1:length(lostIdx)
-                %unassignedPatterns{end+1} = tracks(lostIdx(i)).kalmanFilter.pattern;
+                %mark track as lost/pattern as unassigned
                 unassignedPatterns(lostIdx(i)) = 1;
-                % Mark track as lost, i.e. set age to 0
-                % TODO: Also wipe other attributes
                 tracks(lostIdx(i)).age = 0;
                 
                 estimatedPositions(lostIdx(i), max(1,t-invisibleForTooLong):t-1, :) = NaN;

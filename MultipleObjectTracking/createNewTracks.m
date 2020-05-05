@@ -14,8 +14,8 @@ if exist('ghostTracks','var') ~= 1
 end
 
 % Ghost birds should be initialized in the proximity of other birds
-minDistToBird = 90;
-initThreshold = 1.25;
+minDistToBird = params.minDistToBird;%90;
+initThreshold = params.initThreshold;%1.25;
 
 
 
@@ -25,10 +25,7 @@ invisCounts = [tracks(:).consecutiveInvisibleCount];
 invis = invisCounts >= 5;
 unassignedPatterns = unassignedPatternsReturn | invis';
 
-%TODO:
-% allow to initialize ghostBirds even if all Patterns are already assigned?
 if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
-
     costOfNonAssignment = 1;
     
     dim = size(patterns,3);
@@ -44,7 +41,6 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
         if size(clustersRaw{i},1) >= 4
             %size(clustersRaw{i},1)
             while size(clustersRaw{i},1) > 4
-                %TODO split cluster
                 dets = clustersRaw{i};
                 dists = squareform(pdist(dets));
                 addedDists = sum(dists, 2);
@@ -64,14 +60,6 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
     end
     
     if nClusters4 + nClusters3 >= 1
-        
-        %TODO: add clusters of size 3 and 4 to potential birds
-        %TODO: for every pattern see if all similars patterns are alredy
-        %   initialized, if so: also try to match 3-clusters, else discard
-        %   3-clsuters
-        %TODO: check for similar patterns: invisible birds also count as
-        %non-initialized (at east once invisble for a few frames)
-        
         costMatrix = zeros(sum(unassignedPatterns), length(potentialBirds4));
         rotMatsMatrix = zeros(sum(unassignedPatterns), length(potentialBirds4), 3,3);
         translationsMatrix = zeros(sum(unassignedPatterns), length(potentialBirds4), 3);
@@ -105,7 +93,6 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
                 l2Error = costMatrix(specificPatternIdx, clusterIdx);
                 
                 % Create a Kalman filter object.
-                %TODO adaptive initial Noise!!!!
                 patternIdx = unassignedPatternsIdx(specificPatternIdx);
                 pattern = squeeze( patterns(patternIdx,:,:));
                 newTrack = createLGEKFtrack(rotm, pos, l2Error, patternIdx, pattern, patternNames{patternIdx}, params);
@@ -120,18 +107,15 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
                 quat = rotm2quat( squeeze(rotMatsMatrix(specificPatternIdx, clusterIdx, :,:)) );
                 
                 % Create a Kalman filter object.
-                %TODO adaptive initial Noise!!!!
                 patternIdx = unassignedPatternsIdx(specificPatternIdx);
                 pattern = squeeze( patterns(patternIdx,:,:));
                 [s, kalmanParams] = setupKalman(pattern, -1, params);
                 if strcmp(params.quatMotionType, 'brownian')
                     if strcmp(params.motionType, 'constAcc')
                         s.x = [pos; zeros(3,1); zeros(3,1); quat'];
-                        % TODO also estimate uncertainty
                         s.P = eye(3*dim+4) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initAccVar; kalmanParams.initQuatVar], [dim, dim, dim, 4]);
                     else
                         s.x = [pos; zeros(3,1); quat'];
-                        % TODO also estimate uncertainty
                         s.P = eye(2*dim+4) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initQuatVar], [dim, dim, 4]);
                     end
                 else
@@ -139,7 +123,6 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
                         fprintf('not implemented yet')
                     else
                         s.x = [pos'; zeros(3,1); quat'; zeros(4,1)];
-                        % TODO also estimate uncertainty
                         s.P = eye(2*dim+8) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initQuatVar; kalmanParams.initQuatMotionVar], [dim, dim, 4, 4]);
                     end
                 end
@@ -164,17 +147,13 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
             
         end
         
-        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        %%%%%%%%%%%%%%%%%%%%%%% TODO remove while loop %%%%%%%%%%%%%%%%%%%%
-        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        firstIter = true;
-        somethingChanged = false;
-        while firstIter || (nnz(~nConflicts) && nnz(unassignedPatterns) > 0 && nClusters3 > 0 && somethingChanged)
-            somethingChanged = false;
-            firstIter = false;
+        %TODO pack all stuff regarding patterns in one struct
+        % this way safePatterns does not have to be re-calculated as
+        % frequently
+
+        if nClusters3 > 0
             assignedPatternsIdx = find(~unassignedPatterns);
             unassignedPatternsIdx = find(unassignedPatterns);
-            nConflicts = zeros(length(unassignedPatternsIdx), 1);
             safePatternsBool = zeros(length(patterns), 1);
             % Determine patterns without unassigned, similar patterns
             for p=1:length(unassignedPatternsIdx)
@@ -182,23 +161,24 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
                 conflicts = similarPairs(similarPairs(:, 1) == patIdx, 2);
                 conflicts = [conflicts; similarPairs(similarPairs(:, 2) == patIdx, 1)];
                 conflicts = setdiff(conflicts, assignedPatternsIdx);
-                nConflicts(p) = length(conflicts);
-                if nConflicts(p) == 0
+                if isempty(conflicts) == 0
                     safePatternsBool(patIdx) = 1;
                 end
             end
             
+            safeAndUnassignedPatterns = find(unassignedPatterns & safePatternsBool);
+            nSafeAndUnassigned = length(safeAndUnassignedPatterns);
+            
             deletedClusters3 = zeros(nClusters3,1);
             for c=1:nClusters3
-                costs = 1000*ones(length(patterns), 1);
-                rotMats = zeros(length(patterns), 3, 3);
-                transVecs = zeros(length(patterns), 3);
-                for p=1:length(patterns)
-                    if ~safePatternsBool(p)
-                        continue;
-                    end
+                costs = 1000*ones(nSafeAndUnassigned, 1);
+                rotMats = zeros(nSafeAndUnassigned, 3, 3);
+                transVecs = zeros(nSafeAndUnassigned, 3);
+                
+                dets = potentialBirds3{c};
+                for jj=1:nSafeAndUnassigned
+                    p = safeAndUnassignedPatterns(jj);
                     pattern = squeeze(patterns(p,:,:));
-                    dets = potentialBirds3{c};
                     permut = match_patterns(pattern, dets, 'noKnowledge', params.motionType);
                     assignment = zeros(4,1);
                     assignment(permut) = 1:length(permut);
@@ -206,31 +186,30 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
                     pattern = pattern(assignment,:);
                     pattern = pattern(assignment > 0, :);
                     [R, translation, MSE] = umeyama(pattern', dets');
-                    costs(p) = MSE;
-                    rotMats(p,:,:) = R;
-                    transVecs(p,:) = translation;
+                    costs(jj) = MSE;
+                    rotMats(jj,:,:) = R;
+                    transVecs(jj,:) = translation;
                 end
                 
                 [minMSE, minIdx] = min(costs);
-                minMSE
+                minPatIdx = safeAndUnassignedPatterns(minIdx);
                 
                 if minMSE < initThreshold
                     newTrack = createLGEKFtrack(squeeze(rotMats(minIdx, :, :)), ...
-                                                squeeze(transVecs(minIdx, :))', ...
-                                                minMSE, minIdx, ...
-                                                squeeze(patterns(minIdx, :, :)),...
-                                                patternNames{minIdx}, params);
-                    tracks(minIdx) = newTrack;
-                    unassignedPatterns(minIdx) = 0;
-                    unassignedPatternsReturn(minIdx) = 0;
+                        squeeze(transVecs(minIdx, :))', ...
+                        minMSE, minPatIdx, ...
+                        squeeze(patterns(minPatIdx, :, :)),...
+                        patternNames{minPatIdx}, params);
+                    tracks(minPatIdx) = newTrack;
+                    unassignedPatterns(minPatIdx) = 0;
+                    unassignedPatternsReturn(minPatIdx) = 0;
                     deletedClusters3(c) = 1;
-                    somethingChanged = true;
-                end 
+                end
             end
             nClusters3 = nClusters3 - nnz(deletedClusters3);
             potentialBirds3(deletedClusters3 == 1) = [];
-        end            
-        
+            
+        end
         
         positions = 10000*ones(length(tracks)+length(ghostTracks),3);
         for i=1:length(tracks)
@@ -254,14 +233,11 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
                     'totalVisibleCount', 1, ...
                     'consecutiveInvisibleCount', 0);
                 ghostTracks(length(ghostTracks) + 1) = ghostTrack;
+                positions(length(positions)+1, :) = pos;
             end
         end
         
         % for each unassigned cluster of size 3 create a ghost bird
-        
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%       
-%%%%%%%%%%%  TODO add ghostBirds to positions variable  %%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         for i=1:nClusters3
             pos = mean(potentialBirds3{i}, 1);
             dists = pdist2(pos, positions);
@@ -273,6 +249,7 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
                     'totalVisibleCount', 1, ...
                     'consecutiveInvisibleCount', 0);
                 ghostTracks(length(ghostTracks) + 1) = ghostTrack;
+                positions(length(positions)+1, :) = pos;
             end
         end
         

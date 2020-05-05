@@ -1,7 +1,7 @@
 %% load data and patterns
 % Also add folder with patterns to path of matlab!
-dataFilename = 'datasets/session2/all.csv'; %'datasets/session8/Starling_Trials_10-12-2019_16-00-00_Trajectories_100.csv'; % 
-patternDirectoryName = 'datasets/session2';
+dataFilename = 'datasets/session1/all.csv'; %'datasets/session8/Starling_Trials_10-12-2019_16-00-00_Trajectories_100.csv'; % 
+patternDirectoryName = 'datasets/session1';
 filePrefix = strsplit(dataFilename, '.');
 filePrefix = filePrefix{1};
 if isfile([filePrefix, '.mat'])
@@ -68,6 +68,7 @@ stdHyperParams.costOfNonAsDtTA = 85; %session8: 50, alt: flying birds get lower 
 stdHyperParams.certaintyFactor = 1;
 stdHyperParams.useAssignmentLength = 1;
 stdHyperParams.minAssignmentThreshold = 35; %30;
+stdHyperParams.ghostFPFilterDist = 65;
 stdHyperParams.costOfNonAsDtMA = 10;
 stdHyperParams.eucDistWeight = 1/4;%1/3;
 stdHyperParams.posNoise = 50;
@@ -78,6 +79,11 @@ stdHyperParams.quatMotionNoise = 1;
 stdHyperParams.measurementNoise = 90;%50
 stdHyperParams.certaintyScale = 7.0;%6.5
 
+stdHyperParams.minDistToBird = 90; %minimal distance for new ghost birds to other (ghost) birds that has to be free.
+stdHyperParams.initThreshold = 1;%0.85;
+stdHyperParams.initThreshold4 = 2;
+stdHyperParams.patternSimilarityThreshold = 1.7;%1;
+
 stdHyperParams.modelType = 'LieGroup';
 
 quatMotionType = 'brownian';
@@ -85,7 +91,7 @@ quatMotionType = 'brownian';
 fprintf('Starting to track!\n')
 
 %profile on
-beginningFrame = 30000;%4000;%7800+ blau macht sehr komische sachen;5300 %+ 1000 jittery;%%2000+4000;
+beginningFrame = 1;%4000;%7800+ blau macht sehr komische sachen;5300 %+ 1000 jittery;%%2000+4000;
 endFrame = size(formattedData,1);
 stdHyperParams.visualizeTracking = 1;
 [estimatedPositions, estimatedQuats, positionVariance, rotationVariance] = ownMOT(formattedData(beginningFrame:endFrame,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
