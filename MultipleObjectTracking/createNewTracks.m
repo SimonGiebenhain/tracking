@@ -175,7 +175,7 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
             assignedPatternsIdx = find(~unassignedPatterns);
             unassignedPatternsIdx = find(unassignedPatterns);
             nConflicts = zeros(length(unassignedPatternsIdx), 1);
-            safePatternsBool = zeros(length(patterns));
+            safePatternsBool = zeros(length(patterns), 1);
             % Determine patterns without unassigned, similar patterns
             for p=1:length(unassignedPatternsIdx)
                 patIdx = unassignedPatternsIdx(p);

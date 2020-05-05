@@ -1,7 +1,7 @@
 %% load data and patterns
 % Also add folder with patterns to path of matlab!
-dataFilename = 'datasets/session1/all.csv'; %'datasets/session8/Starling_Trials_10-12-2019_16-00-00_Trajectories_100.csv'; % 
-patternDirectoryName = 'datasets/session1';
+dataFilename = 'datasets/session2/all.csv'; %'datasets/session8/Starling_Trials_10-12-2019_16-00-00_Trajectories_100.csv'; % 
+patternDirectoryName = 'datasets/session2';
 filePrefix = strsplit(dataFilename, '.');
 filePrefix = filePrefix{1};
 if isfile([filePrefix, '.mat'])
@@ -64,16 +64,16 @@ stdHyperParams.simplePatternMatching = 0;
 
 %8200 id-sw.
 %8480 grün geht beim fliegen verloren, was da los??
-stdHyperParams.costOfNonAsDtTA = 50; %session1: 85
+stdHyperParams.costOfNonAsDtTA = 85; %session8: 50, alt: flying birds get lower assignment cost
 stdHyperParams.certaintyFactor = 1;
 stdHyperParams.useAssignmentLength = 1;
 stdHyperParams.minAssignmentThreshold = 35; %30;
 stdHyperParams.costOfNonAsDtMA = 10;
-stdHyperParams.eucDistWeight = 1/3;%1/3;
+stdHyperParams.eucDistWeight = 1/4;%1/3;
 stdHyperParams.posNoise = 50;
-stdHyperParams.motNoise = 10;%5
-stdHyperParams.accNoise = 3;
-stdHyperParams.quatNoise = 0.15;
+stdHyperParams.motNoise = 5;%10
+stdHyperParams.accNoise = 1;%3
+stdHyperParams.quatNoise = 0.2;
 stdHyperParams.quatMotionNoise = 1;
 stdHyperParams.measurementNoise = 90;%50
 stdHyperParams.certaintyScale = 7.0;%6.5
@@ -85,7 +85,7 @@ quatMotionType = 'brownian';
 fprintf('Starting to track!\n')
 
 %profile on
-beginningFrame = 1;%4000;%7800+ blau macht sehr komische sachen;5300 %+ 1000 jittery;%%2000+4000;
+beginningFrame = 30000;%4000;%7800+ blau macht sehr komische sachen;5300 %+ 1000 jittery;%%2000+4000;
 endFrame = size(formattedData,1);
 stdHyperParams.visualizeTracking = 1;
 [estimatedPositions, estimatedQuats, positionVariance, rotationVariance] = ownMOT(formattedData(beginningFrame:endFrame,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);

@@ -54,7 +54,7 @@ params.processNoise = processNoise;
 params.quatMotionType = quatMotionType;
 params.motionType = 'constAcc';
 
-patternSimilarityThreshold = 1.5;
+patternSimilarityThreshold = 1.25;
 similarPairs = getSimilarPatterns(patterns, patternSimilarityThreshold);
 
 nextId = 1;
@@ -113,7 +113,7 @@ for t = 1:T
     if t == 3200 || t==2280 || t==1400
        t %rot
     end
-    if t == 8500 || t==9990
+    if t==5000
        t % total chaos
     end % 8700grün
     if visualizeTracking == 1
@@ -421,15 +421,16 @@ end
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         
         % Determine patterns without unassigned, similar patterns
-        safePatternsBool = zeros(length(patterns));
+        safePatternsBool = zeros(length(patterns), 1);
         assignedPatternsIdx = find(~unassignedPatterns);
-        for p=1:nAssignedGhostTracks
-            patIdx = allAssignedGhostTracksIdx(p);
-            conflicts = similarPairs(similarPairs(:, 1) == patIdx, 2);
-            conflicts = [conflicts; similarPairs(similarPairs(:, 2) == patIdx, 1)];
+        unassignedPatternsIdx = find(unassignedPatterns);
+        for jj=1:length(unassignedPatternsIdx)
+            p = unassignedPatternsIdx(jj);
+            conflicts = similarPairs(similarPairs(:, 1) == p, 2);
+            conflicts = [conflicts; similarPairs(similarPairs(:, 2) == p, 1)];
             conflicts = setdiff(conflicts, assignedPatternsIdx);
             if isempty(conflicts)
-                safePatternsBool(patIdx) = 1;
+                safePatternsBool(p) = 1;
             end
         end
         
@@ -438,6 +439,7 @@ end
             assignmentsIdx = floor((assignedGhostTracks(:,1)-1)/nMarkers) + 1 == currentGhostTrackIdx;
             detectionIdx = assignedGhostTracks(assignmentsIdx,2);
             detectedMarkersForCurrentGhostTrack = detections(detectionIdx, :);
+            nAssgnDets = size(detectedMarkersForCurrentGhostTrack, 1);
             
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -451,14 +453,17 @@ end
             % if 2 detections assigned: only run pattern_matching if all
             % simialr patterns are already assigned, in order to avoid
             % id-switches
-            if size(detectedMarkersForCurrentGhostTrack, 1) >= 4 || ...
-                    ( size(detectedMarkersForCurrentGhostTrack, 1) == 3 && safePatternsBool(currentGhostTrackIdx))
-                unassignedPatternIdx = find(unassignedPatterns);
-                matchingCosts = zeros(length(unassignedPatternIdx), 1);
-                rotations = zeros(length(unassignedPatternIdx), 3, 3);
-                translations = zeros(length(unassignedPatternIdx), 3);
-                for j=1:length(unassignedPatternIdx)
-                   pattern = squeeze(patterns(unassignedPatternIdx(j), :, :));
+            if nAssgnDets >= 3
+                if nAssgnDets == 3
+                    unassignedandSafeIdx = find(unassignedPatterns & safePatternsBool);
+                else
+                    unassignedandSafeIdx = find(unassignedPatterns);
+                end
+                matchingCosts = zeros(length(unassignedandSafeIdx), 1);
+                rotations = zeros(length(unassignedandSafeIdx), 3, 3);
+                translations = zeros(length(unassignedandSafeIdx), 3);
+                for j=1:length(unassignedandSafeIdx)
+                   pattern = squeeze(patterns(unassignedandSafeIdx(j), :, :));
                    p = match_patterns(pattern, detectedMarkersForCurrentGhostTrack, 'noKnowledge');
                    assignment = zeros(4,1);
                    assignment(p) = 1:length(p);
@@ -472,8 +477,8 @@ end
                 end
 
                 [minCost, minIdx] = min(matchingCosts);
-                if minCost < 1.25 %TODO add to paramters and unify with param in createNewTracks(.)!!!!
-                    patternIdx = unassignedPatternIdx(minIdx);
+                if minCost < 1  %TODO add to paramters and unify with param in createNewTracks(.)!!!!
+                    patternIdx = unassignedandSafeIdx(minIdx);
                     pattern = squeeze(patterns(patternIdx, :, :));
                     newTrack = createLGEKFtrack(squeeze(rotations(minIdx, :, :)), ...
                                 squeeze(translations(minIdx, :))', MSE, patternIdx, pattern, patternNames{patternIdx}, params);
