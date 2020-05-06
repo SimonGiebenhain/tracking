@@ -432,8 +432,9 @@ end
         % pattern can be used to safely initialize a new track
         % Determine these patterns.
         safePatternsBool = zeros(length(patterns), 1);
-        assignedPatternsIdx = find(~unassignedPatterns);
-        unassignedPatternsIdx = find(unassignedPatterns);
+        potentialReInit = unassignedPatterns | ([tracks(:).consecutiveInvisibleCount] > 5)';
+        assignedPatternsIdx = find(~potentialReInit);
+        unassignedPatternsIdx = find(potentialReInit);
         for jj=1:length(unassignedPatternsIdx)
             p = unassignedPatternsIdx(jj);
             conflicts = similarPairs(similarPairs(:, 1) == p, 2);
@@ -458,11 +459,11 @@ end
             % simialr patterns are already assigned, in order to avoid
             % id-switches
             if nAssgnDets >= 3
-                if nAssgnDets == 3
-                    unassignedandSafeIdx = find(unassignedPatterns & safePatternsBool);
-                else
-                    unassignedandSafeIdx = find(unassignedPatterns);
-                end
+                %if nAssgnDets == 3
+                %    unassignedandSafeIdx = find(unassignedPatterns & safePatternsBool);
+                %else
+                unassignedandSafeIdx = find(potentialReInit);
+                %end
                 matchingCosts = zeros(length(unassignedandSafeIdx), 1);
                 rotations = zeros(length(unassignedandSafeIdx), 3, 3);
                 translations = zeros(length(unassignedandSafeIdx), 3);
@@ -481,19 +482,21 @@ end
                 end
 
                 [minCost, minIdx] = min(matchingCosts);
+                patternIdx = unassignedandSafeIdx(minIdx);
                 if ~isempty(minCost) && ...
                     (  ( minCost < params.initThreshold4 && nAssgnDets == 4 )  || ...
-                        ( minCost < params.initThreshold && nAssgnDets == 3 )  )
+                        ( minCost < params.initThreshold && nAssgnDets == 3 && safePatternsBool(patternIdx)==1)  ||...
+                        ( minCost < params.initThreshold/2 && nAssgnDets == 3) ...
+                    )
                     if nAssgnDets == 3
-                        
                         nAssgnDets
                     end
-                    patternIdx = unassignedandSafeIdx(minIdx);
                     pattern = squeeze(patterns(patternIdx, :, :));
                     newTrack = createLGEKFtrack(squeeze(rotations(minIdx, :, :)), ...
                                 squeeze(translations(minIdx, :))', MSE, patternIdx, pattern, patternNames{patternIdx}, params);
                     tracks(patternIdx) = newTrack;
                     unassignedPatterns(patternIdx) = 0;
+                    potentialReInit(patternIdx) = 0;
                     % mark ghosst bird as deleted and delete after loop
                     deletedGhostTracks(currentGhostTrackIdx) = 1;
                     % continue loop, as we don't have to update position of

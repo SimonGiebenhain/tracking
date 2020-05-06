@@ -141,9 +141,9 @@ if size(ds, 1) >= 1
     end
     if hyperParams.adaptiveNoise == 1
         s.R = certainty * R(detectionsIdx, detectionsIdx);
-        if s.flying >=4
-            s.R = s.R*1.5;
-        elseif s.consecutiveInvisibleCount > 2
+        %if s.flying >=4
+        %    s.R = s.R*1.5;
+        if s.consecutiveInvisibleCount > 2
            s.R = s.R/1.5;
         end
     else
