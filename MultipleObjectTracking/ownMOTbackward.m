@@ -1,12 +1,5 @@
 %% Multi Object Tracking
-% The original code structure comes from the MATLAB tutorial for motion
-% based multi object tracking:
-% https://de.mathworks.com/help/vision/examples/motion-based-multiple-object-tracking.html
-
-% TODO
-% Explanation goes here
-
-function [estimatedPositions, estimatedQuats, positionVariance, rotationVariance, markerAssignemnts, falsePositives] = ownMOT(D, patterns, patternNames, useVICONinit, initialStates, nObjects, shouldShowTruth, trueTrajectory, trueOrientation, quatMotionType, hyperParams)
+function [estimatedPositions, estimatedQuats] = ownMOTbackward(D, patterns, patternNames, initialStates, nObjects, shouldShowTruth, forwardPos, forwardRot, quatMotionType, hyperParams)
 % OWNMOT does multi object tracking
 %   @D all observations/detections in the format:
 %       T x maxDetectionsPerFrame x 3
@@ -62,13 +55,17 @@ params.initThreshold4 = hyperParams.initThreshold4;
 similarPairs = getSimilarPatterns(patterns, hyperParams.patternSimilarityThreshold);
 
 
-nextId = 1;
-if useVICONinit
-    unassignedPatterns = zeros(nObjects, 1);
-else
-    unassignedPatterns = ones(nObjects, 1);
-end
-[tracks, ghostTracks] = initializeTracks();
+unassignedPatterns = ones(nObjects, 1);
+tracks = initializeTracks();
+%initialize empty ghost tracks
+kFGhost = constructGhostKF([0 0 0], params);
+    ghostTrack = struct(...
+        'kalmanFilter', kFGhost, ...
+        'age', 1, ...
+        'totalVisibleCount', 1, ...
+        'consecutiveInvisibleCount', 0);
+ghostTracks(1) = ghostTrack;
+ghostTracks(:, 1) = [];
 
 
 
@@ -93,13 +90,11 @@ end
 
 estimatedPositions = zeros(nObjects, T, 3);
 estimatedQuats = zeros(nObjects, T, 4);
-markerAssignemnts = zeros(nObjects, T, nMarkers);
-falsePositives = zeros(T, 1);
-positionVariance = zeros(nObjects, T);
-rotationVariance = zeros(nObjects, T);
 
 for t = 1:T
-    %tic
+    if ~any(isnan(forwardPos(:, T-t+1, 1)))
+        continue
+    end
     detections = squeeze(D(t,:,:));
     detections = reshape(detections(~isnan(detections)),[],dim);
     
@@ -131,127 +126,48 @@ for t = 1:T
             if strcmp(model, 'LieGroup')
                 estimatedPositions(ii, t, :) = tracks(ii).kalmanFilter.mu.X(1:3, 4);
                 estimatedQuats(ii, t, :) = rotm2quat(tracks(ii).kalmanFilter.mu.X(1:3,1:3));
-                P = tracks(ii).kalmanFilter.P;
-                rotationVariance(ii, t) = (P(1,1) + P(2,2) + P(3,3)) / 3;
-                positionVariance(ii, t) = (P(4,4) + P(5,5) + P(6,6)) / 3;
             else
                 state = tracks(ii).kalmanFilter.x;
-                P = tracks(ii).kalmanFilter.P;
                 estimatedPositions(ii,t,:) = state(1:dim);
-                positionVariance(ii,t) = (P(1,1) + P(2,2) + P(3,3)) / 3;
                 if strcmp(params.motionType, 'constAcc')
                     estimatedQuats(ii,t,:) = state(3*dim+1:3*dim+4);
-                    rotationVariance(ii,t) = (P(3*dim+1, 3*dim+1) + P(3*dim+2, 3*dim+2) + ... 
-                                              P(3*dim+3, 3*dim+3) + P(3*dim+4, 3*dim+4)) / 4;
                 else
                     estimatedQuats(ii,t,:) = state(2*dim+1:2*dim+4);
-                    rotationVariance(ii,t) = (P(2*dim+1, 2*dim+1) + P(2*dim+2, 2*dim+2) + ...
-                                              P(2*dim+3, 2*dim+3) + P(2*dim+4, 2*dim+4)) / 4;
                 end
             end
         else
             estimatedPositions(ii,t,:) = ones(3,1) * NaN;
             estimatedQuats(ii,t,:) = ones(4,1) * NaN;
-            rotationVariance(ii,t) = NaN;
-            positionVariance(ii,t) = NaN;
         end
     end
-    %toc
 end
 
 
 
 %% Initialize Tracks
-%{
-% The |initializeTracks| function creates an array of tracks, where each
-% track is a structure representing a moving object in the video. The
-% purpose of the structure is to maintain the state of a tracked object.
-% The state consists of information used for detection to track assignment,
-% track termination, and display.
-%
-% The structure contains the following fields:
-%
-% * |id| :                  the integer ID of the track
-% * |bbox| :                the current bounding box of the object; used
-%                           for display
-% * |kalmanFilter| :        a Kalman filter object used for motion-based
-%                           tracking
-% * |age| :                 the number of frames since the track was first
-%                           detected
-% * |totalVisibleCount| :   the total number of frames in which the track
-%                           was detected (visible)
-% * |consecutiveInvisibleCount| : the number of consecutive frames for
-%                                  which the track was not detected (invisible).
-%
-% Noisy detections tend to result in short-lived tracks. For this reason,
-% the example only displays an object after it was tracked for some number
-% of frames. This happens when |totalVisibleCount| exceeds a specified
-% threshold.
-%
-% When no detections are associated with a track for several consecutive
-% frames, the example assumes that the object has left the field of view
-% and deletes the track. This happens when |consecutiveInvisibleCount|
-% exceeds a specified threshold. A track may also get deleted as noise if
-% it was tracked for a short time, and marked invisible for most of the
-% frames.
-%}
-
-    function [tracks, ghostTracks] = initializeTracks()
-        if useVICONinit
-            for i = 1:nObjects
-                [s, kalmanParams] = setupKalman(squeeze(patterns(i,:,:)), -1, params);
-                if strcmp(model, 'LieGroup')
-                    mu.X = [ quat2rotm(initialStates.quat(i,:)) initialStates.pos(i,:)'; [0 0 0 1] ];
-                    mu.v = initialStates.velocity(i,:)';
-                    mu.a = initialStates.acceleration(i,:)';
-                    s.mu = mu;
-                    s.P = diag(repelem([params.initialNoise.initQuatVar; 
-                                        params.initialNoise.initPositionVar; 
-                                        params.initialNoise.initMotionVar; 
-                                        params.initialNoise.initAccVar
-                                       ],[dim, dim, dim, dim]));
-                else
-                    %if strcmp(quatMotionType, 'brownian')
-                    %    s.x = [initialStates.pos(i,:) initialStates.velocity(i,:) initialStates.quat(i,:)]'; %;initialStates(i,1:end-4)';
-                    %    s.P = eye(2*dim+4) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initQuatVar], [dim, dim, 4]);
-               
-                    if strcmp(params.motionType, 'constAcc')
-                        %TODO: add acceleration=0 in initial state
-                        s.x = [initialStates.pos(i,:) initialStates.velocity(i,:) initialStates.acceleration(i,:) initialStates.quat(i,:)]'; %initialStates(i,1:end-4);
-                        s.P = eye(3*dim+4) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initAccVar; kalmanParams.initQuatVar], [dim, dim, dim, 4]);
-                    else
-                        s.x = [initialStates.pos(i,:) initialStates.velocity(i,:) initialStates.acceleration(i,:) initialStates.quat(i,:) 0 0 0 0]';%initialStates(i,:)';
-                        s.P = eye(2*dim+8) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initQuatVar; kalmanParams.initQuatMotionVar], [dim, dim, 4, 4]);
-                    end
-                end
-                s.pattern = squeeze(patterns(i,:,:));
-                s.flying = -1;
-                s.consecutiveInvisibleCount = 0;
-                tracks(i) = struct(...
-                    'id', i, ... 
-                    'name', patternNames{i}, ...
-                    'kalmanFilter', s, ...
-                    'kalmanParams', kalmanParams, ...
-                    'age', 1, ...
-                    'totalVisibleCount', 1, ...
-                    'consecutiveInvisibleCount', 0);
-            end
-        else
-            emptyTrack.age = 0;
-            emptyTrack.totalVisibleCount = 0;
-            emptyTrack.consecutiveInvisibleCount = 0;
-            
-            for in =1:nObjects
-                emptyTrack.id = in;
-                emptyTrack.name = '';
-                emptyTrack.kalmanParams = [];
-                kalmanFilter.pattern = squeeze(patterns(in,:,:));
-                emptyTrack.kalmanFilter = kalmanFilter;
-                tracks(in) =  emptyTrack;
-            end
-            unassignedDetections = squeeze(D(1,:,:));
-            unassignedDetections = reshape(unassignedDetections(~isnan(unassignedDetections)),[],dim);
-            [tracks, ghostTracks, unassignedPatterns] = createNewTracks(unassignedDetections, unassignedPatterns, tracks, patterns, params, patternNames, similarPairs);
+    function [tracks] = initializeTracks()
+        for i = 1:size(initialStates, 1)
+            [s, kalmanParams] = setupKalman(squeeze(patterns(i,:,:)), -1, params);
+            mu.X = [ quat2rotm(initialStates.quat(i,:)) initialStates.pos(i,:)'; [0 0 0 1] ];
+            mu.v = initialStates.velocity(i,:)';
+            mu.a = initialStates.acceleration(i,:)';
+            s.mu = mu;
+            s.P = diag(repelem([params.initialNoise.initQuatVar;
+                params.initialNoise.initPositionVar;
+                params.initialNoise.initMotionVar;
+                params.initialNoise.initAccVar
+                ],[dim, dim, dim, dim]));
+            s.pattern = squeeze(patterns(i,:,:));
+            s.flying = -1;
+            s.consecutiveInvisibleCount = 0;
+            tracks(initialStates.id) = struct(...
+                'id', initialStates.id, ...
+                'name', patternNames{initialStates.id}, ...
+                'kalmanFilter', s, ...
+                'kalmanParams', kalmanParams, ...
+                'age', 1, ...
+                'totalVisibleCount', 1, ...
+                'consecutiveInvisibleCount', 0);
         end
     end
 
@@ -908,3 +824,4 @@ end
     end
 
 end
+

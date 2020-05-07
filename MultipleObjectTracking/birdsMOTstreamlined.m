@@ -93,16 +93,27 @@ fprintf('Starting to track!\n')
 %profile on
 beginningFrame = 1;%4000;%7800+ blau macht sehr komische sachen;5300 %+ 1000 jittery;%%2000+4000;
 endFrame = size(formattedData,1);
-stdHyperParams.visualizeTracking = 1;
+stdHyperParams.visualizeTracking = 0;
+tic
 [estimatedPositions, estimatedQuats, positionVariance, rotationVariance] = ownMOT(formattedData(beginningFrame:endFrame,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
 %[estimatedPositions, estimatedQuats] = ownMOT(formattedData(1000:end,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
+toc
+%%
+
+reverseIdx = sort(beginningFrame:endFrame, 'descend');
+formattedDataRev = formattedData(reverseIdx, :, :);
+tic
+[estimatedPositionsRev, estimatedQuatsRev] = ownMOTbackward(formattedDataRev, patterns, patternNames, initialStates, 10, 0, estimated, forwardRot, quatMotionType, hyperParams)
+
+[estimatedPositionsRev, estimatedQuatsRev, positionVarianceRev, rotationVarianceRev] = ownMOT(formattedDataRev, patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
+toc
 
 
 %%
 colors = distinguishable_colors(10);
 figure; hold on;
 for i=1:10
-    plot(smoothdata(positionVariance(i,:), 'movmedian', 30), 'color', colors(i,:))
+    plot(min(smoothdata(positionVariance(i,:), 'movmedian', 30), 1000), 'color', colors(i,:))
 end
 
 hold off;
@@ -121,8 +132,11 @@ exportToCSV(resultsFilename, estimatedPositions, estimatedQuats, beginningFrame,
 vizParams.vizSpeed = 10;
 vizParams.keepOldTrajectory = 0;
 vizParams.vizHistoryLength = 500;
-vizParams.startFrame = 7000;
+vizParams.startFrame = 1;
 vizParams.endFrame = -1;
-vizRes(formattedData(beginningFrame:endFrame,:,:), patterns, estimatedPositions, estimatedQuats, vizParams, 0)
+
+reverseIdx = sort(1:size(estimatedPositionsRev, 2), 'descend');
+vizRes(formattedData(beginningFrame:endFrame,:,:), patterns, estimatedPositions, estimatedQuats, vizParams, 1, ...
+    estimatedPositionsRev(:, reverseIdx,  :), estimatedQuatsRev(:, reverseIdx, :))
 
 
