@@ -115,7 +115,7 @@ for t = 1:T
         [tracks, ghostTracks, unassignedPatterns] = createNewTracks(unusedDets, unassignedPatterns, tracks, patterns, params, patternNames, similarPairs, ghostTracks);
     end
     t
-    if t == 1450
+    if t == 2450
        t %rot
     end
     %if t==5000
@@ -395,11 +395,11 @@ end
                 s.z = reshape(detectedMarkersForCurrentTrack', [], 1);
                 [tracks(currentTrackIdx).kalmanFilter, rejectedDetections] = correctKalman(s, 1, tracks(currentTrackIdx).kalmanParams, 0, hyperParams, tracks(currentTrackIdx).age, params.motionType);
                 allRejectedDetections(end + 1: end + size(rejectedDetections, 1), :) = rejectedDetections;
-                if norm( s.mu.v ) > 35
+                if s.mu.motionModel > 0 && norm( s.mu.v ) > 35
                     tracks(currentTrackIdx).kalmanFilter.flying = min(s.flying + 2, 10);
-                elseif norm( s.mu.v ) > 22.5
+                elseif s.mu.motionModel > 0 && norm( s.mu.v ) > 22.5
                     tracks(currentTrackIdx).kalmanFilter.flying = min(s.flying + 1, 10);
-                elseif norm( s.mu.v ) < 10
+                elseif s.mu.motionModel > 0 && norm( s.mu.v ) < 10
                     tracks(currentTrackIdx).kalmanFilter.flying = max(-1, s.flying -2);
                 end
             else
@@ -485,14 +485,14 @@ end
                 costDiff = minCost2(2)-minCost2(1);
                 patternIdx = unassignedandSafeIdx(minIdx2(1));
                 if ~isempty(minCost2(1)) && ...
-                    (  ( minCost2(1) < params.initThreshold4 && nAssgnDets == 4 && costDiff > 0.8)  || ...
-                        ( minCost2(1) < params.initThreshold && nAssgnDets == 3 && safePatternsBool(patternIdx)==1 && costDiff > 10.2) ||... 
-                        ( minCost2(1) < 0.25 && nAssgnDets == 3 && costDiff > 10.2) ...
+                    (  ( minCost2(1) < params.initThreshold4 && nAssgnDets == 4 && costDiff > 1)  || ...
+                        ( minCost2(1) < params.initThreshold && nAssgnDets == 3 && safePatternsBool(patternIdx)==1 && costDiff > 2) ||... 
+                        ( minCost2(1) < 0.2 && nAssgnDets == 3 && costDiff > 2) ...
                     )
-                    %if nAssgnDets == 3
-                    %    nAssgnDets
-                    %end
-                    if patternIdx == 1
+                    if nAssgnDets == 3
+                        minCost2(1)
+                    end
+                    if patternIdx == 1 || patternIdx == 2 || patternIdx == 4
                        patternIdx 
                     end
                     pattern = squeeze(patterns(patternIdx, :, :));

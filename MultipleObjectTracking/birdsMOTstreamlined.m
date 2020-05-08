@@ -80,9 +80,9 @@ stdHyperParams.measurementNoise = 70;%50
 stdHyperParams.certaintyScale = 1;%6.5
 
 stdHyperParams.minDistToBird = 95; %minimal distance for new ghost birds to other (ghost) birds that has to be free.
-stdHyperParams.initThreshold = 0.7;%0.85;
-stdHyperParams.initThreshold4 = 0.8;
-stdHyperParams.patternSimilarityThreshold = 2.8;%1;
+stdHyperParams.initThreshold = 1.1;%0.85;
+stdHyperParams.initThreshold4 = 2.5;
+stdHyperParams.patternSimilarityThreshold = 1.2;%1;
 
 stdHyperParams.modelType = 'LieGroup';
 
@@ -91,7 +91,7 @@ quatMotionType = 'brownian';
 fprintf('Starting to track!\n')
 
 %profile on
-beginningFrame = 5000;%4000;%7800+ blau macht sehr komische sachen;5300 %+ 1000 jittery;%%2000+4000;
+beginningFrame = 4000;%4000;%7800+ blau macht sehr komische sachen;5300 %+ 1000 jittery;%%2000+4000;
 endFrame = size(formattedData,1);
 stdHyperParams.visualizeTracking = 1;
 tic

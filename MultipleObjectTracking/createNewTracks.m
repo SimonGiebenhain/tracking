@@ -101,8 +101,8 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
                     
                     % Create a Kalman filter object.
                     patternIdx = unassignedPatternsIdx(specificPatternIdx);
-                    if patternIdx == 1
-                        patternIdx 
+                    if patternIdx == 1 || patternIdx == 2 || patternIdx == 4
+                        minPatIdx
                     end
                     pattern = squeeze( patterns(patternIdx,:,:));
                     newTrack = createLGEKFtrack(rotm, pos', l2Error, patternIdx, pattern, patternNames{patternIdx}, params);
@@ -213,8 +213,8 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
                     end
                     minPatIdx = safeAndUnassignedPatterns(minIdx2(1));
 
-                    if minMSE2(1) < initThreshold3 && costDiff > 0.8
-                        if minPatIdx == 1
+                    if minMSE2(1) < initThreshold3 && costDiff > 1
+                        if minPatIdx == 1 || minPatIdx == 2 || minPatIdx == 4
                            minPatIdx 
                         end
                         newTrack = createLGEKFtrack(squeeze(rotMats(minIdx2(1), :, :)), ...

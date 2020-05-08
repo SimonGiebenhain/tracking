@@ -20,8 +20,16 @@ if strcmp(s.type, 'LG-EKF')
     expectedPositions = measFuncNonHomogenous(s.mu, s.pattern);
     dists = min(pdist2(detections, expectedPositions), [], 2);
     ds = detections - s.mu.X(1:3, 4)';
-    vNorm = sqrt(sum((s.mu.v).^2));
-    aNorm = sqrt(sum((s.mu.a).^2));
+    if s.mu.motionModel == 0
+        vNorm = 0;
+    elseif s.mu.motionModel == 1
+        vNorm = sqrt(sum((s.mu.v).^2));
+    elseif s.mu.motionModel == 2
+        vNorm = sqrt(sum((s.mu.v).^2));
+        aNorm = sqrt(sum((s.mu.a).^2));
+    else
+        'correctKalman: no motion type'
+    end
     
 else
     detections = reshape(s.z, [], dim);
@@ -66,7 +74,7 @@ if size(ds, 1) >= 1
             end
             [p, lostDs, FPs, certainty, method] = match_patterns(pattern, ds, 'final4', Rot(s.x(quatIdx)), hyperParams);
             s.z = reshape(detections, [], 1);
-
+            
         end
     end
     %[p, ~,  FPs, certainty, method] = match_patterns(pattern, detections - s.x(1:dim)', 'correct', s, hyperParams);
@@ -85,7 +93,7 @@ if size(ds, 1) >= 1
         if hyperParams.useAssignmentLength == 1
             certainty = hyperParams.certaintyFactor * certainty / (size(assignment, 2) + 1);
         end
-
+        
         if vNorm >= 25
             certainty = certainty / 2;
         elseif vNorm < 10
@@ -118,9 +126,9 @@ if size(ds, 1) >= 1
     else
         fprintf('unknown method encountered')
     end
-
+    
     % assignment holds the marker index assigned to the detections
-
+    
     % construct H and R from assignment vector, i.e. delete the
     % corresponding rows in H and R.
     if strcmp(s.type, 'LG-EKF')
@@ -144,7 +152,7 @@ if size(ds, 1) >= 1
         %if s.flying >=4
         %    s.R = s.R*1.5;
         if s.consecutiveInvisibleCount > 2
-           s.R = s.R/1.5;
+            s.R = s.R/1.5;
         end
     else
         s.R = R(detectionsIdx, detectionsIdx);
@@ -152,34 +160,45 @@ if size(ds, 1) >= 1
     %else
     %    detectionsIdx = ~missedDetections;
     %end
-
+    
     % Correction based on observation
     if strcmp(s.type, 'LG-EKF')
         z = [detections ones(size(detections,1),1)];
         z = reshape(z', [],1);
-
+        
         h = @(S) [measFunc(S,[pattern(1,:)';1]);
             measFunc(S,[pattern(2,:)';1]);
             measFunc(S,[pattern(3,:)';1]);
             measFunc(S,[pattern(4,:)';1])];
-
+        
         zPred = h(s.mu);
-
+        
         jac = @(m, mu) [
-            HLinSE3AC(m(1,1), m(1,2), m(1,3), mu(1,1), mu(1,2), mu(1,3), mu(2,1), mu(2,2), mu(2,3), mu(3,1), mu(3,2), mu(3,3));
-            HLinSE3AC(m(2,1), m(2,2), m(2,3), mu(1,1), mu(1,2), mu(1,3), mu(2,1), mu(2,2), mu(2,3), mu(3,1), mu(3,2), mu(3,3));
-            HLinSE3AC(m(3,1), m(3,2), m(3,3), mu(1,1), mu(1,2), mu(1,3), mu(2,1), mu(2,2), mu(2,3), mu(3,1), mu(3,2), mu(3,3));
-            HLinSE3AC(m(4,1), m(4,2), m(4,3), mu(1,1), mu(1,2), mu(1,3), mu(2,1), mu(2,2), mu(2,3), mu(3,1), mu(3,2), mu(3,3))
+            HLinSE3AC(m(1,1), m(1,2), m(1,3), mu(1,1), mu(1,2), mu(1,3), mu(2,1), mu(2,2), mu(2,3), mu(3,1), mu(3,2), mu(3,3), s.mu.motionModel);
+            HLinSE3AC(m(2,1), m(2,2), m(2,3), mu(1,1), mu(1,2), mu(1,3), mu(2,1), mu(2,2), mu(2,3), mu(3,1), mu(3,2), mu(3,3), s.mu.motionModel);
+            HLinSE3AC(m(3,1), m(3,2), m(3,3), mu(1,1), mu(1,2), mu(1,3), mu(2,1), mu(2,2), mu(2,3), mu(3,1), mu(3,2), mu(3,3), s.mu.motionModel);
+            HLinSE3AC(m(4,1), m(4,2), m(4,3), mu(1,1), mu(1,2), mu(1,3), mu(2,1), mu(2,2), mu(2,3), mu(3,1), mu(3,2), mu(3,3), s.mu.motionModel)
             ];
-
+        
         H = @(S) jac(s.pattern, S.X);
         H = H(s.mu);
         H = H(detectionsIdx, :);
-
+        
         K = s.P*H'/(H*s.P*H'+s.R);
         m = K*(z(~lostIdx)-zPred(detectionsIdx));
         s.mu = comp(s.mu, expSE3ACvec(m));
-        s.P = (eye(12)- K*H)*s.P;
+        if s.mu.motionModel == 0
+            s.P = (eye(6)- K*H)*s.P;
+            
+        elseif s.mu.motionModel == 1
+            s.P = (eye(9)- K*H)*s.P;
+            
+        elseif s.mu.motionModel == 2
+            s.P = (eye(12)- K*H)*s.P;
+            
+        else
+            'correctkalman: unexpecte motion model'
+        end
     else
         %Correction based on observation
         Jac = s.J;
@@ -189,15 +208,15 @@ if size(ds, 1) >= 1
         else
             J = @(x) subindex(Jac(x(7), x(8), x(9), x(10)), detectionsIdx);
         end
-
+        
         %Evaluate Jacobian at current position
         J = J(s.x);
         % Compute Kalman gain factor:
         K = s.P*J'/(J*s.P*J'+s.R);
-
+        
         z = s.H(s.x);
         s.x = s.x + K*(s.z(~lostIdx)-z(detectionsIdx));
-
+        
         % TODO immer machen? oder nur wenn detection?
         % Correct covariance matrix estimate
         s.P = s.P - K*J*s.P;

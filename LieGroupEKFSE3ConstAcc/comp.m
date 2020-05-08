@@ -5,7 +5,12 @@ function S = comp(S1, S2)
 %v = v1+v2;
 %a = a1+a2;
 S.X = S1.X*S2.X;
-S.v=S1.v+S2.v;
-S.a=S1.a+S2.a;
+S.motionModel = S1.motionModel;
+if S.motionModel > 0
+    S.v=S1.v+S2.v;
+end
+if S.motionModel == 2
+    S.a=S1.a+S2.a;
+end
 end
 

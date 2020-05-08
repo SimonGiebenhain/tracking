@@ -190,14 +190,26 @@ switch model
         s(1).P = nan;
         
     case 'LieGroup'      
+        
+        mM = 0;
         % working in homogenous coordinates, hence dim + 1 is used
         obsDim = nMarkers*(dim+1);
                    
         % The process covariance matrix
-        s.Q = diag([repmat(processNoise.quat, dim, 1);
+        if mM == 0
+            s.Q = diag([repmat(processNoise.quat, dim, 1);
+                    repmat(processNoise.position, dim, 1)]);
+        elseif mM == 1
+            s.Q = diag([repmat(processNoise.quat, dim, 1);
+                    repmat(processNoise.position, dim, 1);
+                    repmat(processNoise.motion, dim, 1)]);
+        elseif mM == 2
+            s.Q = diag([repmat(processNoise.quat, dim, 1);
                     repmat(processNoise.position, dim, 1);
                     repmat(processNoise.motion, dim, 1);
                     repmat(processNoise.acceleration, dim, 1)]);
+        end
+        
         
 
         % The measurment covariance matrix

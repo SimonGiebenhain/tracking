@@ -8,12 +8,14 @@ v = [v1; v2; v3];
 a = [a1; a2; a3];
 m = [m1; m2; m3; 1];
 e = [e1; e2; e3; e4; e5; e6; e7; e8; e9; e10; e11; e12];
+
 %%
 S.X = mu;
 S.v = v;
 S.a = a;
+S.motionModel = 2;
 
-J = jacobian(measFunc(comp(S, expSE3CAvec(e)),m), [e1 e2 e3 e4 e5 e6 e7 e8 e9 e10 e11 e12]);
+J = jacobian(measFunc(comp(S, expSE3ACvec(e)),m), [e1 e2 e3 e4 e5 e6 e7 e8 e9 e10 e11 e12]);
 
 %%
 syms t real;
