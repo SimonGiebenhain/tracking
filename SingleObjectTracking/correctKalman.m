@@ -106,7 +106,7 @@ if size(ds, 1) >= 1
         lostDet(lostDs) = 1;
         if hyperParams.useAssignmentLength == 1
             if size(assignment, 2) >= 2
-                divisor = size(assignment, 2)^2+1;
+                divisor = size(assignment, 2)^3+1;
             else
                 divisor = 3;
             end

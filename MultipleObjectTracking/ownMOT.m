@@ -114,10 +114,10 @@ for t = 1:T
     if sum(unassignedPatterns) > 0 &&  length(unusedDets) > 1
         [tracks, ghostTracks, unassignedPatterns] = createNewTracks(unusedDets, unassignedPatterns, tracks, patterns, params, patternNames, similarPairs, ghostTracks);
     end
-    %t
-    %if t == 3200 || t==2280 || t==1400
-    %   t %rot
-    %end
+    t
+    if t == 1450
+       t %rot
+    end
     %if t==5000
     %   t % total chaos
     %end % 8700grün
@@ -458,7 +458,7 @@ end
             % if 2 detections assigned: only run pattern_matching if all
             % simialr patterns are already assigned, in order to avoid
             % id-switches
-            if nAssgnDets >= 3
+            if nAssgnDets >= 3 && ~(sum(potentialReInit) == 1 + sum(abs(patterns)>=1000, 'all'))
                 %if nAssgnDets == 3
                 %    unassignedandSafeIdx = find(unassignedPatterns & safePatternsBool);
                 %else
@@ -481,19 +481,23 @@ end
                    translations(j, :) = translation;
                 end
 
-                [minCost, minIdx] = min(matchingCosts);
-                patternIdx = unassignedandSafeIdx(minIdx);
-                if ~isempty(minCost) && ...
-                    (  ( minCost < params.initThreshold4 && nAssgnDets == 4 )  || ...
-                        ( minCost < params.initThreshold && nAssgnDets == 3 && safePatternsBool(patternIdx)==1)  ||...
-                        ( minCost < params.initThreshold/2 && nAssgnDets == 3) ...
+                [minCost2, minIdx2] = mink(matchingCosts, 2);
+                costDiff = minCost2(2)-minCost2(1);
+                patternIdx = unassignedandSafeIdx(minIdx2(1));
+                if ~isempty(minCost2(1)) && ...
+                    (  ( minCost2(1) < params.initThreshold4 && nAssgnDets == 4 && costDiff > 0.8)  || ...
+                        ( minCost2(1) < params.initThreshold && nAssgnDets == 3 && safePatternsBool(patternIdx)==1 && costDiff > 10.2) ||... 
+                        ( minCost2(1) < 0.25 && nAssgnDets == 3 && costDiff > 10.2) ...
                     )
                     %if nAssgnDets == 3
                     %    nAssgnDets
                     %end
+                    if patternIdx == 1
+                       patternIdx 
+                    end
                     pattern = squeeze(patterns(patternIdx, :, :));
-                    newTrack = createLGEKFtrack(squeeze(rotations(minIdx, :, :)), ...
-                                squeeze(translations(minIdx, :))', MSE, patternIdx, pattern, patternNames{patternIdx}, params);
+                    newTrack = createLGEKFtrack(squeeze(rotations(minIdx2(1), :, :)), ...
+                                squeeze(translations(minIdx2(1), :))', MSE, patternIdx, pattern, patternNames{patternIdx}, params);
                     tracks(patternIdx) = newTrack;
                     unassignedPatterns(patternIdx) = 0;
                     potentialReInit(patternIdx) = 0;
@@ -504,6 +508,24 @@ end
                     continue;
 
                 end
+                %TODO fix to regular case!!!!!!!!!!
+            elseif sum(potentialReInit) == 1 + sum(abs(patterns)>=1000, 'all')%if all but 1 bird are intialized we can initialize even with 2 or less dets
+                for j=1:size(potentialReInit)
+                    if potentialReInit(j) == 1 && ~any(abs(patterns(j, :, :)) >= 1000, 'all')
+                        pattern = squeeze(patterns(j, :, :));
+                        newTrack = createLGEKFtrack(eye(3), ...
+                            mean(detectedMarkersForCurrentGhostTrack, 1)', 5, j, pattern, patternNames{j}, params);
+                        tracks(j) = newTrack;
+                        unassignedPatterns(j) = 0;
+                        potentialReInit(j) = 0;
+                        % mark ghosst bird as deleted and delete after loop
+                        deletedGhostTracks(currentGhostTrackIdx) = 1;
+                        % continue loop, as we don't have to update position of
+                        % ghost bird
+                        break;
+                    end
+                end
+                continue;
             end
              
             
@@ -534,7 +556,7 @@ end
                 if any(isnan(kF.x))
                     kF.x
                 end
-                kF.P = (eye(3) - K*kF.H)*kF.P;
+                kF.P = (eye(9) - K*kF.H)*kF.P;
 
                 ghostTracks(currentGhostTrackIdx).kalmanFilter = kF;
 

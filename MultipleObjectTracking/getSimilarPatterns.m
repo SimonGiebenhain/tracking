@@ -51,7 +51,7 @@ for i=1:length(patterns)
         diff_mat_3_1(i,j) = MSE;
     end
 end
-diff_mat_3_1 = diff_mat_3_1 + triu(ones(length(patterns)))*10;
+diff_mat_3_1 = diff_mat_3_1 + 100*eye(length(patterns));%triu(ones(length(patterns)))*10;
 
 
 diff_mat_3_2 = zeros(length(patterns));
@@ -71,7 +71,7 @@ for i=1:length(patterns)
         diff_mat_3_2(i,j) = MSE;
     end
 end
-diff_mat_3_2 = diff_mat_3_2 + triu(ones(length(patterns)))*10;
+diff_mat_3_2 = diff_mat_3_2 + 100*eye(length(patterns));%triu(ones(length(patterns)))*10;
 
 
 diff_mat_3_3 = zeros(length(patterns));
@@ -91,7 +91,7 @@ for i=1:length(patterns)
         diff_mat_3_3(i,j) = MSE;
     end
 end
-diff_mat_3_3 = diff_mat_3_3 + triu(ones(length(patterns)))*10;
+diff_mat_3_3 = diff_mat_3_3 + 100*eye(length(patterns));%triu(ones(length(patterns)))*10;
 
 
 diff_mat_3_4 = zeros(length(patterns));
@@ -111,7 +111,7 @@ for i=1:length(patterns)
         diff_mat_3_4(i,j) = MSE;
     end
 end
-diff_mat_3_4 = diff_mat_3_4 + triu(ones(length(patterns)))*10;
+diff_mat_3_4 = diff_mat_3_4 + 100*eye(length(patterns));%triu(ones(length(patterns)))*10;
 
 
 

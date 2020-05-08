@@ -15,7 +15,8 @@ end
 
 % Ghost birds should be initialized in the proximity of other birds
 minDistToBird = params.minDistToBird;%90;
-initThreshold = params.initThreshold;%1.25;
+initThreshold3 = params.initThreshold;%1.25;
+initThreshold4 = params.initThreshold4;
 
 
 
@@ -60,12 +61,13 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
     end
     
     if nClusters4 + nClusters3 >= 1
-        costMatrix = zeros(sum(unassignedPatterns), length(potentialBirds4));
-        rotMatsMatrix = zeros(sum(unassignedPatterns), length(potentialBirds4), 3,3);
-        translationsMatrix = zeros(sum(unassignedPatterns), length(potentialBirds4), 3);
-        unassignedPatternsIdx = find(unassignedPatterns);
-        for i = 1:sum(unassignedPatterns)
-            for j = 1:length(potentialBirds4)
+       deletedClusters4 = zeros(length(potentialBirds4));
+        for j=1:length(potentialBirds4)
+            costs = zeros(sum(unassignedPatterns), 1);
+            rots = zeros(sum(unassignedPatterns), 3, 3);
+            poss = zeros(sum(unassignedPatterns), 3);
+            unassignedPatternsIdx = find(unassignedPatterns);
+            for i=1:sum(unassignedPatterns)
                 pattern = squeeze(patterns(unassignedPatternsIdx(i),:,:));
                 p = match_patterns(pattern, potentialBirds4{j}, 'noKnowledge', params.motionType);
                 assignment = zeros(4,1);
@@ -75,81 +77,90 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
                 pattern = pattern(assignment > 0, :);
                 dets = potentialBirds4{j};
                 [R, translation, MSE] = umeyama(pattern', dets');
-                costMatrix(i,j) = MSE;
-                rotMatsMatrix(i,j,:,:) = R;
-                translationsMatrix(i,j,:) = translation;
-            end
-        end
-        
-        [patternToClusterAssignment, stillUnassignedPatterns, unassignedClusters] = assignDetectionsToTracks(costMatrix, costOfNonAssignment);
-        
-        %for each (i,j) in patternToClusterAssignment createNewTrack
-        for i=1:size(patternToClusterAssignment,1)
-            specificPatternIdx = patternToClusterAssignment(i,1);
-            clusterIdx = patternToClusterAssignment(i,2);
-            pos = squeeze( translationsMatrix(specificPatternIdx, clusterIdx,:) );
-            if strcmp(params.model, 'LieGroup')
-                rotm = squeeze(rotMatsMatrix(specificPatternIdx, clusterIdx, :,:));
-                l2Error = costMatrix(specificPatternIdx, clusterIdx);
-                
-                % Create a Kalman filter object.
-                patternIdx = unassignedPatternsIdx(specificPatternIdx);
-                pattern = squeeze( patterns(patternIdx,:,:));
-                newTrack = createLGEKFtrack(rotm, pos, l2Error, patternIdx, pattern, patternNames{patternIdx}, params);
-                
-                % Add it to the array of tracks.
-                tracks(patternIdx) = newTrack;
-                
-                unassignedPatterns(patternIdx) = 0;
-                unassignedPatternsReturn(patternIdx) = 0;
-                
-            else
-                quat = rotm2quat( squeeze(rotMatsMatrix(specificPatternIdx, clusterIdx, :,:)) );
-                
-                % Create a Kalman filter object.
-                patternIdx = unassignedPatternsIdx(specificPatternIdx);
-                pattern = squeeze( patterns(patternIdx,:,:));
-                [s, kalmanParams] = setupKalman(pattern, -1, params);
-                if strcmp(params.quatMotionType, 'brownian')
-                    if strcmp(params.motionType, 'constAcc')
-                        s.x = [pos; zeros(3,1); zeros(3,1); quat'];
-                        s.P = eye(3*dim+4) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initAccVar; kalmanParams.initQuatVar], [dim, dim, dim, 4]);
-                    else
-                        s.x = [pos; zeros(3,1); quat'];
-                        s.P = eye(2*dim+4) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initQuatVar], [dim, dim, 4]);
-                    end
-                else
-                    if strcmp(params.motionType, 'constAcc')
-                        fprintf('not implemented yet')
-                    else
-                        s.x = [pos'; zeros(3,1); quat'; zeros(4,1)];
-                        s.P = eye(2*dim+8) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initQuatVar; kalmanParams.initQuatMotionVar], [dim, dim, 4, 4]);
-                    end
-                end
-                s.pattern = pattern;
-                newTrack = struct(...
-                    'id', patternIdx, ...
-                    'name', patternNames{patternIdx}, ...
-                    'kalmanFilter', s, ...
-                    'kalmanParams', kalmanParams, ...
-                    'age', 1, ...
-                    'totalVisibleCount', 1, ...
-                    'consecutiveInvisibleCount', 0);
-                
-                % Add it to the array of tracks.
-                tracks(patternIdx) = newTrack;
-                
-                % Increment the next id.
-                %nextId = nextId + 1;
-                unassignedPatterns(patternIdx) = 0;
-                unassignedPatternsReturn(patternIdx) = 0;
+                costs(i) = MSE;
+                rots(i, :, :) = R;
+                poss(i, :, :) = translation;
             end
             
+            % select min and initialize
+            [minCosts2, minIdx2] = mink(costs, 2);
+            if length(minCosts2) == 1
+                costDiff = Inf;
+            elseif length(minCosts2) == 2
+                costDiff = minCosts2(2) - minCosts2(1);
+            else
+                'ERROR';
+            end
+            if minCosts2(1) < initThreshold4 && costDiff > 0.3
+                specificPatternIdx = minIdx2(1);
+                pos = squeeze( poss(specificPatternIdx,:) );
+                deletedClusters4(j) = 1;
+                if strcmp(params.model, 'LieGroup')
+                    rotm = squeeze(rots(specificPatternIdx,:,:));
+                    l2Error = minCosts2(1);
+                    
+                    % Create a Kalman filter object.
+                    patternIdx = unassignedPatternsIdx(specificPatternIdx);
+                    if patternIdx == 1
+                        patternIdx 
+                    end
+                    pattern = squeeze( patterns(patternIdx,:,:));
+                    newTrack = createLGEKFtrack(rotm, pos', l2Error, patternIdx, pattern, patternNames{patternIdx}, params);
+                    
+                    % Add it to the array of tracks.
+                    tracks(patternIdx) = newTrack;
+                    
+                    unassignedPatterns(patternIdx) = 0;
+                    unassignedPatternsReturn(patternIdx) = 0;
+                    
+                else
+                    quat = rotm2quat( squeeze(rots(specificPatternIdx, :,:)) );
+                    
+                    % Create a Kalman filter object.
+                    patternIdx = unassignedPatternsIdx(specificPatternIdx);
+                    pattern = squeeze( patterns(patternIdx,:,:));
+                    [s, kalmanParams] = setupKalman(pattern, -1, params);
+                    if strcmp(params.quatMotionType, 'brownian')
+                        if strcmp(params.motionType, 'constAcc')
+                            s.x = [pos; zeros(3,1); zeros(3,1); quat'];
+                            s.P = eye(3*dim+4) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initAccVar; kalmanParams.initQuatVar], [dim, dim, dim, 4]);
+                        else
+                            s.x = [pos; zeros(3,1); quat'];
+                            s.P = eye(2*dim+4) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initQuatVar], [dim, dim, 4]);
+                        end
+                    else
+                        if strcmp(params.motionType, 'constAcc')
+                            fprintf('not implemented yet')
+                        else
+                            s.x = [pos'; zeros(3,1); quat'; zeros(4,1)];
+                            s.P = eye(2*dim+8) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initQuatVar; kalmanParams.initQuatMotionVar], [dim, dim, 4, 4]);
+                        end
+                    end
+                    s.pattern = pattern;
+                    newTrack = struct(...
+                        'id', patternIdx, ...
+                        'name', patternNames{patternIdx}, ...
+                        'kalmanFilter', s, ...
+                        'kalmanParams', kalmanParams, ...
+                        'age', 1, ...
+                        'totalVisibleCount', 1, ...
+                        'consecutiveInvisibleCount', 0);
+                    
+                    % Add it to the array of tracks.
+                    tracks(patternIdx) = newTrack;
+                    
+                    % Increment the next id.
+                    %nextId = nextId + 1;
+                    unassignedPatterns(patternIdx) = 0;
+                    unassignedPatternsReturn(patternIdx) = 0;
+                end
+            end
         end
         
-        %TODO pack all stuff regarding patterns in one struct
-        % this way safePatterns does not have to be re-calculated as
-        % frequently
+        nClusters4 = nClusters4 - nnz(deletedClusters4);
+        potentialBirds4(deletedClusters4 == 1) = [];
+        
+        %[patternToClusterAssignment, stillUnassignedPatterns, unassignedClusters] = assignDetectionsToTracks(costMatrix, costOfNonAssignment);
 
         if nClusters3 > 0
             assignedPatternsIdx = find(~unassignedPatterns);
@@ -161,53 +172,65 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
                 conflicts = similarPairs(similarPairs(:, 1) == patIdx, 2);
                 conflicts = [conflicts; similarPairs(similarPairs(:, 2) == patIdx, 1)];
                 conflicts = setdiff(conflicts, assignedPatternsIdx);
-                if isempty(conflicts) == 0
+                if isempty(conflicts)
                     safePatternsBool(patIdx) = 1;
                 end
             end
             
             safeAndUnassignedPatterns = find(unassignedPatterns & safePatternsBool);
             nSafeAndUnassigned = length(safeAndUnassignedPatterns);
+            if nSafeAndUnassigned > 0
             
-            deletedClusters3 = zeros(nClusters3,1);
-            for c=1:nClusters3
-                costs = 1000*ones(nSafeAndUnassigned, 1);
-                rotMats = zeros(nSafeAndUnassigned, 3, 3);
-                transVecs = zeros(nSafeAndUnassigned, 3);
-                
-                dets = potentialBirds3{c};
-                for jj=1:nSafeAndUnassigned
-                    p = safeAndUnassignedPatterns(jj);
-                    pattern = squeeze(patterns(p,:,:));
-                    permut = match_patterns(pattern, dets, 'noKnowledge', params.motionType);
-                    assignment = zeros(4,1);
-                    assignment(permut) = 1:length(permut);
-                    assignment = assignment(1:size(dets,1));
-                    pattern = pattern(assignment,:);
-                    pattern = pattern(assignment > 0, :);
-                    [R, translation, MSE] = umeyama(pattern', dets');
-                    costs(jj) = MSE;
-                    rotMats(jj,:,:) = R;
-                    transVecs(jj,:) = translation;
+                deletedClusters3 = zeros(nClusters3,1);
+                for c=1:nClusters3
+                    costs = 1000*ones(nSafeAndUnassigned, 1);
+                    rotMats = zeros(nSafeAndUnassigned, 3, 3);
+                    transVecs = zeros(nSafeAndUnassigned, 3);
+
+                    dets = potentialBirds3{c};
+                    for jj=1:nSafeAndUnassigned
+                        p = safeAndUnassignedPatterns(jj);
+                        pattern = squeeze(patterns(p,:,:));
+                        permut = match_patterns(pattern, dets, 'noKnowledge', params.motionType);
+                        assignment = zeros(4,1);
+                        assignment(permut) = 1:length(permut);
+                        assignment = assignment(1:size(dets,1));
+                        pattern = pattern(assignment,:);
+                        pattern = pattern(assignment > 0, :);
+                        [R, translation, MSE] = umeyama(pattern', dets');
+                        costs(jj) = MSE;
+                        rotMats(jj,:,:) = R;
+                        transVecs(jj,:) = translation;
+                    end
+
+                    [minMSE2, minIdx2] = mink(costs, 2);
+                    if length(minMSE2) == 2
+                        costDiff = minMSE2(2) - minMSE2(1);
+                    elseif length(minMSE2) == 1
+                        costDiff = Inf;
+                    else
+                       'ERROR' 
+                    end
+                    minPatIdx = safeAndUnassignedPatterns(minIdx2(1));
+
+                    if minMSE2(1) < initThreshold3 && costDiff > 0.8
+                        if minPatIdx == 1
+                           minPatIdx 
+                        end
+                        newTrack = createLGEKFtrack(squeeze(rotMats(minIdx2(1), :, :)), ...
+                            squeeze(transVecs(minIdx2(1), :))', ...
+                            minMSE2(1), minPatIdx, ...
+                            squeeze(patterns(minPatIdx, :, :)),...
+                            patternNames{minPatIdx}, params);
+                        tracks(minPatIdx) = newTrack;
+                        unassignedPatterns(minPatIdx) = 0;
+                        unassignedPatternsReturn(minPatIdx) = 0;
+                        deletedClusters3(c) = 1;
+                    end
                 end
-                
-                [minMSE, minIdx] = min(costs);
-                minPatIdx = safeAndUnassignedPatterns(minIdx);
-                
-                if minMSE < initThreshold
-                    newTrack = createLGEKFtrack(squeeze(rotMats(minIdx, :, :)), ...
-                        squeeze(transVecs(minIdx, :))', ...
-                        minMSE, minPatIdx, ...
-                        squeeze(patterns(minPatIdx, :, :)),...
-                        patternNames{minPatIdx}, params);
-                    tracks(minPatIdx) = newTrack;
-                    unassignedPatterns(minPatIdx) = 0;
-                    unassignedPatternsReturn(minPatIdx) = 0;
-                    deletedClusters3(c) = 1;
-                end
+                nClusters3 = nClusters3 - nnz(deletedClusters3);
+                potentialBirds3(deletedClusters3 == 1) = [];
             end
-            nClusters3 = nClusters3 - nnz(deletedClusters3);
-            potentialBirds3(deletedClusters3 == 1) = [];
             
         end
         
@@ -222,8 +245,8 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
         end
         
         % for each unassigned cluster of size 4 create a ghost bird
-        for i=1:size(unassignedClusters)
-            pos = mean(potentialBirds4{unassignedClusters(i)}, 1);
+        for i=1:nClusters4
+            pos = mean(potentialBirds4{i}, 1);
             dists = pdist2(pos, positions);
             if min(dists, [], 2) > minDistToBird
                 kF = constructGhostKF(pos, params);
@@ -293,25 +316,21 @@ function kF = constructGhostKF(pos, params)
 % the measurement function is selects the position from the state
 % and measurements are the mean of all assigne detections
 
-kF.x = pos';
-kF.P = eye(3) .* repelem(params.initialNoise.initPositionVar, 3);
-kF.Q = eye(3) .* repelem(params.processNoise.position, 3);
-kF.R = eye(3) * params.measurementNoise/2;
-kF.H = eye(3);
-kF.F = eye(3);
+% kF.x = pos';
+% kF.P = eye(3) .* repelem(params.initialNoise.initPositionVar, 3);
+% kF.Q = eye(3) .* repelem(params.processNoise.position, 3);
+% kF.R = eye(3) * params.measurementNoise/2;
+% kF.H = eye(3);
+% kF.F = eye(3);
 
 
-% kF.x = [pos 0 0 0 0 0 0]';
-% kF.P = eye(9) .* repelem([params.initialNoise.initPositionVar;
-%     params.initialNoise.initMotionVar;
-%     params.initialNoise.initAccVar], 3);
-% kF.Q = eye(9) .* repelem([params.processNoise.position;
-%     params.processNoise.motion;
-%     params.processNoise.acceleration], 3);
-% kF.R = eye(3) * params.measurementNoise*5;
-% kF.H = [eye(3) zeros(3,6)];
-% kF.F = [eye(3) eye(3) 1/2*eye(3);
-%     zeros(3) eye(3) eye(3);
-%     zeros(3) zeros(3) eye(3)];
+kF.x = [pos 0 0 0 0 0 0]';
+kF.P = eye(9) .* repelem([10; 5; 2], 3);
+kF.Q = eye(9) .* repelem([50; 5; 1], 3);
+kF.R = eye(3) * 120;
+kF.H = [eye(3) zeros(3,6)];
+kF.F = [eye(3) eye(3) 1/2*eye(3);
+        zeros(3) eye(3) eye(3);
+        zeros(3) zeros(3) eye(3)];
 end
 
