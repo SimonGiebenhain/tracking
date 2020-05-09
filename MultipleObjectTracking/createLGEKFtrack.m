@@ -2,7 +2,7 @@ function [newTrack] = createLGEKFtrack(rotm, pos, l2Error, patternIdx, pattern, 
 %CREATELGEKFTRACK Summary of this function goes here
 %   Detailed explanation goes here
 
-mM = 0;
+mM = params.initMotionModel;
 
 [s, kalmanParams] = setupKalman(pattern, -1, params);
 mu.X = [rotm pos; zeros(1,3) 1];
@@ -30,6 +30,7 @@ end
 s.pattern = pattern;
 s.flying = -1;
 s.consecutiveInvisibleCount = 0;
+s.framesInNewMotionModel = 5;
 newTrack = struct(...
     'id', patternIdx, ...
     'name', patternName, ...

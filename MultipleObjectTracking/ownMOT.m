@@ -58,6 +58,8 @@ params.minDistToBird = hyperParams.minDistToBird;
 params.initThreshold = hyperParams.initThreshold;
 params.initThreshold4 = hyperParams.initThreshold4;
 
+params.initMotionModel = 0;
+
 
 similarPairs = getSimilarPatterns(patterns, hyperParams.patternSimilarityThreshold);
 
@@ -115,7 +117,7 @@ for t = 1:T
         [tracks, ghostTracks, unassignedPatterns] = createNewTracks(unusedDets, unassignedPatterns, tracks, patterns, params, patternNames, similarPairs, ghostTracks);
     end
     t
-    if t == 2450
+    if t == 1650
        t %rot
     end
     %if t==5000
@@ -393,7 +395,7 @@ end
             s = tracks(currentTrackIdx).kalmanFilter;
             if strcmp(model, 'LieGroup')
                 s.z = reshape(detectedMarkersForCurrentTrack', [], 1);
-                [tracks(currentTrackIdx).kalmanFilter, rejectedDetections] = correctKalman(s, 1, tracks(currentTrackIdx).kalmanParams, 0, hyperParams, tracks(currentTrackIdx).age, params.motionType);
+                [tracks(currentTrackIdx).kalmanFilter, rejectedDetections] = correctKalman(s, 1, tracks(currentTrackIdx).kalmanParams, 0, hyperParams, tracks(currentTrackIdx).age, params.motionType, currentTrackIdx);
                 allRejectedDetections(end + 1: end + size(rejectedDetections, 1), :) = rejectedDetections;
                 if s.mu.motionModel > 0 && norm( s.mu.v ) > 35
                     tracks(currentTrackIdx).kalmanFilter.flying = min(s.flying + 2, 10);
@@ -414,6 +416,7 @@ end
             % Update visibility.
             tracks(currentTrackIdx).totalVisibleCount = tracks(currentTrackIdx).totalVisibleCount + 1;
             tracks(currentTrackIdx).consecutiveInvisibleCount = tracks(currentTrackIdx).kalmanFilter.consecutiveInvisibleCount;
+            tracks(currentTrackIdx).kalmanFilter.framesInNewMotionModel = tracks(currentTrackIdx).kalmanFilter.framesInNewMotionModel + 1;
         end
         
         
@@ -682,6 +685,7 @@ end
                 tracks(unassignedTrackIdx).age = tracks(unassignedTrackIdx).age + 1;
                 tracks(unassignedTrackIdx).kalmanFilter.consecutiveInvisibleCount = tracks(unassignedTrackIdx).kalmanFilter.consecutiveInvisibleCount + 1;
                 tracks(unassignedTrackIdx).consecutiveInvisibleCount = tracks(unassignedTrackIdx).kalmanFilter.consecutiveInvisibleCount;
+                tracks(unassignedTrackIdx).kalmanFilter.framesInNewMotionModel = tracks(unassignedTrackIdx).kalmanFilter.framesInNewMotionModel + 1;
             end
         end
         
@@ -727,6 +731,7 @@ end
                 %mark track as lost/pattern as unassigned
                 unassignedPatterns(lostIdx(i)) = 1;
                 tracks(lostIdx(i)).age = 0;
+                tracks(lostIdx(i)).kalmanFilter.framesInNewMotionModel = 5;
                 
                 estimatedPositions(lostIdx(i), max(1,t-invisibleForTooLong):t-1, :) = NaN;
                 estimatedQuats(lostIdx(i), max(1, t-invisibleForTooLong):t-1, :) = NaN;

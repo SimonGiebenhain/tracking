@@ -191,7 +191,7 @@ switch model
         
     case 'LieGroup'      
         
-        mM = 0;
+        mM = parameters.initMotionModel;
         % working in homogenous coordinates, hence dim + 1 is used
         obsDim = nMarkers*(dim+1);
                    
