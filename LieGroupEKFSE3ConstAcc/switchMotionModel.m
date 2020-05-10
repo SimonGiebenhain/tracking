@@ -20,8 +20,8 @@ if kF.mu.motionModel == 0 && newMotionModel == 2
                  repmat(params.motNoise, 3, 1);
                  repmat(params.accNoise, 3, 1)]);
     kF.P = [kF.P zeros(6);
-            zeros(3,6) 10*eye(3) zeros(3);
-            zeros(3,6) zeros(3) 3*eye(3)];
+            zeros(3,6) 20*eye(3) zeros(3);
+            zeros(3,6) zeros(3) 5*eye(3)];
     kF.mu.v = [0; 0; 0]; % TODOTODOTODOTODO: v = 0 oder v = v???
     kF.mu.a = [0; 0; 0];
     kF.mu.motionModel = 2;
@@ -35,7 +35,7 @@ if kF.mu.motionModel == 0 && newMotionModel == 2
     
 elseif kF.mu.motionModel == 2 && newMotionModel == 0
     kF.Q = diag([repmat(params.quatNoise, 3, 1);
-                 repmat(params.posNoise, 3, 1)]);
+                 repmat(params.posNoiseBrownian, 3, 1)]);
     kF.P = kF.P(1:6, 1:6);
     kF.mu.v = 0;
     kF.mu.a = 0;

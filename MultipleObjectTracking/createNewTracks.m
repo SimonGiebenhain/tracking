@@ -246,9 +246,9 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
         
         % for each unassigned cluster of size 4 create a ghost bird
         for i=1:nClusters4
-            pos = mean(potentialBirds4{i}, 1);
-            dists = pdist2(pos, positions);
-            if min(dists, [], 2) > minDistToBird
+            dists = pdist2(potentialBirds4{i}, positions);
+            if min(dists, [], 'all') > minDistToBird
+                pos = mean(potentialBirds4{i}, 1);
                 kF = constructGhostKF(pos, params);
                 ghostTrack = struct(...
                     'kalmanFilter', kF, ...
@@ -262,9 +262,9 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
         
         % for each unassigned cluster of size 3 create a ghost bird
         for i=1:nClusters3
-            pos = mean(potentialBirds3{i}, 1);
-            dists = pdist2(pos, positions);
-            if min(dists, [], 2) > minDistToBird
+            dists = pdist2(potentialBirds3{i}, positions);
+            if min(dists, [], 'all') > minDistToBird
+               pos = mean(potentialBirds3{i}, 1);
                kF = constructGhostKF(pos, params);
                 ghostTrack = struct(...
                     'kalmanFilter', kF, ...
@@ -292,9 +292,9 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
         end
     end
     for i=1:size(potentialGhosts)
-        pos = mean(potentialGhosts{i}, 1);
-        dists = pdist2(pos, positions);
-        if min(dists, [], 2) > minDistToBird
+        dists = pdist2(potentialGhosts{i}, positions);
+        if min(dists, [], 'all') > minDistToBird
+            pos = mean(potentialGhosts{i}, 1);
             kF = constructGhostKF(pos, params);
             ghostTrack = struct(...
                 'kalmanFilter', kF, ...

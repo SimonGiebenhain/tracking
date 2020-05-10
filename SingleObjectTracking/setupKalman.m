@@ -198,7 +198,7 @@ switch model
         % The process covariance matrix
         if mM == 0
             s.Q = diag([repmat(processNoise.quat, dim, 1);
-                    repmat(processNoise.position, dim, 1)]);
+                    repmat(processNoise.positionBrownian, dim, 1)]);
         elseif mM == 1
             s.Q = diag([repmat(processNoise.quat, dim, 1);
                     repmat(processNoise.position, dim, 1);

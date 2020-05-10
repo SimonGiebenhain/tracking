@@ -71,15 +71,18 @@ stdHyperParams.minAssignmentThreshold = 30; %35%30;
 stdHyperParams.ghostFPFilterDist = 65;
 stdHyperParams.costOfNonAsDtMA = 10;
 stdHyperParams.eucDistWeight = 1/4;%1/3;
-stdHyperParams.posNoise = 50;%%110;%60;%50
-stdHyperParams.motNoise = 20;%;1;%5;%10
-stdHyperParams.accNoise = 10;%0.1;%1;%3
+
+stdHyperParams.posNoise = 20;%%110;%60;%50
+stdHyperParams.motNoise = 10;%;1;%5;%10
+stdHyperParams.accNoise = 2;%0.1;%1;%3
+stdHyperParams.posNoiseBrownian = 50;
 stdHyperParams.quatNoise = 0.2;
 stdHyperParams.quatMotionNoise = 1;
-stdHyperParams.measurementNoise = 70;%50
-stdHyperParams.certaintyScale = 1;%6.5
 
-stdHyperParams.minDistToBird = 95; %minimal distance for new ghost birds to other (ghost) birds that has to be free.
+stdHyperParams.measurementNoise = 50;%50
+stdHyperParams.certaintyScale = 7;%6.5
+
+stdHyperParams.minDistToBird = 60;%95; %minimal distance for new ghost birds to other (ghost) birds that has to be free.
 stdHyperParams.initThreshold = 1.1;%0.85;
 stdHyperParams.initThreshold4 = 2.5;
 stdHyperParams.patternSimilarityThreshold = 1.2;%1;

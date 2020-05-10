@@ -35,6 +35,7 @@ maxPos = squeeze(max(D,[],[1 2]));
 minPos = squeeze(min(D,[],[1 2]));
 
 processNoise.position = hyperParams.posNoise;
+processNoise.positionBrownian = hyperParams.posNoiseBrownian;
 processNoise.motion = hyperParams.motNoise;
 processNoise.acceleration = hyperParams.accNoise;
 processNoise.quat = hyperParams.quatNoise;
@@ -131,7 +132,9 @@ for t = 1:T
     for ii = 1:nObjects
         if tracks(ii).age > 0
             if strcmp(model, 'LieGroup')
-                estimatedPositions(ii, t, :) = tracks(ii).kalmanFilter.mu.X(1:3, 4);
+                p = tracks(ii).kalmanFilter.mu.X(1:3, 4);
+                
+                estimatedPositions(ii, t, :) = p;
                 estimatedQuats(ii, t, :) = rotm2quat(tracks(ii).kalmanFilter.mu.X(1:3,1:3));
                 P = tracks(ii).kalmanFilter.P;
                 rotationVariance(ii, t) = (P(1,1) + P(2,2) + P(3,3)) / 3;
@@ -413,10 +416,14 @@ end
             % Update track's age.
             tracks(currentTrackIdx).age = tracks(currentTrackIdx).age + 1;
             
-            % Update visibility.
+            % Book keeping: Update visibility, latest positions, an other
+            % 'statistic'
             tracks(currentTrackIdx).totalVisibleCount = tracks(currentTrackIdx).totalVisibleCount + 1;
             tracks(currentTrackIdx).consecutiveInvisibleCount = tracks(currentTrackIdx).kalmanFilter.consecutiveInvisibleCount;
             tracks(currentTrackIdx).kalmanFilter.framesInNewMotionModel = tracks(currentTrackIdx).kalmanFilter.framesInNewMotionModel + 1;
+            tracks(currentTrackIdx).kalmanFilter.latest5pos(tracks(currentTrackIdx).kalmanFilter.latestPosIdx+1, :) = ...
+                tracks(currentTrackIdx).kalmanFilter.mu.X(1:3, 4);
+            tracks(currentTrackIdx).kalmanFilter.latestPosIdx = mod(tracks(currentTrackIdx).kalmanFilter.latestPosIdx + 1, 5);
         end
         
         
@@ -686,6 +693,10 @@ end
                 tracks(unassignedTrackIdx).kalmanFilter.consecutiveInvisibleCount = tracks(unassignedTrackIdx).kalmanFilter.consecutiveInvisibleCount + 1;
                 tracks(unassignedTrackIdx).consecutiveInvisibleCount = tracks(unassignedTrackIdx).kalmanFilter.consecutiveInvisibleCount;
                 tracks(unassignedTrackIdx).kalmanFilter.framesInNewMotionModel = tracks(unassignedTrackIdx).kalmanFilter.framesInNewMotionModel + 1;
+                tracks(unassignedTrackIdx).kalmanFilter.latest5pos(tracks(unassignedTrackIdx).kalmanFilter.latestPosIdx+1, :) = ...
+                    tracks(unassignedTrackIdx).kalmanFilter.mu.X(1:3, 4);
+                tracks(unassignedTrackIdx).kalmanFilter.latestPosIdx = mod(tracks(unassignedTrackIdx).kalmanFilter.latestPosIdx + 1, 5);
+        
             end
         end
         
@@ -732,7 +743,9 @@ end
                 unassignedPatterns(lostIdx(i)) = 1;
                 tracks(lostIdx(i)).age = 0;
                 tracks(lostIdx(i)).kalmanFilter.framesInNewMotionModel = 5;
-                
+                tracks(lostIdx(i)).kalmanFilter.latest5pos = zeros(5,3);
+                tracks(lostIdx(i)).kalmanFilter.latestPosIdx = 0;
+        
                 estimatedPositions(lostIdx(i), max(1,t-invisibleForTooLong):t-1, :) = NaN;
                 estimatedQuats(lostIdx(i), max(1, t-invisibleForTooLong):t-1, :) = NaN;
             end

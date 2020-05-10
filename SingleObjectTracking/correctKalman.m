@@ -23,21 +23,21 @@ if strcmp(s.type, 'LG-EKF')
     ds = detections - s.mu.X(1:3, 4)';
     if s.mu.motionModel == 0
         vNorm = 0;
-        if mean(dists) > 25 && s.mu.motionModel == 0 && s.framesInNewMotionModel > 3
-            trackIdx
-            vEst = norm( mean(detections) - mean(expectedPositions) );
-            s = switchMotionModel(s, vEst, 2, hyperParams);
-            skipFPFiltering = 1;
-        end
+%         if mean(dists) > 25 && s.mu.motionModel == 0 && s.framesInNewMotionModel > 3
+%             trackIdx
+%             vEst = norm( mean(detections) - mean(expectedPositions) );
+%             s = switchMotionModel(s, vEst, 2, hyperParams);
+%             skipFPFiltering = 1;
+%         end
     elseif s.mu.motionModel == 1
         vNorm = sqrt(sum((s.mu.v).^2));
     elseif s.mu.motionModel == 2
         vNorm = sqrt(sum((s.mu.v).^2));
         aNorm = sqrt(sum((s.mu.a).^2));
-        if s.mu.motionModel == 2 && norm(s.mu.v) < 1 && s.framesInNewMotionModel > 3
-            trackIdx
-            s = switchMotionModel(s, -1, 0, hyperParams);
-        end
+%         if s.mu.motionModel == 2 && norm(s.mu.v) < 1 && s.framesInNewMotionModel > 3
+%             trackIdx
+%             s = switchMotionModel(s, -1, 0, hyperParams);
+%         end
     else
         'correctKalman: no motion type'
     end
@@ -52,7 +52,7 @@ else
     aNorm = sqrt(sum(s.x(2*dim+1:3*dim).^2));
     
 end
-if age > 5 && hyperParams.doFPFiltering == 1 && ~skipFPFiltering
+if age > 5 && s.mu.motionModel == 0 && hyperParams.doFPFiltering == 1 && ~skipFPFiltering
     threshold = hyperParams.minAssignmentThreshold + (vNorm/3)^2;% + (aNorm)^2;
     if nnz(dists > threshold) < nDets %|| (s.flying < 1 && s.consecutiveInvisibleCount == 0 && nnz(dists > threshold) == 1)
         rejectedDetections = detections(dists > threshold, :);
@@ -60,6 +60,31 @@ if age > 5 && hyperParams.doFPFiltering == 1 && ~skipFPFiltering
         detections(dists > threshold, :) = [];
     end
 end
+
+deltas = s.latest5pos - [s.latest5pos(end, :); s.latest5pos(1:end-1, :)];
+deltas(s.latestPosIdx+1, :) = [];
+delta = norm(sum(deltas, 1));
+
+
+if s.mu.motionModel == 0
+    dists = min(pdist2(detections, expectedPositions), [], 2);
+    if mean(dists) > 25 && delta >16 && s.mu.motionModel == 0 && s.framesInNewMotionModel > 10
+            trackIdx
+            vEst = norm( mean(detections) - mean(expectedPositions) );
+            s = switchMotionModel(s, vEst, 2, hyperParams);
+            %skipFPFiltering = 1;
+    end
+elseif s.mu.motionModel == 1
+    s.mu.motionModel
+elseif s.mu.motionModel == 2
+    if s.mu.motionModel == 2 && norm(s.mu.v) < 1 && s.framesInNewMotionModel > 1
+            trackIdx
+            s = switchMotionModel(s, -1, 0, hyperParams);
+    end
+end
+
+
+
 if size(ds, 1) >= 1
     s.consecutiveInvisibleCount = 0;
     if size(ds, 1) <= 1
