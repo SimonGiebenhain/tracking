@@ -118,7 +118,7 @@ for t = 1:T
         [tracks, ghostTracks, unassignedPatterns] = createNewTracks(unusedDets, unassignedPatterns, tracks, patterns, params, patternNames, similarPairs, ghostTracks);
     end
     t
-    if t == 1650
+    if t == 8100
        t %rot
     end
     %if t==5000
@@ -506,8 +506,19 @@ end
                        patternIdx 
                     end
                     pattern = squeeze(patterns(patternIdx, :, :));
-                    newTrack = createLGEKFtrack(squeeze(rotations(minIdx2(1), :, :)), ...
-                                squeeze(translations(minIdx2(1), :))', MSE, patternIdx, pattern, patternNames{patternIdx}, params);
+                    if isfield(tracks(patternIdx).kalmanFilter, 'mu')
+                        newTrack = createLGEKFtrack(squeeze(rotations(minIdx2(1), :, :)), ...
+                                    squeeze(translations(minIdx2(1), :))', MSE, patternIdx, ...
+                                    pattern, patternNames{patternIdx}, params, ...
+                                    tracks(patternIdx).kalmanFilter.mu.motionModel, ...
+                                    ghostTracks(currentGhostTrackIdx).kalmanFilter);
+                    else
+                        newTrack = createLGEKFtrack(squeeze(rotations(minIdx2(1), :, :)), ...
+                                squeeze(translations(minIdx2(1), :))', MSE, ...
+                                patternIdx, pattern, patternNames{patternIdx}, ...
+                                params, -1, ...
+                                ghostTracks(currentGhostTrackIdx).kalmanFilter);
+                    end
                     tracks(patternIdx) = newTrack;
                     unassignedPatterns(patternIdx) = 0;
                     potentialReInit(patternIdx) = 0;
@@ -519,12 +530,25 @@ end
 
                 end
                 %TODO fix to regular case!!!!!!!!!!
-            elseif sum(potentialReInit) == 1 + sum(abs(patterns)>=1000, 'all')%if all but 1 bird are intialized we can initialize even with 2 or less dets
+            elseif ( sum(potentialReInit) == 1 + sum(abs(patterns)>=1000, 'all') && ...
+                         ghostTracks(currentGhostTrackIdx).trustworthyness > hyperParams.minTrustworthyness )%if all but 1 bird are intialized we can initialize even with 2 or less dets
                 for j=1:size(potentialReInit)
-                    if potentialReInit(j) == 1 && ~any(abs(patterns(j, :, :)) >= 1000, 'all')
+                    if ( potentialReInit(j) == 1 && ...
+                         ~any(abs(patterns(j, :, :)) >= 1000, 'all') )
                         pattern = squeeze(patterns(j, :, :));
-                        newTrack = createLGEKFtrack(eye(3), ...
-                            mean(detectedMarkersForCurrentGhostTrack, 1)', 5, j, pattern, patternNames{j}, params);
+                        if isfield(tracks(j).kalmanFilter, 'mu')
+                            newTrack = createLGEKFtrack(eye(3), ...
+                                        mean(detectedMarkersForCurrentGhostTrack, 1)', 5, j, ...
+                                        pattern, patternNames{j}, ...
+                                        params, tracks(j).kalmanFilter.mu.motionModel, ...
+                                        ghostTracks(currentGhostTrackIdx).kalmanFilter);
+                        else
+                            newTrack = createLGEKFtrack(eye(3), ...
+                                        mean(detectedMarkersForCurrentGhostTrack, 1)', 5, j, ...
+                                        pattern, patternNames{j}, ...
+                                        params, -1, ...
+                                        ghostTracks(currentGhostTrackIdx).kalmanFilter);
+                        end
                         tracks(j) = newTrack;
                         unassignedPatterns(j) = 0;
                         potentialReInit(j) = 0;
@@ -576,11 +600,13 @@ end
                 % Update visibility.
                 ghostTracks(currentGhostTrackIdx).totalVisibleCount = ghostTracks(currentGhostTrackIdx).totalVisibleCount + 1;
                 ghostTracks(currentGhostTrackIdx).consecutiveInvisibleCount = 0;
+                ghostTracks(currentGhostTrackIdx).trustworthyness = ghostTracks(currentGhostTrackIdx).trustworthyness + numDetsGhost.^2;
             else
                 % If detection wasn't assigned to ghost after all
                 % increase consecutive invisible count
                 ghostTracks(currentGhostTrackIdx).consecutiveInvisibleCount = ghostTracks(currentGhostTrackIdx).consecutiveInvisibleCount + 1;
                 ghostTracks(currentGhostTrackIdx).age = ghostTracks(currentGhostTrackIdx).age + 1;
+                ghostTracks(currentGhostTrackIdx).trustworthyness = ghostTracks(currentGhostTrackIdx).trustworthyness - 2;
             end
         end  
         
@@ -700,8 +726,8 @@ end
             end
         end
         
-        assignedGhostTracks(:, 1) = assignedGhostTracks(:, 1) - length(tracks)*nMarkers;
-        assignedGhostTracks = double(assignedGhostTracks);
+        %assignedGhostTracks(:, 1) = assignedGhostTracks(:, 1) - length(tracks)*nMarkers;
+        %assignedGhostTracks = double(assignedGhostTracks);
         allAssignedGhostTracksIdx = unique(floor((assignedGhostTracks(:,1)-1)/nMarkers) + 1);
         unassignedGhostTracks(:) = unassignedGhostTracks(:) - length(tracks)*nMarkers;
         unassignedGhostTracks = double(unassignedGhostTracks);
@@ -714,6 +740,7 @@ end
             if ghostTracks(unassignedGhostTrackIdx).age > 0
                 ghostTracks(unassignedGhostTrackIdx).age = ghostTracks(unassignedGhostTrackIdx).age + 1;
                 ghostTracks(unassignedGhostTrackIdx).consecutiveInvisibleCount = ghostTracks(unassignedGhostTrackIdx).consecutiveInvisibleCount + 1;
+                ghostTracks(unassignedGhostTrackIdx).trustworthyness = max(0, ghostTracks(unassignedGhostTrackIdx).trustworthyness - 2);
             end
         end
     end
@@ -755,7 +782,7 @@ end
         ages = [ghostTracks(:).age];
         totalVisibleCounts = [ghostTracks(:).totalVisibleCount];
         visibility = totalVisibleCounts ./ ages;
-        lostGhostsIdx = ( ages < ageThreshold & visibility < visibilityFraction) | [ghostTracks(:).consecutiveInvisibleCount] >= invisibleForTooLongGhosts;
+        lostGhostsIdx = [ghostTracks(:).consecutiveInvisibleCount] >= invisibleForTooLongGhosts;% | ( ages < ageThreshold & visibility < visibilityFraction)
         lostGhostsIdx = lostGhostsIdx | deletedGhostTracks';
         ghostTracks(lostGhostsIdx == 1) = [];        
     end

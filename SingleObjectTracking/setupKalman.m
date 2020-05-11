@@ -1,4 +1,4 @@
-function [s, globalParams] = setupKalman(pattern, T, parameters, patternName)
+function [s, globalParams] = setupKalman(pattern, T, parameters, mM, patternName)
 %SETUPKALMAN This function initializes all necessary parameters and
 %functions for performing tracking with the kalman filter.
 %
@@ -191,7 +191,7 @@ switch model
         
     case 'LieGroup'      
         
-        mM = parameters.initMotionModel;
+        %mM = parameters.initMotionModel;
         % working in homogenous coordinates, hence dim + 1 is used
         obsDim = nMarkers*(dim+1);
                    

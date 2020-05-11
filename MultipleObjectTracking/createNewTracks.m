@@ -8,13 +8,14 @@ if exist('ghostTracks','var') ~= 1
         'kalmanFilter', kF, ...
         'age', 1, ...
         'totalVisibleCount', 1, ...
-        'consecutiveInvisibleCount', 0);
+        'consecutiveInvisibleCount', 0, ...
+        'trustworthyness', 0);
     ghostTracks(1) = ghostTrack;
     ghostTracks(:, 1) = [];
 end
 
 % Ghost birds should be initialized in the proximity of other birds
-minDistToBird = params.minDistToBird;%90;
+minDistToBird = params.minDistToBird;
 initThreshold3 = params.initThreshold;%1.25;
 initThreshold4 = params.initThreshold4;
 
@@ -105,7 +106,11 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
                         minPatIdx
                     end
                     pattern = squeeze( patterns(patternIdx,:,:));
-                    newTrack = createLGEKFtrack(rotm, pos', l2Error, patternIdx, pattern, patternNames{patternIdx}, params);
+                    if isfield(tracks(patternIdx).kalmanFilter, 'mu')
+                        newTrack = createLGEKFtrack(rotm, pos', l2Error, patternIdx, pattern, patternNames{patternIdx}, params, tracks(patternIdx).kalmanFilter.mu.motionModel);
+                    else
+                        newTrack = createLGEKFtrack(rotm, pos', l2Error, patternIdx, pattern, patternNames{patternIdx}, params);
+                    end
                     
                     % Add it to the array of tracks.
                     tracks(patternIdx) = newTrack;
@@ -217,11 +222,20 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
                         if minPatIdx == 1 || minPatIdx == 2 || minPatIdx == 4
                            minPatIdx 
                         end
-                        newTrack = createLGEKFtrack(squeeze(rotMats(minIdx2(1), :, :)), ...
-                            squeeze(transVecs(minIdx2(1), :))', ...
-                            minMSE2(1), minPatIdx, ...
-                            squeeze(patterns(minPatIdx, :, :)),...
-                            patternNames{minPatIdx}, params);
+                        if isfield(tracks(minPatIdx).kalmanFilter, 'mu')
+                            newTrack = createLGEKFtrack(squeeze(rotMats(minIdx2(1), :, :)), ...
+                                squeeze(transVecs(minIdx2(1), :))', ...
+                                minMSE2(1), minPatIdx, ...
+                                squeeze(patterns(minPatIdx, :, :)),...
+                                patternNames{minPatIdx}, params, ...
+                                tracks(minPatIdx).kalmanFilter.mu.motionModel);
+                        else
+                            newTrack = createLGEKFtrack(squeeze(rotMats(minIdx2(1), :, :)), ...
+                                squeeze(transVecs(minIdx2(1), :))', ...
+                                minMSE2(1), minPatIdx, ...
+                                squeeze(patterns(minPatIdx, :, :)),...
+                                patternNames{minPatIdx}, params);
+                        end
                         tracks(minPatIdx) = newTrack;
                         unassignedPatterns(minPatIdx) = 0;
                         unassignedPatternsReturn(minPatIdx) = 0;
@@ -247,14 +261,15 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
         % for each unassigned cluster of size 4 create a ghost bird
         for i=1:nClusters4
             dists = pdist2(potentialBirds4{i}, positions);
-            if min(dists, [], 'all') > minDistToBird
+            if min(dists, [], 'all') > minDistToBird(4)
                 pos = mean(potentialBirds4{i}, 1);
                 kF = constructGhostKF(pos, params);
                 ghostTrack = struct(...
                     'kalmanFilter', kF, ...
                     'age', 1, ...
                     'totalVisibleCount', 1, ...
-                    'consecutiveInvisibleCount', 0);
+                    'consecutiveInvisibleCount', 0, ...
+                    'trustworthyness', 12);
                 ghostTracks(length(ghostTracks) + 1) = ghostTrack;
                 positions(length(positions)+1, :) = pos;
             end
@@ -263,14 +278,15 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
         % for each unassigned cluster of size 3 create a ghost bird
         for i=1:nClusters3
             dists = pdist2(potentialBirds3{i}, positions);
-            if min(dists, [], 'all') > minDistToBird
+            if min(dists, [], 'all') > minDistToBird(3)
                pos = mean(potentialBirds3{i}, 1);
                kF = constructGhostKF(pos, params);
                 ghostTrack = struct(...
                     'kalmanFilter', kF, ...
                     'age', 1, ...
                     'totalVisibleCount', 1, ...
-                    'consecutiveInvisibleCount', 0);
+                    'consecutiveInvisibleCount', 0, ...
+                    'trustworthyness', 5);
                 ghostTracks(length(ghostTracks) + 1) = ghostTrack;
                 positions(length(positions)+1, :) = pos;
             end
@@ -293,14 +309,15 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
     end
     for i=1:size(potentialGhosts)
         dists = pdist2(potentialGhosts{i}, positions);
-        if min(dists, [], 'all') > minDistToBird
+        if min(dists, [], 'all') > minDistToBird(2)
             pos = mean(potentialGhosts{i}, 1);
             kF = constructGhostKF(pos, params);
             ghostTrack = struct(...
                 'kalmanFilter', kF, ...
                 'age', 1, ...
                 'totalVisibleCount', 1, ...
-                'consecutiveInvisibleCount', 0);
+                'consecutiveInvisibleCount', 0, ...
+                'trustworthyness', 1);
             ghostTracks(length(ghostTracks) + 1) = ghostTrack;
         end
     end
