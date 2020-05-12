@@ -68,7 +68,7 @@ delta = norm(sum(deltas, 1));
 
 if s.mu.motionModel == 0
     dists = min(pdist2(detections, expectedPositions), [], 2);
-    if mean(dists) > 25 && delta > 40 && s.mu.motionModel == 0 && s.framesInNewMotionModel > 15
+    if mean(dists) > 20 && delta > 30 && s.mu.motionModel == 0 && s.framesInNewMotionModel > 10
             trackIdx
             vEst = norm( mean(detections) - mean(expectedPositions) );
             s = switchMotionModel(s, vEst, 2, hyperParams);
@@ -77,7 +77,7 @@ if s.mu.motionModel == 0
 elseif s.mu.motionModel == 1
     s.mu.motionModel
 elseif s.mu.motionModel == 2
-    if s.mu.motionModel == 2 && norm(s.mu.v) < 2.5 && s.framesInNewMotionModel > 1
+    if s.mu.motionModel == 2 && norm(s.mu.v) < 2.0 && s.framesInNewMotionModel > 1
             trackIdx
             s = switchMotionModel(s, -1, 0, hyperParams);
     end

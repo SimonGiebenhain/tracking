@@ -103,7 +103,7 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
                     % Create a Kalman filter object.
                     patternIdx = unassignedPatternsIdx(specificPatternIdx);
                     if patternIdx == 1 || patternIdx == 2 || patternIdx == 4
-                        minPatIdx
+                        patternIdx
                     end
                     pattern = squeeze( patterns(patternIdx,:,:));
                     if isfield(tracks(patternIdx).kalmanFilter, 'mu')
@@ -218,7 +218,7 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
                     end
                     minPatIdx = safeAndUnassignedPatterns(minIdx2(1));
 
-                    if minMSE2(1) < initThreshold3 && costDiff > 1
+                    if minMSE2(1) < initThreshold3 && costDiff > 1.5
                         if minPatIdx == 1 || minPatIdx == 2 || minPatIdx == 4
                            minPatIdx 
                         end

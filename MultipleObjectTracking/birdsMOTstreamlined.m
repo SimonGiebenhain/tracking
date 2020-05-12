@@ -1,6 +1,6 @@
 %% load data and patterns
 % Also add folder with patterns to path of matlab!
-dataFilename = 'datasets/session8/Starling_Trials_10-12-2019_16-00-00_Trajectories_100.csv'; % 'datasets/session1/all.csv'; %
+dataFilename = 'datasets/session7/Starling_Trials_10-12-2019_15-45-00_Trajectories_100.csv'; % 'datasets/session1/all.csv'; %
 patternDirectoryName = 'datasets/session8';
 filePrefix = strsplit(dataFilename, '.');
 filePrefix = filePrefix{1};

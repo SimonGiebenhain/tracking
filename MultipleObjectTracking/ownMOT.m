@@ -118,7 +118,7 @@ for t = 1:T
         [tracks, ghostTracks, unassignedPatterns] = createNewTracks(unusedDets, unassignedPatterns, tracks, patterns, params, patternNames, similarPairs, ghostTracks);
     end
     t
-    if t == 8100
+    if t == 14000
        t %rot
     end
     %if t==5000
@@ -251,6 +251,8 @@ end
                 emptyTrack.name = '';
                 emptyTrack.kalmanParams = [];
                 kalmanFilter.pattern = squeeze(patterns(in,:,:));
+                kalmanFilter.lastSeen = NaN*zeros(3,1);
+                kalmanFilter.lastVisibleFrame = NaN;
                 emptyTrack.kalmanFilter = kalmanFilter;
                 tracks(in) =  emptyTrack;
             end
@@ -424,6 +426,8 @@ end
             tracks(currentTrackIdx).kalmanFilter.latest5pos(tracks(currentTrackIdx).kalmanFilter.latestPosIdx+1, :) = ...
                 tracks(currentTrackIdx).kalmanFilter.mu.X(1:3, 4);
             tracks(currentTrackIdx).kalmanFilter.latestPosIdx = mod(tracks(currentTrackIdx).kalmanFilter.latestPosIdx + 1, 5);
+            tracks(currentTrackIdx).kalmanFilter.lastSeen = tracks(currentTrackIdx).kalmanFilter.mu.X(1:3, 4);
+            tracks(currentTrackIdx).kalmanFilter.lastVisibleFrame = t;
         end
         
         
@@ -442,7 +446,7 @@ end
         % pattern can be used to safely initialize a new track
         % Determine these patterns.
         safePatternsBool = zeros(length(patterns), 1);
-        potentialReInit = unassignedPatterns | ([tracks(:).consecutiveInvisibleCount] > 5)';
+        potentialReInit = unassignedPatterns | ([tracks(:).consecutiveInvisibleCount] > 10)';
         assignedPatternsIdx = find(~potentialReInit);
         unassignedPatternsIdx = find(potentialReInit);
         for jj=1:length(unassignedPatternsIdx)
@@ -468,7 +472,7 @@ end
             % if 2 detections assigned: only run pattern_matching if all
             % simialr patterns are already assigned, in order to avoid
             % id-switches
-            if nAssgnDets >= 3 && ~(sum(potentialReInit) == 1 + sum(abs(patterns)>=1000, 'all'))
+            if nAssgnDets >= 3 %&& ~(sum(potentialReInit) == 1 + sum(abs(patterns)>=1000, 'all'))
                 %if nAssgnDets == 3
                 %    unassignedandSafeIdx = find(unassignedPatterns & safePatternsBool);
                 %else
@@ -530,36 +534,39 @@ end
 
                 end
                 %TODO fix to regular case!!!!!!!!!!
-            elseif ( sum(potentialReInit) == 1 + sum(abs(patterns)>=1000, 'all') && ...
-                         ghostTracks(currentGhostTrackIdx).trustworthyness > hyperParams.minTrustworthyness )%if all but 1 bird are intialized we can initialize even with 2 or less dets
-                for j=1:size(potentialReInit)
-                    if ( potentialReInit(j) == 1 && ...
-                         ~any(abs(patterns(j, :, :)) >= 1000, 'all') )
-                        pattern = squeeze(patterns(j, :, :));
-                        if isfield(tracks(j).kalmanFilter, 'mu')
-                            newTrack = createLGEKFtrack(eye(3), ...
-                                        mean(detectedMarkersForCurrentGhostTrack, 1)', 5, j, ...
-                                        pattern, patternNames{j}, ...
-                                        params, tracks(j).kalmanFilter.mu.motionModel, ...
-                                        ghostTracks(currentGhostTrackIdx).kalmanFilter);
-                        else
-                            newTrack = createLGEKFtrack(eye(3), ...
-                                        mean(detectedMarkersForCurrentGhostTrack, 1)', 5, j, ...
-                                        pattern, patternNames{j}, ...
-                                        params, -1, ...
-                                        ghostTracks(currentGhostTrackIdx).kalmanFilter);
-                        end
-                        tracks(j) = newTrack;
-                        unassignedPatterns(j) = 0;
-                        potentialReInit(j) = 0;
-                        % mark ghosst bird as deleted and delete after loop
-                        deletedGhostTracks(currentGhostTrackIdx) = 1;
-                        % continue loop, as we don't have to update position of
-                        % ghost bird
-                        break;
-                    end
-                end
-                continue;
+%             elseif ( sum(potentialReInit) == 1 + sum(abs(patterns)>=1000, 'all') && ...
+%                          ghostTracks(currentGhostTrackIdx).trustworthyness > hyperParams.minTrustworthyness )%if all but 1 bird are intialized we can initialize even with 2 or less dets
+%                 for j=1:size(potentialReInit)
+%                     if ( potentialReInit(j) == 1 && ...
+%                          ~any(abs(patterns(j, :, :)) >= 1000, 'all') && ...
+%                          ~(abs(t-tracks(j).kalmanFilter.lastVisibleFrame) < 15 && ...
+%                            norm(tracks(j).kalmanFilter.lastSeen - mean(detectedMarkersForCurrentGhostTrack, 1)') > 150)...
+%                      )
+%                         pattern = squeeze(patterns(j, :, :));
+%                         if isfield(tracks(j).kalmanFilter, 'mu')
+%                             newTrack = createLGEKFtrack(eye(3), ...
+%                                         mean(detectedMarkersForCurrentGhostTrack, 1)', 5, j, ...
+%                                         pattern, patternNames{j}, ...
+%                                         params, tracks(j).kalmanFilter.mu.motionModel, ...
+%                                         ghostTracks(currentGhostTrackIdx).kalmanFilter);
+%                         else
+%                             newTrack = createLGEKFtrack(eye(3), ...
+%                                         mean(detectedMarkersForCurrentGhostTrack, 1)', 5, j, ...
+%                                         pattern, patternNames{j}, ...
+%                                         params, -1, ...
+%                                         ghostTracks(currentGhostTrackIdx).kalmanFilter);
+%                         end
+%                         tracks(j) = newTrack;
+%                         unassignedPatterns(j) = 0;
+%                         potentialReInit(j) = 0;
+%                         % mark ghosst bird as deleted and delete after loop
+%                         deletedGhostTracks(currentGhostTrackIdx) = 1;
+%                         % continue loop, as we don't have to update position of
+%                         % ghost bird
+%                         break;
+%                     end
+%                 end
+%                 continue;
             end
              
             
@@ -600,7 +607,7 @@ end
                 % Update visibility.
                 ghostTracks(currentGhostTrackIdx).totalVisibleCount = ghostTracks(currentGhostTrackIdx).totalVisibleCount + 1;
                 ghostTracks(currentGhostTrackIdx).consecutiveInvisibleCount = 0;
-                ghostTracks(currentGhostTrackIdx).trustworthyness = ghostTracks(currentGhostTrackIdx).trustworthyness + numDetsGhost.^2;
+                ghostTracks(currentGhostTrackIdx).trustworthyness = ghostTracks(currentGhostTrackIdx).trustworthyness + numDetsGhost.^2-1;
             else
                 % If detection wasn't assigned to ghost after all
                 % increase consecutive invisible count
@@ -760,9 +767,61 @@ end
         visibilityFraction = 0.5;
         
         ages = [tracks(:).age];
-
-        % Find the indices of 'lost' tracks.
-        lostIdxBool = ([tracks(:).consecutiveInvisibleCount] >= invisibleForTooLong) & (ages > 0);
+        
+        %TODO: do the same for ghost birds
+        % delte tracks that drift towards other birds, because their own
+        % detections vanished
+        nTracks = length(tracks);
+        tooCloseBirds = zeros(nTracks,1);
+        tooClose = 40;
+        positions = NaN*zeros(nTracks,3);
+        for i=1:nTracks
+           if tracks(i).age > 0
+              positions(i,:) = tracks(i).kalmanFilter.mu.X(1:3, 4); 
+           end
+        end
+        distsBirds = triu(squareform(pdist(positions)));
+        [rows, cols] = ind2sub(size(distsBirds), find(distsBirds > 0 & distsBirds < tooClose));
+        
+        for r =1:length(rows)
+            bird1Idx = rows(r);
+            bird2Idx = cols(r);
+            s1 = tracks(bird1Idx).kalmanFilter;
+            s2 = tracks(bird2Idx).kalmanFilter;
+            if tracks(bird1Idx).kalmanFilter.mu.motionModel == 0 && ...
+                    tracks(bird2Idx).kalmanFilter.mu.motionModel == 0
+                deltas1 = s1.latest5pos - [s1.latest5pos(end, :); s1.latest5pos(1:end-1, :)];
+                deltas1(s1.latestPosIdx+1, :) = [];
+                delta1 = sum(norm(deltas1, 1));
+                deltas2 = s2.latest5pos - [s2.latest5pos(end, :); s2.latest5pos(1:end-1, :)];
+                deltas2(s2.latestPosIdx+1, :) = [];
+                delta2 = sum(norm(deltas2, 1));
+                
+                if delta1 > delta2
+                    tooCloseBirds(bird1Idx) = 1;
+                else
+                    tooCloseBirds(bird2Idx) = 1;
+                end
+            elseif tracks(bird1Idx).kalmanFilter.mu.motionModel == 2 && ...
+                    tracks(bird2Idx).kalmanFilter.mu.motionModel == 0
+                tooCloseBirds(bird1Idx) = 1;
+            elseif tracks(bird1Idx).kalmanFilter.mu.motionModel == 0 && ...
+                    tracks(bird2Idx).kalmanFilter.mu.motionModel == 2
+                tooCloseBirds(bird2Idx) = 1;
+            elseif tracks(bird1Idx).kalmanFilter.mu.motionModel == 2 && ...
+                    tracks(bird2Idx).kalmanFilter.mu.motionModel == 2
+                if norm(tracks(bird1Idx).kalmanFilter.mu) > norm(tracks(bird2Idx).kalmanFilter.mu)
+                    tooCloseBirds(bird1Idx) = 1;
+                else
+                    tooCloseBirds(bird2Idx) = 1;
+                end
+            end
+        end
+        
+        
+                % Find the indices of 'lost' tracks.
+        lostIdxBool = ( [tracks(:).consecutiveInvisibleCount] >= invisibleForTooLong | ... 
+                        tooCloseBirds' ) & (ages > 0);
         lostIdx = find(lostIdxBool);
         if ~isempty(lostIdx)
             for i=1:length(lostIdx)
