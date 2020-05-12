@@ -581,23 +581,49 @@ end
              detectedMarkersForCurrentGhostTrack = ... 
                  detectedMarkersForCurrentGhostTrack(distToGhost' <= maxDistToGhost, :);
              
-            if size(detectedMarkersForCurrentGhostTrack, 1) > 0
-           
-                % Correct the estimate of the object's location
+            % Correct the estimate of the object's location
                 % using the new detection.
+            if size(detectedMarkersForCurrentGhostTrack, 1) > 0
                 kF = ghostTracks(currentGhostTrackIdx).kalmanFilter;
+                %TODO: check to switch motion model
+                if kF.motionModel == 0
+                    deltas = kF.latest5pos - [kF.latest5pos(end, :); kF.latest5pos(1:end-1, :)];
+                    deltas(kF.latestPosIdx+1, :) = [];
+                    delta = norm(sum(deltas, 1));
+                    dists = pdist2(detectedMarkersForCurrentGhostTrack, kF.x(1:3)');
+                    if mean(dists) > 20 && delta > 30 && kF.motionModel == 0 && kF.framesInMotionModel > 10
+                        %switch to MotionModel 2
+                        kF = switchGhostMM(kF, 2, params);
+                        ghostTracks(currentGhostTrackIdx).kalmanFilter = kF;
+                    end
+                elseif kF.motionModel == 2
+                    if norm(kF.x(4:6)) < 2.0 && kF.framesInMotionModel > 1
+                        %switch to MotionModel 0
+                        kF = switchGhostMM(kF, 0, params);
+                        ghostTracks(currentGhostTrackIdx).kalmanFilter = kF;
+                    end
+                end
+                
+                
                 numDetsGhost = size(detectedMarkersForCurrentGhostTrack, 1);
                 % detections are average of assigned observations
                 z = mean(detectedMarkersForCurrentGhostTrack, 1)';
                 % do kalman correct equations
-                y = z - kF.H * kF.x;
-                S = kF.H * kF.P * kF.H' + kF.R/numDetsGhost;
-                K = kF.P * kF.H' / S;
-                kF.x = kF.x + K*y;
-                if any(isnan(kF.x))
-                    kF.x
+                if kF.motionModel == 2
+                    y = z - kF.H * kF.x;
+                    S = kF.H * kF.P * kF.H' + kF.R/numDetsGhost;
+                    K = kF.P * kF.H' / S;
+                    kF.x = kF.x + K*y;
+                    kF.P = (eye(9) - K*kF.H)*kF.P;
+                elseif kF.motionModel == 0
+                    y = z - kF.H * kF.x;
+                    S = kF.H * kF.P * kF.H' + kF.R/numDetsGhost;
+                    K = kF.P * kF.H' / S;
+                    kF.x = kF.x + K*y;
+                    kF.P = (eye(3) - K*kF.H)*kF.P;
+                else
+                   'updateGhost unexpected motion model!' 
                 end
-                kF.P = (eye(9) - K*kF.H)*kF.P;
 
                 ghostTracks(currentGhostTrackIdx).kalmanFilter = kF;
 
@@ -608,12 +634,23 @@ end
                 ghostTracks(currentGhostTrackIdx).totalVisibleCount = ghostTracks(currentGhostTrackIdx).totalVisibleCount + 1;
                 ghostTracks(currentGhostTrackIdx).consecutiveInvisibleCount = 0;
                 ghostTracks(currentGhostTrackIdx).trustworthyness = ghostTracks(currentGhostTrackIdx).trustworthyness + numDetsGhost.^2-1;
+                
+                ghostTracks(currentGhostTrackIdx).kalmanFilter.latest5pos(ghostTracks(currentGhostTrackIdx).kalmanFilter.latestPosIdx+1, :) = ...
+                                       ghostTracks(currentGhostTrackIdx).kalmanFilter.x(1:3);
+                ghostTracks(currentGhostTrackIdx).kalmanFilter.latestPosIdx = mod(ghostTracks(currentGhostTrackIdx).kalmanFilter.latestPosIdx + 1, 5);
+                ghostTracks(currentGhostTrackIdx).kalmanFilter.framesInMotionModel = ghostTracks(currentGhostTrackIdx).kalmanFilter.framesInMotionModel + 1;
             else
                 % If detection wasn't assigned to ghost after all
                 % increase consecutive invisible count
                 ghostTracks(currentGhostTrackIdx).consecutiveInvisibleCount = ghostTracks(currentGhostTrackIdx).consecutiveInvisibleCount + 1;
                 ghostTracks(currentGhostTrackIdx).age = ghostTracks(currentGhostTrackIdx).age + 1;
                 ghostTracks(currentGhostTrackIdx).trustworthyness = ghostTracks(currentGhostTrackIdx).trustworthyness - 2;
+            
+                ghostTracks(currentGhostTrackIdx).kalmanFilter.latest5pos(ghostTracks(currentGhostTrackIdx).kalmanFilter.latestPosIdx+1, :) = ...
+                                       ghostTracks(currentGhostTrackIdx).kalmanFilter.x(1:3);
+                ghostTracks(currentGhostTrackIdx).kalmanFilter.latestPosIdx = mod(ghostTracks(currentGhostTrackIdx).kalmanFilter.latestPosIdx + 1, 5);
+                ghostTracks(currentGhostTrackIdx).kalmanFilter.framesInMotionModel = ghostTracks(currentGhostTrackIdx).kalmanFilter.framesInMotionModel + 1;
+
             end
         end  
         
@@ -748,6 +785,12 @@ end
                 ghostTracks(unassignedGhostTrackIdx).age = ghostTracks(unassignedGhostTrackIdx).age + 1;
                 ghostTracks(unassignedGhostTrackIdx).consecutiveInvisibleCount = ghostTracks(unassignedGhostTrackIdx).consecutiveInvisibleCount + 1;
                 ghostTracks(unassignedGhostTrackIdx).trustworthyness = max(0, ghostTracks(unassignedGhostTrackIdx).trustworthyness - 2);
+            
+                ghostTracks(unassignedGhostTrackIdx).kalmanFilter.latest5pos(ghostTracks(unassignedGhostTrackIdx).kalmanFilter.latestPosIdx+1, :) = ...
+                                       ghostTracks(unassignedGhostTrackIdx).kalmanFilter.x(1:3);
+                ghostTracks(unassignedGhostTrackIdx).kalmanFilter.latestPosIdx = mod(ghostTracks(unassignedGhostTrackIdx).kalmanFilter.latestPosIdx + 1, 5);
+                ghostTracks(unassignedGhostTrackIdx).kalmanFilter.framesInMotionModel = ghostTracks(unassignedGhostTrackIdx).kalmanFilter.framesInMotionModel + 1;
+
             end
         end
     end

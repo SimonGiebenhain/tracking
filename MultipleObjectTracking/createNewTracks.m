@@ -325,29 +325,47 @@ end
 
 end
 
-function kF = constructGhostKF(pos, params)
+function kF = constructGhostKF(pos, params, ghostMM)
 % setup simple Kalman filter, with position, velocity and
 % acceleration
 % the state transition function implements a
 % constant-acceleration-motion-model
 % the measurement function is selects the position from the state
 % and measurements are the mean of all assigne detections
-
-% kF.x = pos';
-% kF.P = eye(3) .* repelem(params.initialNoise.initPositionVar, 3);
-% kF.Q = eye(3) .* repelem(params.processNoise.position, 3);
-% kF.R = eye(3) * params.measurementNoise/2;
-% kF.H = eye(3);
-% kF.F = eye(3);
-
-
-kF.x = [pos 0 0 0 0 0 0]';
-kF.P = eye(9) .* repelem([10; 5; 2], 3);
-kF.Q = eye(9) .* repelem([50; 5; 1], 3);
-kF.R = eye(3) * 120;
-kF.H = [eye(3) zeros(3,6)];
-kF.F = [eye(3) eye(3) 1/2*eye(3);
-        zeros(3) eye(3) eye(3);
-        zeros(3) zeros(3) eye(3)];
+if ~exist('ghostMM', 'var')
+   ghostMM = 0; 
+end
+if ghostMM == 0
+    kF.motionModel = 0;
+    kF.x = pos';
+    kF.P = eye(3) .* repelem(params.initialNoise.initPositionVar, 3);
+    kF.Q = eye(3) .* repelem(params.processNoise.position, 3);
+    kF.R = eye(3) * params.measurementNoise/2;
+    kF.H = eye(3);
+    kF.F = eye(3);
+elseif ghostMM == 1
+    kF.motionModel = 1;
+    kF.x = [pos 0 0 0]';
+    kF.P = eye(6) .* repelem([10; 5], 3);
+    kF.Q = eye(6) .* repelem([50, 10], 3);
+    kF.R = eye(3) * 120;
+    kF.H = [eye(3) zeros(3)];
+    kF.F = [eye(3) eye(3);
+            zeros(3) eye(3)];
+elseif ghostMM == 2
+    kF.motionModel = 2;
+    kF.x = [pos 0 0 0 0 0 0]';
+    kF.P = eye(9) .* repelem([10; 5; 2], 3);
+    kF.Q = eye(9) .* repelem([50; 5; 1], 3);
+    kF.R = eye(3) * 120;
+    kF.H = [eye(3) zeros(3,6)];
+    kF.F = [eye(3) eye(3) 1/2*eye(3);
+            zeros(3) eye(3) eye(3);
+            zeros(3) zeros(3) eye(3)];
+end
+kF.framesInMotionModel = 5;
+kF.latest5pos = zeros(5,3);
+kF.latest5pos(1, :) = pos;
+kF.latestPosIdx = 1;
 end
 
