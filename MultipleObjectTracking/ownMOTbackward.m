@@ -1,24 +1,6 @@
 %% Multi Object Tracking
-function [estimatedPositions, estimatedQuats] = ownMOTbackward(D, patterns, patternNames, initialStates, nObjects, shouldShowTruth, forwardPos, forwardRot, quatMotionType, hyperParams)
-% OWNMOT does multi object tracking
-%   @D all observations/detections in the format:
-%       T x maxDetectionsPerFrame x 3
-%
-%   @patterns array of dimensions nObjects x nMarkers x 3
-%       Each object has a unique pattern of nMarker 3d points
-%
-%   @initialStates values used for the initialization of EKF.
-%       TODO: use own initialzation method instead of values from VICON.
-%
-%   @nObject the number of objects to track
-%
-%   @trueTrajectory array of dimensions nObjects x T x 3
-%       Holds ground truth trajectory. When supplied this is used for the
-%       visualization.
-%
-%   @trueOrientation array of dimensions nObjects x T x 4
-%       Holds ground truth quaternions representing the orientation of each
-%       object at each timeframe
+
+function [estimatedPositions, estimatedQuats] = ownMOTbackward(D, patterns, snapshots,shouldShowTruth, hyperParams)
 
 nMarkers = 4;
 
@@ -28,6 +10,7 @@ maxPos = squeeze(max(D,[],[1 2]));
 minPos = squeeze(min(D,[],[1 2]));
 
 processNoise.position = hyperParams.posNoise;
+processNoise.positionBrownian = hyperParams.posNoiseBrownian;
 processNoise.motion = hyperParams.motNoise;
 processNoise.acceleration = hyperParams.accNoise;
 processNoise.quat = hyperParams.quatNoise;
@@ -51,21 +34,14 @@ params.minDistToBird = hyperParams.minDistToBird;
 params.initThreshold = hyperParams.initThreshold;
 params.initThreshold4 = hyperParams.initThreshold4;
 
+params.initMotionModel = 0;
+
 
 similarPairs = getSimilarPatterns(patterns, hyperParams.patternSimilarityThreshold);
 
-
 unassignedPatterns = ones(nObjects, 1);
-tracks = initializeTracks();
-%initialize empty ghost tracks
-kFGhost = constructGhostKF([0 0 0], params);
-    ghostTrack = struct(...
-        'kalmanFilter', kFGhost, ...
-        'age', 1, ...
-        'totalVisibleCount', 1, ...
-        'consecutiveInvisibleCount', 0);
-ghostTracks(1) = ghostTrack;
-ghostTracks(:, 1) = [];
+[tracks, ghostTracks] = initializeTracks();
+initT = snapshots{1}.t;
 
 
 
@@ -91,28 +67,28 @@ end
 estimatedPositions = zeros(nObjects, T, 3);
 estimatedQuats = zeros(nObjects, T, 4);
 
+
 for t = 1:T
-    if ~any(isnan(forwardPos(:, T-t+1, 1)))
-        continue
-    end
     detections = squeeze(D(t,:,:));
     detections = reshape(detections(~isnan(detections)),[],dim);
     
     predictNewLocationsOfTracks();
     [assignedTracks, unassignedTracks, assignedGhostTracks, unassignedGhostTracks, unassignedDetections] = detectionToTrackAssignment();
-    
+    %[assignedTracks, unassignedTracks, assignedGhostTracks, unassignedGhostTracks, unassignedDetections] = detectionToTrackAssignment();
+
     [deletedGhostTracks, rejectedDetections] = updateAssignedTracks();
     updateUnassignedTracks();
     deleteLostTracks(deletedGhostTracks);
     unusedDets = [detections(unassignedDetections, :); rejectedDetections];
 
     if sum(unassignedPatterns) > 0 &&  length(unusedDets) > 1
-        [tracks, ghostTracks, unassignedPatterns] = createNewTracks(unusedDets, unassignedPatterns, tracks, patterns, params, patternNames, similarPairs, ghostTracks);
+        [tracks, ghostTracks, unassignedPatterns, extraFreshInits] = createNewTracks(unusedDets, unassignedPatterns, tracks, patterns, params, patternNames, similarPairs, ghostTracks);
+        freshInits = freshInits | extraFreshInits;
     end
-    %t
-    %if t == 3200 || t==2280 || t==1400
-    %   t %rot
-    %end
+    t
+    if t == 686
+       t %rot
+    end
     %if t==5000
     %   t % total chaos
     %end % 8700grün
@@ -124,50 +100,74 @@ for t = 1:T
     for ii = 1:nObjects
         if tracks(ii).age > 0
             if strcmp(model, 'LieGroup')
-                estimatedPositions(ii, t, :) = tracks(ii).kalmanFilter.mu.X(1:3, 4);
+                p = tracks(ii).kalmanFilter.mu.X(1:3, 4);
+                
+                estimatedPositions(ii, t, :) = p;
                 estimatedQuats(ii, t, :) = rotm2quat(tracks(ii).kalmanFilter.mu.X(1:3,1:3));
+                P = tracks(ii).kalmanFilter.P;
+                rotationVariance(ii, t) = (P(1,1) + P(2,2) + P(3,3)) / 3;
+                positionVariance(ii, t) = (P(4,4) + P(5,5) + P(6,6)) / 3;
             else
                 state = tracks(ii).kalmanFilter.x;
+                P = tracks(ii).kalmanFilter.P;
                 estimatedPositions(ii,t,:) = state(1:dim);
+                positionVariance(ii,t) = (P(1,1) + P(2,2) + P(3,3)) / 3;
                 if strcmp(params.motionType, 'constAcc')
                     estimatedQuats(ii,t,:) = state(3*dim+1:3*dim+4);
+                    rotationVariance(ii,t) = (P(3*dim+1, 3*dim+1) + P(3*dim+2, 3*dim+2) + ... 
+                                              P(3*dim+3, 3*dim+3) + P(3*dim+4, 3*dim+4)) / 4;
                 else
                     estimatedQuats(ii,t,:) = state(2*dim+1:2*dim+4);
+                    rotationVariance(ii,t) = (P(2*dim+1, 2*dim+1) + P(2*dim+2, 2*dim+2) + ...
+                                              P(2*dim+3, 2*dim+3) + P(2*dim+4, 2*dim+4)) / 4;
                 end
             end
         else
             estimatedPositions(ii,t,:) = ones(3,1) * NaN;
             estimatedQuats(ii,t,:) = ones(4,1) * NaN;
+            rotationVariance(ii,t) = NaN;
+            positionVariance(ii,t) = NaN;
         end
     end
+    
+    % Check whether to skip to next snapshot
 end
 
 
 
 %% Initialize Tracks
-    function [tracks] = initializeTracks()
-        for i = 1:size(initialStates, 1)
-            [s, kalmanParams] = setupKalman(squeeze(patterns(i,:,:)), -1, params);
-            mu.X = [ quat2rotm(initialStates.quat(i,:)) initialStates.pos(i,:)'; [0 0 0 1] ];
-            mu.v = initialStates.velocity(i,:)';
-            mu.a = initialStates.acceleration(i,:)';
-            s.mu = mu;
-            s.P = diag(repelem([params.initialNoise.initQuatVar;
-                params.initialNoise.initPositionVar;
-                params.initialNoise.initMotionVar;
-                params.initialNoise.initAccVar
-                ],[dim, dim, dim, dim]));
-            s.pattern = squeeze(patterns(i,:,:));
-            s.flying = -1;
-            s.consecutiveInvisibleCount = 0;
-            tracks(initialStates.id) = struct(...
-                'id', initialStates.id, ...
-                'name', patternNames{initialStates.id}, ...
-                'kalmanFilter', s, ...
-                'kalmanParams', kalmanParams, ...
-                'age', 1, ...
-                'totalVisibleCount', 1, ...
-                'consecutiveInvisibleCount', 0);
+    function [tracks, ghostTracks] = initializeTracks()
+        tracks = snapshots{1}.tracks;
+        for i=1:length(tracks)
+           tracks(i).age = 1;
+           tracks(i).totalVisibleCount = 0;
+           tracks(i).consecutiveInvisibleCount = 0;
+           
+           tracks(i).kalmanFilter.consecutiveInvisibleCount = 0;
+           tracks(i).kalmanFilter.framesInMotionModel = 15;
+           
+           tracks(i).kalmanFilter.latest5pos = zeros(5, 3);
+           tracks(i).kalmanFilter.latest5pos(1, :) = tracks(i).kalmanFilter.mu.X(1:3, 4);
+           tracks(i).kalmanFilter.latestPosIdx = 1;
+           
+           if tracks(i).kalmanFilter.mu.motionModel == 2
+              tracks(i).kalmanFilter.mu.v = -tracks(i).kalmanFilter.mu.v;
+              tracks(i).kalmanFilter.mu.a = -tracks(i).kalmanFilter.mu.a;
+           end 
+        end
+        ghostTracks = snapshots{1}.ghostTracks;
+        for i=1:length(ghostTracks)
+            ghostTracks(i).age = 1;
+            ghostTracks(i).totalVisibleCount = 0;
+            ghostTracks(i).consecutiveInvisibleCount = 0;
+            ghostTracks(i).trustworthness = 5;
+            ghostTracks(i).kalmanFilter.latest5pos = zeros(5, 3);
+            ghostTracks(i).kalmanFilter.latest5pos(1, :) = ghostTracks(i).kalmanFilter.x(1:3);
+            ghostTracks(i).kalmanFilter.latestPosidx = 1;
+            ghostTracks(i).framesInMotionModel = 15;
+            if ghostTracks(i).kalmanFilter.motionModel == 2
+               ghostTracks(i).kalmanFilter.x(4:end) = -ghostTracks(i).kalmanFilter.x(4:end);
+            end
         end
     end
 
@@ -267,7 +267,103 @@ end
         assignedGhostTracks = assignments(assignments(:, 1) > length(tracks)*nMarkers, :);
         unassignedTracks = unassignments(unassignments <= length(tracks)*nMarkers);
         unassignedGhostTracks = unassignments(unassignments > length(tracks)*nMarkers);
-        falsePositives(t) = falsePositives(t) + size(unassignedDetections, 1);
+    end
+
+function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, unassignedDetections] = detectionToTrackAssignmentNew()
+        
+        nTracks = length(tracks)+length(ghostTracks);
+        nDetections = size(detections, 1);
+        
+        trackAssignments = cell(length(tracks),2);
+        ghostAssignments = cell(length(ghostTracks),2);
+        nAssignedTracks = 0;
+        nAssignedGhosts = 0;
+        unassignedDetections = zeros(0,1);
+        for d=1:nDetections
+            costs = zeros(nTracks,1);
+            for i=1:nTracks
+                if i <=length(tracks)
+                    if tracks(i).age > 0
+                        expectedMarkerLocations = measFuncNonHomogenous(tracks(i).kalmanFilter.mu, tracks(i).kalmanFilter.pattern);
+                        costs(i) = min(pdist2(detections(d,:), expectedMarkerLocations));
+                    else
+                        costs(i) = Inf;
+                    end
+                else
+                    costs(i) = norm(detections(d,:)'-ghostTracks(i-length(tracks)).kalmanFilter.x(1:3));
+                end
+            end
+            [minCost, minIdx] = min(costs);
+            if minCost < 120
+                if minIdx <= length(tracks)
+                    trackAssignments{minIdx, 1} = [trackAssignments{minIdx, 1};
+                                                detections(d,:)];
+                    trackAssignments{minIdx, 2} = [trackAssignments{minIdx, 2};
+                                                   d];
+                    if size(trackAssignments{minIdx, 2}, 1) <= 4
+                        nAssignedTracks = nAssignedTracks + 1;
+                    end
+
+                else
+                    ghostAssignments{minIdx-length(tracks),1} = [ghostAssignments{minIdx-length(tracks), 1};
+                                                               detections(d,:)];
+                    ghostAssignments{minIdx-length(tracks),2} = [ghostAssignments{minIdx-length(tracks), 2};
+                                                                 d];
+                    if size(ghostAssignments{minIdx-length(tracks), 2}, 1) <= 4
+                        nAssignedGhosts = nAssignedGhosts + 1;
+                    end
+                end
+            else
+                unassignedDetections(end+1, 1) = d;
+            end
+            
+        end
+        
+        assignedTracks = zeros(nAssignedTracks, 2);
+        unassignedTracks = zeros(length(tracks)*nMarkers-nAssignedTracks, 1);
+        
+        assignedTrackIdx = 1;
+        unassignedTrackIdx = 1;
+        for i=1:size(trackAssignments,1)
+            dets = trackAssignments{i, 1};
+            nDets = size(dets,1);
+            detsIdx = trackAssignments{i, 2};
+            % If more than 4 dets are nearby a bird, use HA to select best
+            % 4 dets
+            if nDets > 4
+                expectedMarkerLocations = measFuncNonHomogenous(tracks(i).kalmanFilter.mu, tracks(i).kalmanFilter.pattern);
+                asg = munkers(pdist2(expectedMarkerLocations, dets));
+                detsIdx = detsIdx(asg');
+                nDets = 4;
+            end
+               assignedTracks(assignedTrackIdx:assignedTrackIdx+nDets-1, 1) = i*nMarkers;
+               assignedTracks(assignedTrackIdx:assignedTrackIdx+nDets-1, 2) = detsIdx;
+               assignedTrackIdx = assignedTrackIdx + nDets;
+               unassignedTracks(unassignedTrackIdx:unassignedTrackIdx+4-nDets-1) = i*nMarkers;
+               unassignedTrackIdx = unassignedTrackIdx + 4 - nDets;            
+            
+        end
+        assignedGhosts = zeros(nAssignedGhosts, 1);
+        unassignedGhosts = zeros(length(ghostTracks)*nMarkers-nAssignedGhosts, 1);
+        assignedGhostsIdx = 1;
+        unassignedGhostsIdx = 1;
+        for i=1:size(ghostAssignments,1)
+            dets = ghostAssignments{i, 1};
+            nDets = size(dets,1);
+            detsIdx = ghostAssignments{i, 2};
+            % If more than 4 dets are nearby a bird, use HA to select best
+            % 4 dets
+            if nDets > 4
+                [~, asg] = mink(pdist2(ghostTracks(i).kalmanFilter.x(1:3)', dets), 4);
+                detsIdx = detsIdx(asg');
+                nDets = 4;
+            end
+               assignedGhosts(assignedGhostsIdx:assignedGhostsIdx+nDets-1, 1) = i*nMarkers+length(tracks)*nMarkers;
+               assignedGhosts(assignedGhostsIdx:assignedGhostsIdx+nDets-1, 2) = detsIdx;
+               assignedGhostsIdx = assignedGhostsIdx + nDets;
+               unassignedGhosts(unassignedGhostsIdx:unassignedGhostsIdx+4-nDets-1) = i*nMarkers+length(tracks)*nMarkers;
+               unassignedGhostsIdx = unassignedGhostsIdx + 4 - nDets;            
+        end
     end
 
 
@@ -309,13 +405,13 @@ end
             s = tracks(currentTrackIdx).kalmanFilter;
             if strcmp(model, 'LieGroup')
                 s.z = reshape(detectedMarkersForCurrentTrack', [], 1);
-                [tracks(currentTrackIdx).kalmanFilter, rejectedDetections] = correctKalman(s, 1, tracks(currentTrackIdx).kalmanParams, 0, hyperParams, tracks(currentTrackIdx).age, params.motionType);
+                [tracks(currentTrackIdx).kalmanFilter, rejectedDetections] = correctKalman(s, 1, tracks(currentTrackIdx).kalmanParams, 0, hyperParams, tracks(currentTrackIdx).age, params.motionType, currentTrackIdx);
                 allRejectedDetections(end + 1: end + size(rejectedDetections, 1), :) = rejectedDetections;
-                if norm( s.mu.v ) > 35
+                if s.mu.motionModel > 0 && norm( s.mu.v ) > 35
                     tracks(currentTrackIdx).kalmanFilter.flying = min(s.flying + 2, 10);
-                elseif norm( s.mu.v ) > 22.5
+                elseif s.mu.motionModel > 0 && norm( s.mu.v ) > 22.5
                     tracks(currentTrackIdx).kalmanFilter.flying = min(s.flying + 1, 10);
-                elseif norm( s.mu.v ) < 10
+                elseif s.mu.motionModel > 0 && norm( s.mu.v ) < 10
                     tracks(currentTrackIdx).kalmanFilter.flying = max(-1, s.flying -2);
                 end
             else
@@ -327,9 +423,16 @@ end
             % Update track's age.
             tracks(currentTrackIdx).age = tracks(currentTrackIdx).age + 1;
             
-            % Update visibility.
+            % Book keeping: Update visibility, latest positions, an other
+            % 'statistic'
             tracks(currentTrackIdx).totalVisibleCount = tracks(currentTrackIdx).totalVisibleCount + 1;
             tracks(currentTrackIdx).consecutiveInvisibleCount = tracks(currentTrackIdx).kalmanFilter.consecutiveInvisibleCount;
+            tracks(currentTrackIdx).kalmanFilter.framesInNewMotionModel = tracks(currentTrackIdx).kalmanFilter.framesInNewMotionModel + 1;
+            tracks(currentTrackIdx).kalmanFilter.latest5pos(tracks(currentTrackIdx).kalmanFilter.latestPosIdx+1, :) = ...
+                tracks(currentTrackIdx).kalmanFilter.mu.X(1:3, 4);
+            tracks(currentTrackIdx).kalmanFilter.latestPosIdx = mod(tracks(currentTrackIdx).kalmanFilter.latestPosIdx + 1, 5);
+            tracks(currentTrackIdx).kalmanFilter.lastSeen = tracks(currentTrackIdx).kalmanFilter.mu.X(1:3, 4);
+            tracks(currentTrackIdx).kalmanFilter.lastVisibleFrame = t;
         end
         
         
@@ -348,7 +451,7 @@ end
         % pattern can be used to safely initialize a new track
         % Determine these patterns.
         safePatternsBool = zeros(length(patterns), 1);
-        potentialReInit = unassignedPatterns | ([tracks(:).consecutiveInvisibleCount] > 5)';
+        potentialReInit = unassignedPatterns | ([tracks(:).consecutiveInvisibleCount] > 10)';
         assignedPatternsIdx = find(~potentialReInit);
         unassignedPatternsIdx = find(potentialReInit);
         for jj=1:length(unassignedPatternsIdx)
@@ -374,7 +477,7 @@ end
             % if 2 detections assigned: only run pattern_matching if all
             % simialr patterns are already assigned, in order to avoid
             % id-switches
-            if nAssgnDets >= 3
+            if nAssgnDets >= 3 %&& ~(sum(potentialReInit) == 1 + sum(abs(patterns)>=1000, 'all'))
                 %if nAssgnDets == 3
                 %    unassignedandSafeIdx = find(unassignedPatterns & safePatternsBool);
                 %else
@@ -397,22 +500,38 @@ end
                    translations(j, :) = translation;
                 end
 
-                [minCost, minIdx] = min(matchingCosts);
-                patternIdx = unassignedandSafeIdx(minIdx);
-                if ~isempty(minCost) && ...
-                    (  ( minCost < params.initThreshold4 && nAssgnDets == 4 )  || ...
-                        ( minCost < params.initThreshold && nAssgnDets == 3 && safePatternsBool(patternIdx)==1)  ||...
-                        ( minCost < params.initThreshold/2 && nAssgnDets == 3) ...
+                [minCost2, minIdx2] = mink(matchingCosts, 2);
+                costDiff = minCost2(2)-minCost2(1);
+                patternIdx = unassignedandSafeIdx(minIdx2(1));
+                if ~isempty(minCost2(1)) && ...
+                    (  ( minCost2(1) < params.initThreshold4 && nAssgnDets == 4 && costDiff > 1)  || ...
+                        ( minCost2(1) < params.initThreshold && nAssgnDets == 3 && safePatternsBool(patternIdx)==1 && costDiff > 2) ||... 
+                        ( minCost2(1) < 0.2 && nAssgnDets == 3 && costDiff > 2) ...
                     )
-                    %if nAssgnDets == 3
-                    %    nAssgnDets
-                    %end
+                    if nAssgnDets == 3
+                        minCost2(1)
+                    end
+                    if patternIdx == 1 || patternIdx == 2 || patternIdx == 4
+                       patternIdx 
+                    end
                     pattern = squeeze(patterns(patternIdx, :, :));
-                    newTrack = createLGEKFtrack(squeeze(rotations(minIdx, :, :)), ...
-                                squeeze(translations(minIdx, :))', MSE, patternIdx, pattern, patternNames{patternIdx}, params);
+                    if isfield(tracks(patternIdx).kalmanFilter, 'mu')
+                        newTrack = createLGEKFtrack(squeeze(rotations(minIdx2(1), :, :)), ...
+                                    squeeze(translations(minIdx2(1), :))', MSE, patternIdx, ...
+                                    pattern, patternNames{patternIdx}, params, ...
+                                    tracks(patternIdx).kalmanFilter.mu.motionModel, ...
+                                    ghostTracks(currentGhostTrackIdx).kalmanFilter);
+                    else
+                        newTrack = createLGEKFtrack(squeeze(rotations(minIdx2(1), :, :)), ...
+                                squeeze(translations(minIdx2(1), :))', MSE, ...
+                                patternIdx, pattern, patternNames{patternIdx}, ...
+                                params, -1, ...
+                                ghostTracks(currentGhostTrackIdx).kalmanFilter);
+                    end
                     tracks(patternIdx) = newTrack;
                     unassignedPatterns(patternIdx) = 0;
                     potentialReInit(patternIdx) = 0;
+                    freshInits(patternIdx) = true;
                     % mark ghosst bird as deleted and delete after loop
                     deletedGhostTracks(currentGhostTrackIdx) = 1;
                     % continue loop, as we don't have to update position of
@@ -420,6 +539,40 @@ end
                     continue;
 
                 end
+                %TODO fix to regular case!!!!!!!!!!
+%             elseif ( sum(potentialReInit) == 1 + sum(abs(patterns)>=1000, 'all') && ...
+%                          ghostTracks(currentGhostTrackIdx).trustworthyness > hyperParams.minTrustworthyness )%if all but 1 bird are intialized we can initialize even with 2 or less dets
+%                 for j=1:size(potentialReInit)
+%                     if ( potentialReInit(j) == 1 && ...
+%                          ~any(abs(patterns(j, :, :)) >= 1000, 'all') && ...
+%                          ~(abs(t-tracks(j).kalmanFilter.lastVisibleFrame) < 15 && ...
+%                            norm(tracks(j).kalmanFilter.lastSeen - mean(detectedMarkersForCurrentGhostTrack, 1)') > 150)...
+%                      )
+%                         pattern = squeeze(patterns(j, :, :));
+%                         if isfield(tracks(j).kalmanFilter, 'mu')
+%                             newTrack = createLGEKFtrack(eye(3), ...
+%                                         mean(detectedMarkersForCurrentGhostTrack, 1)', 5, j, ...
+%                                         pattern, patternNames{j}, ...
+%                                         params, tracks(j).kalmanFilter.mu.motionModel, ...
+%                                         ghostTracks(currentGhostTrackIdx).kalmanFilter);
+%                         else
+%                             newTrack = createLGEKFtrack(eye(3), ...
+%                                         mean(detectedMarkersForCurrentGhostTrack, 1)', 5, j, ...
+%                                         pattern, patternNames{j}, ...
+%                                         params, -1, ...
+%                                         ghostTracks(currentGhostTrackIdx).kalmanFilter);
+%                         end
+%                         tracks(j) = newTrack;
+%                         unassignedPatterns(j) = 0;
+%                         potentialReInit(j) = 0;
+%                         % mark ghosst bird as deleted and delete after loop
+%                         deletedGhostTracks(currentGhostTrackIdx) = 1;
+%                         % continue loop, as we don't have to update position of
+%                         % ghost bird
+%                         break;
+%                     end
+%                 end
+%                 continue;
             end
              
             
@@ -434,23 +587,49 @@ end
              detectedMarkersForCurrentGhostTrack = ... 
                  detectedMarkersForCurrentGhostTrack(distToGhost' <= maxDistToGhost, :);
              
-            if size(detectedMarkersForCurrentGhostTrack, 1) > 0
-           
-                % Correct the estimate of the object's location
+            % Correct the estimate of the object's location
                 % using the new detection.
+            if size(detectedMarkersForCurrentGhostTrack, 1) > 0
                 kF = ghostTracks(currentGhostTrackIdx).kalmanFilter;
+                %TODO: check to switch motion model
+                if kF.motionModel == 0
+                    deltas = kF.latest5pos - [kF.latest5pos(end, :); kF.latest5pos(1:end-1, :)];
+                    deltas(kF.latestPosIdx+1, :) = [];
+                    delta = norm(sum(deltas, 1));
+                    dists = pdist2(detectedMarkersForCurrentGhostTrack, kF.x(1:3)');
+                    if mean(dists) > 20 && delta > 45 && kF.motionModel == 0 && kF.framesInMotionModel > 15
+                        %switch to MotionModel 2
+                        kF = switchGhostMM(kF, 2, params);
+                        ghostTracks(currentGhostTrackIdx).kalmanFilter = kF;
+                    end
+                elseif kF.motionModel == 2
+                    if norm(kF.x(4:6)) < 2.0 && kF.framesInMotionModel > 1
+                        %switch to MotionModel 0
+                        kF = switchGhostMM(kF, 0, params);
+                        ghostTracks(currentGhostTrackIdx).kalmanFilter = kF;
+                    end
+                end
+                
+                
                 numDetsGhost = size(detectedMarkersForCurrentGhostTrack, 1);
                 % detections are average of assigned observations
                 z = mean(detectedMarkersForCurrentGhostTrack, 1)';
                 % do kalman correct equations
-                y = z - kF.H * kF.x;
-                S = kF.H * kF.P * kF.H' + kF.R/numDetsGhost;
-                K = kF.P * kF.H' / S;
-                kF.x = kF.x + K*y;
-                if any(isnan(kF.x))
-                    kF.x
+                if kF.motionModel == 2
+                    y = z - kF.H * kF.x;
+                    S = kF.H * kF.P * kF.H' + kF.R/numDetsGhost;
+                    K = kF.P * kF.H' / S;
+                    kF.x = kF.x + K*y;
+                    kF.P = (eye(9) - K*kF.H)*kF.P;
+                elseif kF.motionModel == 0
+                    y = z - kF.H * kF.x;
+                    S = kF.H * kF.P * kF.H' + kF.R/numDetsGhost;
+                    K = kF.P * kF.H' / S;
+                    kF.x = kF.x + K*y;
+                    kF.P = (eye(3) - K*kF.H)*kF.P;
+                else
+                   'updateGhost unexpected motion model!' 
                 end
-                kF.P = (eye(3) - K*kF.H)*kF.P;
 
                 ghostTracks(currentGhostTrackIdx).kalmanFilter = kF;
 
@@ -460,11 +639,24 @@ end
                 % Update visibility.
                 ghostTracks(currentGhostTrackIdx).totalVisibleCount = ghostTracks(currentGhostTrackIdx).totalVisibleCount + 1;
                 ghostTracks(currentGhostTrackIdx).consecutiveInvisibleCount = 0;
+                ghostTracks(currentGhostTrackIdx).trustworthyness = ghostTracks(currentGhostTrackIdx).trustworthyness + numDetsGhost.^2-1;
+                
+                ghostTracks(currentGhostTrackIdx).kalmanFilter.latest5pos(ghostTracks(currentGhostTrackIdx).kalmanFilter.latestPosIdx+1, :) = ...
+                                       ghostTracks(currentGhostTrackIdx).kalmanFilter.x(1:3);
+                ghostTracks(currentGhostTrackIdx).kalmanFilter.latestPosIdx = mod(ghostTracks(currentGhostTrackIdx).kalmanFilter.latestPosIdx + 1, 5);
+                ghostTracks(currentGhostTrackIdx).kalmanFilter.framesInMotionModel = ghostTracks(currentGhostTrackIdx).kalmanFilter.framesInMotionModel + 1;
             else
                 % If detection wasn't assigned to ghost after all
                 % increase consecutive invisible count
                 ghostTracks(currentGhostTrackIdx).consecutiveInvisibleCount = ghostTracks(currentGhostTrackIdx).consecutiveInvisibleCount + 1;
                 ghostTracks(currentGhostTrackIdx).age = ghostTracks(currentGhostTrackIdx).age + 1;
+                ghostTracks(currentGhostTrackIdx).trustworthyness = ghostTracks(currentGhostTrackIdx).trustworthyness - 2;
+            
+                ghostTracks(currentGhostTrackIdx).kalmanFilter.latest5pos(ghostTracks(currentGhostTrackIdx).kalmanFilter.latestPosIdx+1, :) = ...
+                                       ghostTracks(currentGhostTrackIdx).kalmanFilter.x(1:3);
+                ghostTracks(currentGhostTrackIdx).kalmanFilter.latestPosIdx = mod(ghostTracks(currentGhostTrackIdx).kalmanFilter.latestPosIdx + 1, 5);
+                ghostTracks(currentGhostTrackIdx).kalmanFilter.framesInMotionModel = ghostTracks(currentGhostTrackIdx).kalmanFilter.framesInMotionModel + 1;
+
             end
         end  
         
@@ -576,11 +768,16 @@ end
                 tracks(unassignedTrackIdx).age = tracks(unassignedTrackIdx).age + 1;
                 tracks(unassignedTrackIdx).kalmanFilter.consecutiveInvisibleCount = tracks(unassignedTrackIdx).kalmanFilter.consecutiveInvisibleCount + 1;
                 tracks(unassignedTrackIdx).consecutiveInvisibleCount = tracks(unassignedTrackIdx).kalmanFilter.consecutiveInvisibleCount;
+                tracks(unassignedTrackIdx).kalmanFilter.framesInNewMotionModel = tracks(unassignedTrackIdx).kalmanFilter.framesInNewMotionModel + 1;
+                tracks(unassignedTrackIdx).kalmanFilter.latest5pos(tracks(unassignedTrackIdx).kalmanFilter.latestPosIdx+1, :) = ...
+                    tracks(unassignedTrackIdx).kalmanFilter.mu.X(1:3, 4);
+                tracks(unassignedTrackIdx).kalmanFilter.latestPosIdx = mod(tracks(unassignedTrackIdx).kalmanFilter.latestPosIdx + 1, 5);
+        
             end
         end
         
-        assignedGhostTracks(:, 1) = assignedGhostTracks(:, 1) - length(tracks)*nMarkers;
-        assignedGhostTracks = double(assignedGhostTracks);
+        %assignedGhostTracks(:, 1) = assignedGhostTracks(:, 1) - length(tracks)*nMarkers;
+        %assignedGhostTracks = double(assignedGhostTracks);
         allAssignedGhostTracksIdx = unique(floor((assignedGhostTracks(:,1)-1)/nMarkers) + 1);
         unassignedGhostTracks(:) = unassignedGhostTracks(:) - length(tracks)*nMarkers;
         unassignedGhostTracks = double(unassignedGhostTracks);
@@ -593,6 +790,13 @@ end
             if ghostTracks(unassignedGhostTrackIdx).age > 0
                 ghostTracks(unassignedGhostTrackIdx).age = ghostTracks(unassignedGhostTrackIdx).age + 1;
                 ghostTracks(unassignedGhostTrackIdx).consecutiveInvisibleCount = ghostTracks(unassignedGhostTrackIdx).consecutiveInvisibleCount + 1;
+                ghostTracks(unassignedGhostTrackIdx).trustworthyness = max(0, ghostTracks(unassignedGhostTrackIdx).trustworthyness - 2);
+            
+                ghostTracks(unassignedGhostTrackIdx).kalmanFilter.latest5pos(ghostTracks(unassignedGhostTrackIdx).kalmanFilter.latestPosIdx+1, :) = ...
+                                       ghostTracks(unassignedGhostTrackIdx).kalmanFilter.x(1:3);
+                ghostTracks(unassignedGhostTrackIdx).kalmanFilter.latestPosIdx = mod(ghostTracks(unassignedGhostTrackIdx).kalmanFilter.latestPosIdx + 1, 5);
+                ghostTracks(unassignedGhostTrackIdx).kalmanFilter.framesInMotionModel = ghostTracks(unassignedGhostTrackIdx).kalmanFilter.framesInMotionModel + 1;
+
             end
         end
     end
@@ -612,16 +816,71 @@ end
         visibilityFraction = 0.5;
         
         ages = [tracks(:).age];
-
-        % Find the indices of 'lost' tracks.
-        lostIdxBool = ([tracks(:).consecutiveInvisibleCount] >= invisibleForTooLong) & (ages > 0);
+        
+        %TODO: do the same for ghost birds
+        % delte tracks that drift towards other birds, because their own
+        % detections vanished
+        nTracks = length(tracks);
+        tooCloseBirds = zeros(nTracks,1);
+        tooClose = 40;
+        positions = NaN*zeros(nTracks,3);
+        for i=1:nTracks
+           if tracks(i).age > 0
+              positions(i,:) = tracks(i).kalmanFilter.mu.X(1:3, 4); 
+           end
+        end
+        distsBirds = triu(squareform(pdist(positions)));
+        [rows, cols] = ind2sub(size(distsBirds), find(distsBirds > 0 & distsBirds < tooClose));
+        
+        for r =1:length(rows)
+            bird1Idx = rows(r);
+            bird2Idx = cols(r);
+            s1 = tracks(bird1Idx).kalmanFilter;
+            s2 = tracks(bird2Idx).kalmanFilter;
+            if tracks(bird1Idx).kalmanFilter.mu.motionModel == 0 && ...
+                    tracks(bird2Idx).kalmanFilter.mu.motionModel == 0
+                deltas1 = s1.latest5pos - [s1.latest5pos(end, :); s1.latest5pos(1:end-1, :)];
+                deltas1(s1.latestPosIdx+1, :) = [];
+                delta1 = sum(norm(deltas1, 1));
+                deltas2 = s2.latest5pos - [s2.latest5pos(end, :); s2.latest5pos(1:end-1, :)];
+                deltas2(s2.latestPosIdx+1, :) = [];
+                delta2 = sum(norm(deltas2, 1));
+                
+                if delta1 > delta2
+                    tooCloseBirds(bird1Idx) = 1;
+                else
+                    tooCloseBirds(bird2Idx) = 1;
+                end
+            elseif tracks(bird1Idx).kalmanFilter.mu.motionModel == 2 && ...
+                    tracks(bird2Idx).kalmanFilter.mu.motionModel == 0
+                tooCloseBirds(bird1Idx) = 1;
+            elseif tracks(bird1Idx).kalmanFilter.mu.motionModel == 0 && ...
+                    tracks(bird2Idx).kalmanFilter.mu.motionModel == 2
+                tooCloseBirds(bird2Idx) = 1;
+            elseif tracks(bird1Idx).kalmanFilter.mu.motionModel == 2 && ...
+                    tracks(bird2Idx).kalmanFilter.mu.motionModel == 2
+                if norm(tracks(bird1Idx).kalmanFilter.mu) > norm(tracks(bird2Idx).kalmanFilter.mu)
+                    tooCloseBirds(bird1Idx) = 1;
+                else
+                    tooCloseBirds(bird2Idx) = 1;
+                end
+            end
+        end
+        
+        
+                % Find the indices of 'lost' tracks.
+        lostIdxBool = ( [tracks(:).consecutiveInvisibleCount] >= invisibleForTooLong | ... 
+                        tooCloseBirds' ) & (ages > 0);
         lostIdx = find(lostIdxBool);
         if ~isempty(lostIdx)
             for i=1:length(lostIdx)
                 %mark track as lost/pattern as unassigned
                 unassignedPatterns(lostIdx(i)) = 1;
                 tracks(lostIdx(i)).age = 0;
-                
+                tracks(lostIdx(i)).kalmanFilter.framesInNewMotionModel = 5;
+                tracks(lostIdx(i)).kalmanFilter.latest5pos = zeros(5,3);
+                tracks(lostIdx(i)).kalmanFilter.latestPosIdx = 0;
+        
                 estimatedPositions(lostIdx(i), max(1,t-invisibleForTooLong):t-1, :) = NaN;
                 estimatedQuats(lostIdx(i), max(1, t-invisibleForTooLong):t-1, :) = NaN;
             end
@@ -631,7 +890,7 @@ end
         ages = [ghostTracks(:).age];
         totalVisibleCounts = [ghostTracks(:).totalVisibleCount];
         visibility = totalVisibleCounts ./ ages;
-        lostGhostsIdx = ( ages < ageThreshold & visibility < visibilityFraction) | [ghostTracks(:).consecutiveInvisibleCount] >= invisibleForTooLongGhosts;
+        lostGhostsIdx = [ghostTracks(:).consecutiveInvisibleCount] >= invisibleForTooLongGhosts;% | ( ages < ageThreshold & visibility < visibilityFraction)
         lostGhostsIdx = lostGhostsIdx | deletedGhostTracks';
         ghostTracks(lostGhostsIdx == 1) = [];        
     end
@@ -824,4 +1083,3 @@ end
     end
 
 end
-
