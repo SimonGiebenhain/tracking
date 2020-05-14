@@ -1,6 +1,6 @@
 %% Multi Object Tracking
 
-function [estimatedPositions, estimatedQuats] = ownMOTbackward(D, patterns, snapshots,shouldShowTruth, hyperParams)
+function [estimatedPositions, estimatedQuats] = ownMOTbackward(D, patterns, patternNames, snapshots,shouldShowTruth, hyperParams)
 
 nMarkers = 4;
 
@@ -8,6 +8,12 @@ nMarkers = 4;
 
 maxPos = squeeze(max(D,[],[1 2]));
 minPos = squeeze(min(D,[],[1 2]));
+
+inverseIdx = sort(1:T, 'descend');
+D = D(inverseIdx, :, :);
+
+inverseSnapshotIdx = sort(1:length(snapshots), 'descend');
+snapshots = snapshots(inverseSnapshotIdx);
 
 processNoise.position = hyperParams.posNoise;
 processNoise.positionBrownian = hyperParams.posNoiseBrownian;
@@ -27,7 +33,8 @@ params.initialNoise = initialNoise;
 params.model = model;
 params.measurementNoise = measurementNoise;
 params.processNoise = processNoise;
-params.quatMotionType = quatMotionType;
+params.quatMotionType = 'brownian';
+
 params.motionType = 'constAcc';
 
 params.minDistToBird = hyperParams.minDistToBird;
@@ -39,11 +46,10 @@ params.initMotionModel = 0;
 
 similarPairs = getSimilarPatterns(patterns, hyperParams.patternSimilarityThreshold);
 
+nObjects = length(patterns);
 unassignedPatterns = ones(nObjects, 1);
 [tracks, ghostTracks] = initializeTracks();
-initT = snapshots{1}.t;
-
-
+t = T - snapshots{1}.t + 1;
 
 markersForVisualization = cell(1,1);
 ghostBirdsVis = cell(1,1);
@@ -68,7 +74,7 @@ estimatedPositions = zeros(nObjects, T, 3);
 estimatedQuats = zeros(nObjects, T, 4);
 
 
-for t = 1:T
+while t < T
     detections = squeeze(D(t,:,:));
     detections = reshape(detections(~isnan(detections)),[],dim);
     
@@ -82,8 +88,7 @@ for t = 1:T
     unusedDets = [detections(unassignedDetections, :); rejectedDetections];
 
     if sum(unassignedPatterns) > 0 &&  length(unusedDets) > 1
-        [tracks, ghostTracks, unassignedPatterns, extraFreshInits] = createNewTracks(unusedDets, unassignedPatterns, tracks, patterns, params, patternNames, similarPairs, ghostTracks);
-        freshInits = freshInits | extraFreshInits;
+        [tracks, ghostTracks, unassignedPatterns] = createNewTracks(unusedDets, unassignedPatterns, tracks, patterns, params, patternNames, similarPairs, ghostTracks);
     end
     t
     if t == 686
@@ -131,6 +136,7 @@ for t = 1:T
     end
     
     % Check whether to skip to next snapshot
+    t=t+1;
 end
 
 
@@ -139,21 +145,23 @@ end
     function [tracks, ghostTracks] = initializeTracks()
         tracks = snapshots{1}.tracks;
         for i=1:length(tracks)
-           tracks(i).age = 1;
-           tracks(i).totalVisibleCount = 0;
-           tracks(i).consecutiveInvisibleCount = 0;
-           
-           tracks(i).kalmanFilter.consecutiveInvisibleCount = 0;
-           tracks(i).kalmanFilter.framesInMotionModel = 15;
-           
-           tracks(i).kalmanFilter.latest5pos = zeros(5, 3);
-           tracks(i).kalmanFilter.latest5pos(1, :) = tracks(i).kalmanFilter.mu.X(1:3, 4);
-           tracks(i).kalmanFilter.latestPosIdx = 1;
-           
-           if tracks(i).kalmanFilter.mu.motionModel == 2
-              tracks(i).kalmanFilter.mu.v = -tracks(i).kalmanFilter.mu.v;
-              tracks(i).kalmanFilter.mu.a = -tracks(i).kalmanFilter.mu.a;
-           end 
+            if tracks(i).age > 0
+                tracks(i).age = 1;
+                tracks(i).totalVisibleCount = 0;
+                tracks(i).consecutiveInvisibleCount = 0;
+                
+                tracks(i).kalmanFilter.consecutiveInvisibleCount = 0;
+                tracks(i).kalmanFilter.framesInMotionModel = 15;
+                
+                tracks(i).kalmanFilter.latest5pos = zeros(5, 3);
+                tracks(i).kalmanFilter.latest5pos(1, :) = tracks(i).kalmanFilter.mu.X(1:3, 4);
+                tracks(i).kalmanFilter.latestPosIdx = 1;
+                
+                if tracks(i).kalmanFilter.mu.motionModel == 2
+                    tracks(i).kalmanFilter.mu.v = -tracks(i).kalmanFilter.mu.v;
+                    tracks(i).kalmanFilter.mu.a = -tracks(i).kalmanFilter.mu.a;
+                end
+            end
         end
         ghostTracks = snapshots{1}.ghostTracks;
         for i=1:length(ghostTracks)

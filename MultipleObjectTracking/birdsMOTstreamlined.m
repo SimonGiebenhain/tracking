@@ -31,8 +31,6 @@ fprintf('Loaded data successfully!\n')
 
 %patterns(7,:,1) = 1000;
 %patterns(11, :, 1) = 1000;
-
-
     
     
 %% test MOT
@@ -112,10 +110,13 @@ beginningFrame = 1;%4000;%7800+ blau macht sehr komische sachen;5300 %+ 1000 jit
 endFrame = 5000;%size(formattedData,1);
 stdHyperParams.visualizeTracking = 1;
 tic
-[estimatedPositions, estimatedQuats, positionVariance, rotationVariance] = ownMOT(formattedData(beginningFrame:endFrame,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
+[estimatedPositions, estimatedQuats, positionVariance, rotationVariance, snapshots] = ownMOT(formattedData(beginningFrame:endFrame,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
 %[estimatedPositions, estimatedQuats] = ownMOT(formattedData(1000:end,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
 toc
 %profile viewer
+
+%%
+[estimatedPositionsBackward, estimatedQuatsBackward] = ownMOTbackward(formattedData(beginningFrame:endFrame,:,:), patterns, patternNames, snapshots, 0, stdHyperParams);
 
 %%
 
