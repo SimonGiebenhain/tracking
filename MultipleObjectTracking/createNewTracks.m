@@ -1,6 +1,8 @@
-function [tracks, ghostTracks, unassignedPatternsReturn] = createNewTracks(detections, unassignedPatternsReturn, tracks, patterns, params, patternNames, similarPairs, ghostTracks)
+function [tracks, ghostTracks, unassignedPatternsReturn, freshInits] = createNewTracks(detections, unassignedPatternsReturn, tracks, patterns, params, patternNames, similarPairs, ghostTracks)
 %CREATENEWTRACKS Summary of this function goes here
 %   Detailed explanation goes here
+
+freshInits = zeros(length(tracks),1);
 
 if exist('ghostTracks','var') ~= 1
     kF = constructGhostKF([0 0 0], params);
@@ -117,6 +119,7 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
                     
                     unassignedPatterns(patternIdx) = 0;
                     unassignedPatternsReturn(patternIdx) = 0;
+                    freshInits(patternIdx) = true;
                     
                 else
                     quat = rotm2quat( squeeze(rots(specificPatternIdx, :,:)) );
@@ -158,6 +161,8 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
                     %nextId = nextId + 1;
                     unassignedPatterns(patternIdx) = 0;
                     unassignedPatternsReturn(patternIdx) = 0;
+                    
+                    freshInits(patternIdx) = true;
                 end
             end
         end
@@ -239,6 +244,7 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
                         tracks(minPatIdx) = newTrack;
                         unassignedPatterns(minPatIdx) = 0;
                         unassignedPatternsReturn(minPatIdx) = 0;
+                        freshInits(minPatIdx) = true;
                         deletedClusters3(c) = 1;
                     end
                 end

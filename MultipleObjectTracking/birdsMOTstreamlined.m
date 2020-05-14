@@ -108,13 +108,15 @@ quatMotionType = 'brownian';
 fprintf('Starting to track!\n')
 
 %profile on
-beginningFrame = 4000;%4000;%7800+ blau macht sehr komische sachen;5300 %+ 1000 jittery;%%2000+4000;
-endFrame = size(formattedData,1);
+beginningFrame = 1;%4000;%7800+ blau macht sehr komische sachen;5300 %+ 1000 jittery;%%2000+4000;
+endFrame = 5000;%size(formattedData,1);
 stdHyperParams.visualizeTracking = 1;
 tic
 [estimatedPositions, estimatedQuats, positionVariance, rotationVariance] = ownMOT(formattedData(beginningFrame:endFrame,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
 %[estimatedPositions, estimatedQuats] = ownMOT(formattedData(1000:end,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
 toc
+%profile viewer
+
 %%
 
 reverseIdx = sort(beginningFrame:endFrame, 'descend');
@@ -146,7 +148,7 @@ resultsFilename = [filePrefix '_RESULTS.csv'];
 exportToCSV(resultsFilename, estimatedPositions, estimatedQuats, beginningFrame, patternNames, 1, 0);
 
 %%
-vizParams.vizSpeed = 10;
+vizParams.vizSpeed = 2;
 vizParams.keepOldTrajectory = 0;
 vizParams.vizHistoryLength = 500;
 vizParams.startFrame = 1;

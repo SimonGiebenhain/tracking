@@ -19,7 +19,7 @@ if strcmp(s.type, 'LG-EKF')
     detections = reshape(s.z, dim, [])';
     nDets = size(detections, 1);
     expectedPositions = measFuncNonHomogenous(s.mu, s.pattern);
-    dists = min(pdist2(detections, expectedPositions), [], 2);
+    [dists, asg] = min(pdist2(detections, expectedPositions), [], 2);
     ds = detections - s.mu.X(1:3, 4)';
     if s.mu.motionModel == 0
         vNorm = 0;
@@ -52,12 +52,14 @@ else
     aNorm = sqrt(sum(s.x(2*dim+1:3*dim).^2));
     
 end
+rejectedDetectionsIdx = zeros(nDets, 1);
 if age > 5 && s.mu.motionModel == 0 && hyperParams.doFPFiltering == 1 && ~skipFPFiltering
     threshold = hyperParams.minAssignmentThreshold + (vNorm/3)^2;% + (aNorm)^2;
     if nnz(dists > threshold) < nDets %|| (s.flying < 1 && s.consecutiveInvisibleCount == 0 && nnz(dists > threshold) == 1)
-        rejectedDetections = detections(dists > threshold, :);
-        ds(dists > threshold, :) = [];
-        detections(dists > threshold, :) = [];
+        rejectedDetectionsIdx = dists > threshold;
+        rejectedDetections = detections(rejectedDetectionsIdx, :);
+        ds(rejectedDetectionsIdx, :) = [];
+        detections(rejectedDetectionsIdx, :) = [];
     end
 end
 
@@ -67,7 +69,7 @@ delta = norm(sum(deltas, 1));
 
 
 if s.mu.motionModel == 0
-    dists = min(pdist2(detections, expectedPositions), [], 2);
+    %dists = min(pdist2(detections, expectedPositions), [], 2);
     if mean(dists) > 20 && delta > 30 && s.mu.motionModel == 0 && s.framesInNewMotionModel > 10
             trackIdx
             vEst = norm( mean(detections) - mean(expectedPositions) );
@@ -101,7 +103,19 @@ if size(ds, 1) >= 1
         end
     else
         if strcmp(s.type, 'LG-EKF')
-            [p, lostDs, FPs, certainty, method] = match_patterns(pattern, ds, 'final4', s.mu.X(1:3,1:3), hyperParams);
+            %TODO if fit is already decent, don't do match_patterns!
+            % Check if predicted marker positions are good fit already
+            asg = asg(rejectedDetectionsIdx == 0);
+            mse = mean(sqrt(sum(( detections - expectedPositions(asg, :) ).^2, 2)));
+            if mse < 3
+                FPs = -1;
+                lostDs = zeros(0,1);
+                certainty = 2*mse;
+                p = asg';
+                method = 'final4';
+            else
+                [p, lostDs, FPs, certainty, method] = match_patterns(pattern, ds, 'final4', s.mu.X(1:3,1:3), hyperParams);
+            end
         else
             if strcmp(motionType, 'constAcc')
                 quatIdx = 3*dim+1:3*dim+4;

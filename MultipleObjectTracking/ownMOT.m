@@ -6,7 +6,7 @@
 % TODO
 % Explanation goes here
 
-function [estimatedPositions, estimatedQuats, positionVariance, rotationVariance, markerAssignemnts, falsePositives] = ownMOT(D, patterns, patternNames, useVICONinit, initialStates, nObjects, shouldShowTruth, trueTrajectory, trueOrientation, quatMotionType, hyperParams)
+function [estimatedPositions, estimatedQuats, positionVariance, rotationVariance, snapshots] = ownMOT(D, patterns, patternNames, useVICONinit, initialStates, nObjects, shouldShowTruth, trueTrajectory, trueOrientation, quatMotionType, hyperParams)
 % OWNMOT does multi object tracking
 %   @D all observations/detections in the format:
 %       T x maxDetectionsPerFrame x 3
@@ -96,29 +96,34 @@ end
 
 estimatedPositions = zeros(nObjects, T, 3);
 estimatedQuats = zeros(nObjects, T, 4);
-markerAssignemnts = zeros(nObjects, T, nMarkers);
-falsePositives = zeros(T, 1);
 positionVariance = zeros(nObjects, T);
 rotationVariance = zeros(nObjects, T);
 
+snapshots = {};
+snapshotIdx = 1;
+freshInitis = zeros(nObjects, 1);
+
 for t = 1:T
+    freshInits = zeros(nObjects,1);
     %tic
     detections = squeeze(D(t,:,:));
     detections = reshape(detections(~isnan(detections)),[],dim);
     
     predictNewLocationsOfTracks();
     [assignedTracks, unassignedTracks, assignedGhostTracks, unassignedGhostTracks, unassignedDetections] = detectionToTrackAssignment();
-    
+    %[assignedTracks, unassignedTracks, assignedGhostTracks, unassignedGhostTracks, unassignedDetections] = detectionToTrackAssignment();
+
     [deletedGhostTracks, rejectedDetections] = updateAssignedTracks();
     updateUnassignedTracks();
     deleteLostTracks(deletedGhostTracks);
     unusedDets = [detections(unassignedDetections, :); rejectedDetections];
 
     if sum(unassignedPatterns) > 0 &&  length(unusedDets) > 1
-        [tracks, ghostTracks, unassignedPatterns] = createNewTracks(unusedDets, unassignedPatterns, tracks, patterns, params, patternNames, similarPairs, ghostTracks);
+        [tracks, ghostTracks, unassignedPatterns, extraFreshInits] = createNewTracks(unusedDets, unassignedPatterns, tracks, patterns, params, patternNames, similarPairs, ghostTracks);
+        freshInits = freshInits | extraFreshInits;
     end
     t
-    if t == 14000
+    if t == 686
        t %rot
     end
     %if t==5000
@@ -160,6 +165,15 @@ for t = 1:T
             rotationVariance(ii,t) = NaN;
             positionVariance(ii,t) = NaN;
         end
+    end
+    
+    if any(freshInits)
+       state.tracks = tracks;
+       state.ghostTracks = ghostTracks;
+       state.t = t;
+       state.freshInits = find(freshInits);
+       snapshots{snapshotIdx} = state;
+       snapshotIdx = snapshotIdx + 1;
     end
     %toc
 end
@@ -258,7 +272,7 @@ end
             end
             unassignedDetections = squeeze(D(1,:,:));
             unassignedDetections = reshape(unassignedDetections(~isnan(unassignedDetections)),[],dim);
-            [tracks, ghostTracks, unassignedPatterns] = createNewTracks(unassignedDetections, unassignedPatterns, tracks, patterns, params, patternNames, similarPairs);
+            [tracks, ghostTracks, unassignedPatterns, freshInits] = createNewTracks(unassignedDetections, unassignedPatterns, tracks, patterns, params, patternNames, similarPairs);
         end
     end
 
@@ -358,7 +372,103 @@ end
         assignedGhostTracks = assignments(assignments(:, 1) > length(tracks)*nMarkers, :);
         unassignedTracks = unassignments(unassignments <= length(tracks)*nMarkers);
         unassignedGhostTracks = unassignments(unassignments > length(tracks)*nMarkers);
-        falsePositives(t) = falsePositives(t) + size(unassignedDetections, 1);
+    end
+
+function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, unassignedDetections] = detectionToTrackAssignmentNew()
+        
+        nTracks = length(tracks)+length(ghostTracks);
+        nDetections = size(detections, 1);
+        
+        trackAssignments = cell(length(tracks),2);
+        ghostAssignments = cell(length(ghostTracks),2);
+        nAssignedTracks = 0;
+        nAssignedGhosts = 0;
+        unassignedDetections = zeros(0,1);
+        for d=1:nDetections
+            costs = zeros(nTracks,1);
+            for i=1:nTracks
+                if i <=length(tracks)
+                    if tracks(i).age > 0
+                        expectedMarkerLocations = measFuncNonHomogenous(tracks(i).kalmanFilter.mu, tracks(i).kalmanFilter.pattern);
+                        costs(i) = min(pdist2(detections(d,:), expectedMarkerLocations));
+                    else
+                        costs(i) = Inf;
+                    end
+                else
+                    costs(i) = norm(detections(d,:)'-ghostTracks(i-length(tracks)).kalmanFilter.x(1:3));
+                end
+            end
+            [minCost, minIdx] = min(costs);
+            if minCost < 120
+                if minIdx <= length(tracks)
+                    trackAssignments{minIdx, 1} = [trackAssignments{minIdx, 1};
+                                                detections(d,:)];
+                    trackAssignments{minIdx, 2} = [trackAssignments{minIdx, 2};
+                                                   d];
+                    if size(trackAssignments{minIdx, 2}, 1) <= 4
+                        nAssignedTracks = nAssignedTracks + 1;
+                    end
+
+                else
+                    ghostAssignments{minIdx-length(tracks),1} = [ghostAssignments{minIdx-length(tracks), 1};
+                                                               detections(d,:)];
+                    ghostAssignments{minIdx-length(tracks),2} = [ghostAssignments{minIdx-length(tracks), 2};
+                                                                 d];
+                    if size(ghostAssignments{minIdx-length(tracks), 2}, 1) <= 4
+                        nAssignedGhosts = nAssignedGhosts + 1;
+                    end
+                end
+            else
+                unassignedDetections(end+1, 1) = d;
+            end
+            
+        end
+        
+        assignedTracks = zeros(nAssignedTracks, 2);
+        unassignedTracks = zeros(length(tracks)*nMarkers-nAssignedTracks, 1);
+        
+        assignedTrackIdx = 1;
+        unassignedTrackIdx = 1;
+        for i=1:size(trackAssignments,1)
+            dets = trackAssignments{i, 1};
+            nDets = size(dets,1);
+            detsIdx = trackAssignments{i, 2};
+            % If more than 4 dets are nearby a bird, use HA to select best
+            % 4 dets
+            if nDets > 4
+                expectedMarkerLocations = measFuncNonHomogenous(tracks(i).kalmanFilter.mu, tracks(i).kalmanFilter.pattern);
+                asg = munkers(pdist2(expectedMarkerLocations, dets));
+                detsIdx = detsIdx(asg');
+                nDets = 4;
+            end
+               assignedTracks(assignedTrackIdx:assignedTrackIdx+nDets-1, 1) = i*nMarkers;
+               assignedTracks(assignedTrackIdx:assignedTrackIdx+nDets-1, 2) = detsIdx;
+               assignedTrackIdx = assignedTrackIdx + nDets;
+               unassignedTracks(unassignedTrackIdx:unassignedTrackIdx+4-nDets-1) = i*nMarkers;
+               unassignedTrackIdx = unassignedTrackIdx + 4 - nDets;            
+            
+        end
+        assignedGhosts = zeros(nAssignedGhosts, 1);
+        unassignedGhosts = zeros(length(ghostTracks)*nMarkers-nAssignedGhosts, 1);
+        assignedGhostsIdx = 1;
+        unassignedGhostsIdx = 1;
+        for i=1:size(ghostAssignments,1)
+            dets = ghostAssignments{i, 1};
+            nDets = size(dets,1);
+            detsIdx = ghostAssignments{i, 2};
+            % If more than 4 dets are nearby a bird, use HA to select best
+            % 4 dets
+            if nDets > 4
+                [~, asg] = mink(pdist2(ghostTracks(i).kalmanFilter.x(1:3)', dets), 4);
+                detsIdx = detsIdx(asg');
+                nDets = 4;
+            end
+               assignedGhosts(assignedGhostsIdx:assignedGhostsIdx+nDets-1, 1) = i*nMarkers+length(tracks)*nMarkers;
+               assignedGhosts(assignedGhostsIdx:assignedGhostsIdx+nDets-1, 2) = detsIdx;
+               assignedGhostsIdx = assignedGhostsIdx + nDets;
+               unassignedGhosts(unassignedGhostsIdx:unassignedGhostsIdx+4-nDets-1) = i*nMarkers+length(tracks)*nMarkers;
+               unassignedGhostsIdx = unassignedGhostsIdx + 4 - nDets;            
+        end
     end
 
 
@@ -526,6 +636,7 @@ end
                     tracks(patternIdx) = newTrack;
                     unassignedPatterns(patternIdx) = 0;
                     potentialReInit(patternIdx) = 0;
+                    freshInits(patternIdx) = true;
                     % mark ghosst bird as deleted and delete after loop
                     deletedGhostTracks(currentGhostTrackIdx) = 1;
                     % continue loop, as we don't have to update position of
@@ -591,7 +702,7 @@ end
                     deltas(kF.latestPosIdx+1, :) = [];
                     delta = norm(sum(deltas, 1));
                     dists = pdist2(detectedMarkersForCurrentGhostTrack, kF.x(1:3)');
-                    if mean(dists) > 20 && delta > 30 && kF.motionModel == 0 && kF.framesInMotionModel > 10
+                    if mean(dists) > 20 && delta > 45 && kF.motionModel == 0 && kF.framesInMotionModel > 15
                         %switch to MotionModel 2
                         kF = switchGhostMM(kF, 2, params);
                         ghostTracks(currentGhostTrackIdx).kalmanFilter = kF;
