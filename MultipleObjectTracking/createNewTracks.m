@@ -1,4 +1,4 @@
-function [tracks, ghostTracks, unassignedPatternsReturn, freshInits] = createNewTracks(detections, unassignedPatternsReturn, tracks, patterns, params, patternNames, similarPairs, ghostTracks)
+function [tracks, ghostTracks, unassignedPatternsReturn, freshInits] = createNewTracks(detections, unassignedPatternsReturn, tracks, patterns, params, patternNames, similarPairs, lastVisibleFrames, ghostTracks)
 %CREATENEWTRACKS Summary of this function goes here
 %   Detailed explanation goes here
 
@@ -114,6 +114,7 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
                         newTrack = createLGEKFtrack(rotm, pos', l2Error, patternIdx, pattern, patternNames{patternIdx}, params);
                     end
                     
+                    newTrack.kalmanFilter.lastVisibleFrame = lastVisibleFrames(patternIdx);
                     % Add it to the array of tracks.
                     tracks(patternIdx) = newTrack;
                     
@@ -154,6 +155,7 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
                         'totalVisibleCount', 1, ...
                         'consecutiveInvisibleCount', 0);
                     
+                    newTrack.kalmanFilter.lastVisibleFrame = lastVisibleFrames(patternIdx);
                     % Add it to the array of tracks.
                     tracks(patternIdx) = newTrack;
                     
@@ -241,6 +243,7 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
                                 squeeze(patterns(minPatIdx, :, :)),...
                                 patternNames{minPatIdx}, params);
                         end
+                        newTrack.kalmanFilter.lastVisibleFrame = lastVisibleFrames(minPatIdx);
                         tracks(minPatIdx) = newTrack;
                         unassignedPatterns(minPatIdx) = 0;
                         unassignedPatternsReturn(minPatIdx) = 0;

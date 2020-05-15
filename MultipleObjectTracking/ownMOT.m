@@ -71,6 +71,8 @@ if useVICONinit
 else
     unassignedPatterns = ones(nObjects, 1);
 end
+lastVisibleFrames = zeros(nObjects, 1);
+
 [tracks, ghostTracks] = initializeTracks();
 
 
@@ -119,7 +121,7 @@ for t = 1:T
     unusedDets = [detections(unassignedDetections, :); rejectedDetections];
 
     if sum(unassignedPatterns) > 0 &&  length(unusedDets) > 1
-        [tracks, ghostTracks, unassignedPatterns, extraFreshInits] = createNewTracks(unusedDets, unassignedPatterns, tracks, patterns, params, patternNames, similarPairs, ghostTracks);
+        [tracks, ghostTracks, unassignedPatterns, extraFreshInits] = createNewTracks(unusedDets, unassignedPatterns, tracks, patterns, params, patternNames, similarPairs, lastVisibleFrames, ghostTracks);
         freshInits = freshInits | extraFreshInits;
     end
     t
@@ -272,7 +274,7 @@ end
             end
             unassignedDetections = squeeze(D(1,:,:));
             unassignedDetections = reshape(unassignedDetections(~isnan(unassignedDetections)),[],dim);
-            [tracks, ghostTracks, unassignedPatterns, freshInits] = createNewTracks(unassignedDetections, unassignedPatterns, tracks, patterns, params, patternNames, similarPairs);
+            [tracks, ghostTracks, unassignedPatterns, freshInits] = createNewTracks(unassignedDetections, unassignedPatterns, tracks, patterns, params, patternNames, similarPairs, lastVisibleFrames);
         end
     end
 
@@ -538,6 +540,7 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
             tracks(currentTrackIdx).kalmanFilter.latestPosIdx = mod(tracks(currentTrackIdx).kalmanFilter.latestPosIdx + 1, 5);
             tracks(currentTrackIdx).kalmanFilter.lastSeen = tracks(currentTrackIdx).kalmanFilter.mu.X(1:3, 4);
             tracks(currentTrackIdx).kalmanFilter.lastVisibleFrame = t;
+            lastVisibleFrames(currentTrackIdx) = t;
         end
         
         
@@ -633,6 +636,8 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
                                 params, -1, ...
                                 ghostTracks(currentGhostTrackIdx).kalmanFilter);
                     end
+                    newTrack.kalmanFilter.lastVisibleFrame = lastVisibleFrames(patternIdx);
+
                     tracks(patternIdx) = newTrack;
                     unassignedPatterns(patternIdx) = 0;
                     potentialReInit(patternIdx) = 0;

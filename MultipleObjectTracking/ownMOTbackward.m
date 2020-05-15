@@ -48,8 +48,11 @@ similarPairs = getSimilarPatterns(patterns, hyperParams.patternSimilarityThresho
 
 nObjects = length(patterns);
 unassignedPatterns = ones(nObjects, 1);
-[tracks, ghostTracks] = initializeTracks();
+birdsOfInterest = zeros(length(snapshots{1}.freshInits),1);
+lastVisibleFrames = zeros(length(birdsOfInterest),1);
+[tracks, ghostTracks] = initializeTracks(1);
 t = T - snapshots{1}.t + 1;
+nextSnapshotIdx = 2;
 
 markersForVisualization = cell(1,1);
 ghostBirdsVis = cell(1,1);
@@ -74,7 +77,7 @@ estimatedPositions = zeros(nObjects, T, 3);
 estimatedQuats = zeros(nObjects, T, 4);
 
 
-while t < T
+while t < T && ~isempty(birdsOfInterest)
     detections = squeeze(D(t,:,:));
     detections = reshape(detections(~isnan(detections)),[],dim);
     
@@ -88,7 +91,7 @@ while t < T
     unusedDets = [detections(unassignedDetections, :); rejectedDetections];
 
     if sum(unassignedPatterns) > 0 &&  length(unusedDets) > 1
-        [tracks, ghostTracks, unassignedPatterns] = createNewTracks(unusedDets, unassignedPatterns, tracks, patterns, params, patternNames, similarPairs, ghostTracks);
+        [tracks, ghostTracks, unassignedPatterns] = createNewTracks(unusedDets, unassignedPatterns, tracks, patterns, params, patternNames, similarPairs,NaN*zeros(length(tracks),1), ghostTracks);
     end
     t
     if t == 686
@@ -135,15 +138,84 @@ while t < T
         end
     end
     
-    % Check whether to skip to next snapshot
-    t=t+1;
+    if nextSnapshotIdx <= length(snapshots)
+        % Check whether to skip to next snapshot
+        nextSnapshot = snapshots{nextSnapshotIdx};
+    
+        if T-t <= nextSnapshot.t
+            %add freshInits to birdsOfInterest, avoid duplicates
+            % als take care of lastVisibleFrames
+            nextSnapshotIdx = nextSnapshotIdx + 1;
+            birdsOfInterest = [birdsOfInterest; nextSnapshot.freshInits];
+            %TODO: also init new bOI manually from snapshot
+            for ii=1:length(tracks)
+               if tracks(ii).age == 0 && nextSnapshot.tracks(ii).age > 0
+                tracks(ii) = nextSnapshot.tracks(ii);
+                tracks(ii).age = 1;
+                tracks(ii).totalVisibleCount = 0;
+                tracks(ii).consecutiveInvisibleCount = 0;
+                
+                tracks(ii).kalmanFilter.consecutiveInvisibleCount = 0;
+                tracks(ii).kalmanFilter.framesInMotionModel = 15;
+                
+                tracks(ii).kalmanFilter.latest5pos = zeros(5, 3);
+                tracks(ii).kalmanFilter.latest5pos(1, :) = tracks(ii).kalmanFilter.mu.X(1:3, 4);
+                tracks(ii).kalmanFilter.latestPosIdx = 1;
+                
+                if tracks(ii).kalmanFilter.mu.motionModel == 2
+                    tracks(ii).kalmanFilter.mu.v = -tracks(ii).kalmanFilter.mu.v;
+                    tracks(ii).kalmanFilter.mu.a = -tracks(ii).kalmanFilter.mu.a;
+                end
+               end
+            end
+    
+            newVisBreakPoints = zeros(length(nextSnapshot.freshInits),1);
+            for ii=1:length(newVisBreakPoints)
+                trackIdx = nextSnapshot.freshInits(ii);
+                if isfield(nextSnapshot.tracks(trackIdx).kalmanFilter, 'lastVisibleFrame')
+                    newVisBreakPoints(ii) = nextSnapshot.tracks(trackIdx).kalmanFilter.lastVisibleFrame; 
+                else
+                    newVisBreakPoints(ii) = 0; 
+                end
+            end
+            lastVisibleFrames = [lastVisibleFrames; newVisBreakPoints];
+        end
+    end
+    
+    %go through lastVisibleFrames, where t <= lastVisibleFrames: remove
+    %bird from birdsOfInterest
+    
+    filledGaps = zeros( length( lastVisibleFrames ) ,1 );
+
+    
+    for ind=1:length(lastVisibleFrames)
+        if lastVisibleFrames(ind) >= T - t + 1
+            filledGaps(ind) = 1;
+        end
+    end
+    birdsOfInterest = birdsOfInterest(filledGaps ~=1);
+    lastVisibleFrames = lastVisibleFrames(filledGaps ~=1);
+
+    
+    % if birdsOfInterest is empty: set t to nextSnap.t and set states, i.e.
+    % reuse init method maybe
+    if isempty(birdsOfInterest) && nextSnapshotIdx <= length(snapshots)
+        [tracks, ghostTracks] = initializeTracks(nextSnapshotIdx);
+        t = T-nextSnapshot.t+1;
+        nextSnapshotIdx = nextSnapshotIdx + 1;
+    else
+        t=t+1;
+    end
 end
 
 
 
 %% Initialize Tracks
-    function [tracks, ghostTracks] = initializeTracks()
-        tracks = snapshots{1}.tracks;
+    function [tracks, ghostTracks] = initializeTracks(baseFrame)
+        if baseFrame > length(snapshots)
+            return
+        end
+        tracks = snapshots{baseFrame}.tracks;
         for i=1:length(tracks)
             if tracks(i).age > 0
                 tracks(i).age = 1;
@@ -163,7 +235,7 @@ end
                 end
             end
         end
-        ghostTracks = snapshots{1}.ghostTracks;
+        ghostTracks = snapshots{baseFrame}.ghostTracks;
         for i=1:length(ghostTracks)
             ghostTracks(i).age = 1;
             ghostTracks(i).totalVisibleCount = 0;
@@ -175,6 +247,18 @@ end
             ghostTracks(i).framesInMotionModel = 15;
             if ghostTracks(i).kalmanFilter.motionModel == 2
                ghostTracks(i).kalmanFilter.x(4:end) = -ghostTracks(i).kalmanFilter.x(4:end);
+            end
+        end
+        
+        birdsOfInterest = snapshots{baseFrame}.freshInits;
+        lastVisibleFrames = zeros(length(birdsOfInterest), 1);
+        
+        for i=1:length(lastVisibleFrames)
+            trackIdx = birdsOfInterest(i);
+            if isfield( snapshots{baseFrame}.tracks(trackIdx).kalmanFilter, 'lastVisibleFrame')
+                lastVisibleFrames(i) = snapshots{baseFrame}.tracks(trackIdx).kalmanFilter.lastVisibleFrame;
+            else
+                lastVisibleFrames(i) = 0;
             end
         end
     end
@@ -893,6 +977,9 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
                 estimatedQuats(lostIdx(i), max(1, t-invisibleForTooLong):t-1, :) = NaN;
             end
         end
+        removedInterestIdx = ~ismember(birdsOfInterest, lostIdx);
+        birdsOfInterest = birdsOfInterest(removedInterestIdx);
+        lastVisibleFrames = lastVisibleFrames(removedInterestIdx);
         
         % Compute the fraction of the track's age for which it was visible.
         ages = [ghostTracks(:).age];
