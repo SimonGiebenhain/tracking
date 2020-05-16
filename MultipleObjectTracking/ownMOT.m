@@ -100,6 +100,7 @@ estimatedPositions = zeros(nObjects, T, 3);
 estimatedQuats = zeros(nObjects, T, 4);
 positionVariance = zeros(nObjects, T);
 rotationVariance = zeros(nObjects, T);
+certainties = NaN*zeros(nObjects, T);
 
 snapshots = {};
 snapshotIdx = 1;
@@ -179,6 +180,8 @@ for t = 1:T
     end
     %toc
 end
+
+'finish'
 
 
 
@@ -512,7 +515,8 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
             s = tracks(currentTrackIdx).kalmanFilter;
             if strcmp(model, 'LieGroup')
                 s.z = reshape(detectedMarkersForCurrentTrack', [], 1);
-                [tracks(currentTrackIdx).kalmanFilter, rejectedDetections] = correctKalman(s, 1, tracks(currentTrackIdx).kalmanParams, 0, hyperParams, tracks(currentTrackIdx).age, params.motionType, currentTrackIdx);
+                [tracks(currentTrackIdx).kalmanFilter, rejectedDetections, cert] = correctKalman(s, 1, tracks(currentTrackIdx).kalmanParams, 0, hyperParams, tracks(currentTrackIdx).age, params.motionType, currentTrackIdx);
+                certainties(currentTrackIdx, t) = cert;
                 allRejectedDetections(end + 1: end + size(rejectedDetections, 1), :) = rejectedDetections;
                 if s.mu.motionModel > 0 && norm( s.mu.v ) > 35
                     tracks(currentTrackIdx).kalmanFilter.flying = min(s.flying + 2, 10);
@@ -619,9 +623,9 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
                     if nAssgnDets == 3
                         minCost2(1)
                     end
-                    if patternIdx == 1 || patternIdx == 2 || patternIdx == 4
-                       patternIdx 
-                    end
+                    randomIdx = randperm(sum(potentialReInit));
+                    potIdx = find(potentialReInit);
+                    patternIdx = potIdx(randomIdx(1));
                     pattern = squeeze(patterns(patternIdx, :, :));
                     if isfield(tracks(patternIdx).kalmanFilter, 'mu')
                         newTrack = createLGEKFtrack(squeeze(rotations(minIdx2(1), :, :)), ...

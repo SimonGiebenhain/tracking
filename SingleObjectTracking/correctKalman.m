@@ -1,7 +1,8 @@
-function [s, rejectedDetections] = correctKalman(s, noKnowledge, globalParams, missedDetections, hyperParams, age, motionType, trackIdx)
+function [s, rejectedDetections, c_ret] = correctKalman(s, noKnowledge, globalParams, missedDetections, hyperParams, age, motionType, trackIdx)
 %CORRECTKALMAN Summary of this function goes here
 %   Detailed explanation goes here
 
+c_ret = NaN;
 R = globalParams.R;
 pattern = globalParams.pattern;
 
@@ -114,7 +115,7 @@ if size(ds, 1) >= 1
                 p = asg';
                 method = 'final4';
             else
-                [p, lostDs, FPs, certainty, method] = match_patterns(pattern, ds, 'final4', s.mu.X(1:3,1:3), hyperParams);
+                [p, lostDs, FPs, certainty, method, c_ret] = match_patterns(pattern, ds, 'final4', s.mu.X(1:3,1:3), hyperParams);
             end
         else
             if strcmp(motionType, 'constAcc')
