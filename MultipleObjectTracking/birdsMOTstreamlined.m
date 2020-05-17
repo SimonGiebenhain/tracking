@@ -77,7 +77,7 @@ stdHyperParams.posNoise = 30;%%110;%60;%50
 stdHyperParams.motNoise = 10;%;1;%5;%10
 stdHyperParams.accNoise = 1;%0.1;%1;%3
 % params for brownian motion model
-stdHyperParams.posNoiseBrownian = 50; 
+stdHyperParams.posNoiseBrownian = 80; 
 % params shared across all motion models
 stdHyperParams.quatNoise = 0.2;
 stdHyperParams.quatMotionNoise = 1; % not used, brownian motion model for rotation works best
@@ -85,7 +85,7 @@ stdHyperParams.quatMotionNoise = 1; % not used, brownian motion model for rotati
 % params regarding: measurement noise i.e. determine how reliable
 % measurements are
 stdHyperParams.measurementNoise = 50;%50
-stdHyperParams.certaintyScale = 7;%6.5
+stdHyperParams.certaintyScale = 5;%6.5
 
 % params regarding: initialization of ghost birds
 %minimal distance for new ghost birds to other (ghost) birds that has to be free.
@@ -107,7 +107,7 @@ fprintf('Starting to track!\n')
 
 %profile on
 beginningFrame = 1;%4000;%7800+ blau macht sehr komische sachen;5300 %+ 1000 jittery;%%2000+4000;
-endFrame = 2500;%size(formattedData,1);
+endFrame = size(formattedData,1);
 stdHyperParams.visualizeTracking = 1;
 tic
 [estimatedPositions, estimatedQuats, positionVariance, rotationVariance, snapshots] = ownMOT(formattedData(beginningFrame:endFrame,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
@@ -123,16 +123,30 @@ stdHyperParams.visualizeTracking = 1;
 % backwardMOT (once next checkpoint was passed, witout complete reinit)
 
 [estimatedPositionsBackward, estimatedQuatsBackward] = ownMOTbackward(formattedData(beginningFrame:endFrame,:,:), patterns, patternNames, snapshots, 0, stdHyperParams);
+revIdx = sort(1:length(formattedData), 'descend');
+%%
+estimatedPositionsBackward = estimatedPositionsBackward(:, revIdx, :);
+estimatedQuatsBackward = estimatedQuatsBackward(:, revIdx, :);
+
+%% Combine forward and backward MOT results
+missingFramesForwardPos = isnan(estimatedPositions);
+missingFramesForwardQuat = isnan(estimatedQuats);
+
+estPos = estimatedPositions;
+estQuat = estimatedQuats;
+estPos(missingFramesForwardPos) = estimatedPositionsBackward(missingFramesForwardPos);
+estQuat(missingFramesForwardQuat) = estimatedQuatsBackward(missingFramesForwardQuat);
+
 
 %%
-
-reverseIdx = sort(beginningFrame:endFrame, 'descend');
-formattedDataRev = formattedData(reverseIdx, :, :);
-tic
-[estimatedPositionsRev, estimatedQuatsRev] = ownMOTbackward(formattedDataRev, patterns, patternNames, initialStates, 10, 0, estimated, forwardRot, quatMotionType, hyperParams)
-
-[estimatedPositionsRev, estimatedQuatsRev, positionVarianceRev, rotationVarianceRev] = ownMOT(formattedDataRev, patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
-toc
+% 
+% reverseIdx = sort(beginningFrame:endFrame, 'descend');
+% formattedDataRev = formattedData(reverseIdx, :, :);
+% tic
+% [estimatedPositionsRev, estimatedQuatsRev] = ownMOTbackward(formattedDataRev, patterns, patternNames, initialStates, 10, 0, estimated, forwardRot, quatMotionType, hyperParams)
+% 
+% [estimatedPositionsRev, estimatedQuatsRev, positionVarianceRev, rotationVarianceRev] = ownMOT(formattedDataRev, patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
+% toc
 
 
 %%
@@ -155,14 +169,16 @@ resultsFilename = [filePrefix '_RESULTS.csv'];
 exportToCSV(resultsFilename, estimatedPositions, estimatedQuats, beginningFrame, patternNames, 1, 0);
 
 %%
-vizParams.vizSpeed = 2;
+vizParams.vizSpeed = 10;
 vizParams.keepOldTrajectory = 0;
 vizParams.vizHistoryLength = 500;
 vizParams.startFrame = 1;
 vizParams.endFrame = -1;
-
+dets = formattedData(beginningFrame:endFrame,:,:);
+%revIdx = sort(1:length(formattedData), 'descend');
+%dets = formattedData(revIdx, :, :);
 %reverseIdx = sort(1:size(estimatedPositionsRev, 2), 'descend');
-vizRes(formattedData(beginningFrame:endFrame,:,:), patterns, estimatedPositions, estimatedQuats, vizParams, 0)
-    %estimatedPositionsRev(:, reverseIdx,  :), estimatedQuatsRev(:, reverseIdx, :))
+%vizRes(dets, patterns, estimatedPositionsBackward, estimatedQuatsBackward, vizParams, 0)
+vizRes(dets, patterns, estPos, estQuat, vizParams, 0)
 
 

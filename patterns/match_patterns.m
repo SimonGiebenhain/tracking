@@ -1,4 +1,4 @@
-function [assignment, lostDets, FPs, certainty, method] = match_patterns(whole_pattern, detected_pattern, method, rotMat, hyperParams)
+function [assignment, lostDets, FPs, certainty, method, c_ret] = match_patterns(whole_pattern, detected_pattern, method, rotMat, hyperParams)
 %MATCH_PATTERNS Find corresponing points in two sets of points
 %
 %   assignment = MATCH_PATTERNS(whole_pattern, detected_pattern, 'ML', rotMat)
@@ -22,6 +22,7 @@ function [assignment, lostDets, FPs, certainty, method] = match_patterns(whole_p
 %   finds correspondances where the outgoing edges of a point are similar
 %   in both point sets.
 %   The algorithm is very simple and only a first draft.
+c_ret = NaN;
 lostDets = -1;
 FPs = -1;
 dim = size(whole_pattern,2);
@@ -344,12 +345,15 @@ switch method
             minNumDetsToConsider = 1;
             maxNumFPsToConsider = 3;
             
+            nDets = size(detected_pattern,1);
+            nMarkers = size(whole_pattern,1);
+            
             rotatedPattern = (rotMat*whole_pattern')';
+            
             sqDistMarkers = squareform(pdist(whole_pattern));
             sqDistDetections = squareform(pdist(detected_pattern));
             
-            nDets = size(detected_pattern,1);
-            nMarkers = size(whole_pattern,1);
+
             % number of assignments that are checked
             numAssignments = 0;
             for indi =max(minNumDetsToConsider,nDets-maxNumFPsToConsider):nDets
@@ -425,6 +429,9 @@ switch method
             %lostDets = Ds{minIdx};
             lostDets = setdiff(1:nDets, chosenDets{minIdx});
             certainty = c;
+            if length(assignment) >= 4
+                c_ret = c - (4-length(assignment))*hyperParams.costOfNonAsDtMA;
+            end
         end
     case 'noKnowledge'
         costNonAssignment = 50;

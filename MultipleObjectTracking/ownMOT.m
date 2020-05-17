@@ -126,7 +126,7 @@ for t = 1:T
         freshInits = freshInits | extraFreshInits;
     end
     t
-    if t == 686
+    if t == 4880
        t %rot
     end
     %if t==5000
@@ -618,14 +618,14 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
                 if ~isempty(minCost2(1)) && ...
                     (  ( minCost2(1) < params.initThreshold4 && nAssgnDets == 4 && costDiff > 1)  || ...
                         ( minCost2(1) < params.initThreshold && nAssgnDets == 3 && safePatternsBool(patternIdx)==1 && costDiff > 2) ||... 
-                        ( minCost2(1) < 0.2 && nAssgnDets == 3 && costDiff > 2) ...
+                        ( minCost2(1) < 0.3 && nAssgnDets == 3 && costDiff > 0.8) ...
                     )
                     if nAssgnDets == 3
                         minCost2(1)
                     end
-                    randomIdx = randperm(sum(potentialReInit));
-                    potIdx = find(potentialReInit);
-                    patternIdx = potIdx(randomIdx(1));
+                    %randomIdx = randperm(sum(potentialReInit));
+                    %potIdx = find(potentialReInit);
+                    %patternIdx = potIdx(randomIdx(1));
                     pattern = squeeze(patterns(patternIdx, :, :));
                     if isfield(tracks(patternIdx).kalmanFilter, 'mu')
                         newTrack = createLGEKFtrack(squeeze(rotations(minIdx2(1), :, :)), ...

@@ -106,17 +106,20 @@ if size(ds, 1) >= 1
         if strcmp(s.type, 'LG-EKF')
             %TODO if fit is already decent, don't do match_patterns!
             % Check if predicted marker positions are good fit already
-            asg = asg(rejectedDetectionsIdx == 0);
-            mse = mean(sqrt(sum(( detections - expectedPositions(asg, :) ).^2, 2)));
-            if mse < 3
-                FPs = -1;
-                lostDs = zeros(0,1);
-                certainty = 2*mse;
-                p = asg';
-                method = 'final4';
-            else
+%             asg = asg(rejectedDetectionsIdx == 0);
+%             mse = mean(sqrt(sum(( detections - expectedPositions(asg, :) ).^2, 2)));
+%             if mse < 2.5 && nDets >= 3
+%                 FPs = -1;
+%                 lostDs = zeros(0,1);
+%                 certainty = 2*mse + (4-length(asg))*hyperParams.costOfNonAsDtMA;
+%                 p = asg';
+%                 method = 'final4';
+%                 %[p, lostDs, FPs, certainty, method, c_ret] = match_patterns(pattern, ds, 'final4', s.mu.X(1:3,1:3), hyperParams);
+%                 %certainty
+%                 %certainty;
+%             else
                 [p, lostDs, FPs, certainty, method, c_ret] = match_patterns(pattern, ds, 'final4', s.mu.X(1:3,1:3), hyperParams);
-            end
+            %end
         else
             if strcmp(motionType, 'constAcc')
                 quatIdx = 3*dim+1:3*dim+4;
@@ -171,7 +174,7 @@ if size(ds, 1) >= 1
             end
             certainty = (certainty/hyperParams.certaintyScale)^2 / divisor;
             %certainty = (certainty/hyperParams.certaintyScale)^2 / (2*size(assignment, 2) + 1);
-            certainty = max(0.0005, certainty);
+            certainty = max(0.05, certainty);
             certainty = min(150, certainty);
         end
     else
@@ -236,7 +239,11 @@ if size(ds, 1) >= 1
         H = H(detectionsIdx, :);
         
         K = s.P*H'/(H*s.P*H'+s.R);
-        m = K*(z(~lostIdx)-zPred(detectionsIdx));
+        predErr = z(~lostIdx)-zPred(detectionsIdx);
+        if length(predErr) >= 16
+            c_ret = mean(predErr.^2);
+        end
+        m = K*predErr;
         s.mu = comp(s.mu, expSE3ACvec(m));
         if s.mu.motionModel == 0
             s.P = (eye(6)- K*H)*s.P;

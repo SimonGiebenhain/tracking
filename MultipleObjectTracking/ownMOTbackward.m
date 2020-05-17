@@ -73,8 +73,8 @@ if visualizeTracking == 1
 end
 
 
-estimatedPositions = zeros(nObjects, T, 3);
-estimatedQuats = zeros(nObjects, T, 4);
+estimatedPositions = NaN*zeros(nObjects, T, 3);
+estimatedQuats = NaN*zeros(nObjects, T, 4);
 
 
 while t < T && ~isempty(birdsOfInterest)
@@ -240,11 +240,11 @@ end
             ghostTracks(i).age = 1;
             ghostTracks(i).totalVisibleCount = 0;
             ghostTracks(i).consecutiveInvisibleCount = 0;
-            ghostTracks(i).trustworthness = 5;
+            ghostTracks(i).trustworthyness = 5;
             ghostTracks(i).kalmanFilter.latest5pos = zeros(5, 3);
             ghostTracks(i).kalmanFilter.latest5pos(1, :) = ghostTracks(i).kalmanFilter.x(1:3);
             ghostTracks(i).kalmanFilter.latestPosidx = 1;
-            ghostTracks(i).framesInMotionModel = 15;
+            ghostTracks(i).kalmanFilter.framesInMotionModel = 15;
             if ghostTracks(i).kalmanFilter.motionModel == 2
                ghostTracks(i).kalmanFilter.x(4:end) = -ghostTracks(i).kalmanFilter.x(4:end);
             end
