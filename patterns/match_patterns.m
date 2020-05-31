@@ -395,12 +395,7 @@ switch method
                             leftChunkEuc(chunkIdx, :, :) = dets;
                             rightChunkEuc(chunkIdx, :, :) = rotatedP(p,:);
                             chunkIdx = chunkIdx + 1;
-                            
-                            %cost(choiceCount) = mean(vecnorm(sqDistD - sqDistM(p,p),2,2));
-                            
-                            %eucDist = mean(vecnorm(dets - rotatedP(p, :),2,2));
-                            
-                            %cost(choiceCount) = cost(choiceCount) + hyperParams.eucDistWeight*eucDist;
+
                             cost(choiceCount) = hyperParams.costOfNonAsDtMA * (nDets-numPoints);
                             choiceCount = choiceCount + 1;
                         end
@@ -418,12 +413,8 @@ switch method
             end
             
             [c, minIdx] = min(cost);
-            %assignment = Ps{minIdx};
             chosenMs = chosenMarkers{minIdx};
-            assignment = chosenMs(checkedPerms{minIdx});
-            %TODO I have to incorporate
-            
-            %lostDets = Ds{minIdx};
+            assignment = chosenMs(checkedPerms{minIdx});            
             lostDets = setdiff(1:nDets, chosenDets{minIdx});
             certainty = c;
             if length(assignment) >= 4

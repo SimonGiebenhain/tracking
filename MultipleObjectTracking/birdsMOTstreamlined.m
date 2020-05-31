@@ -108,9 +108,9 @@ fprintf('Starting to track!\n')
 %profile on;
 beginningFrame = 1;%4000;%7800+ blau macht sehr komische sachen;5300 %+ 1000 jittery;%%2000+4000;
 endFrame = 2000;%size(formattedData,1);
-stdHyperParams.visualizeTracking = 0;
+stdHyperParams.visualizeTracking = 1;
 tic
-[estimatedPositions, estimatedQuats, positionVariance, rotationVariance, snapshots, certainties] = ownMOT(formattedData(beginningFrame:endFrame,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
+[estimatedPositions, estimatedQuats, snapshots, certainties] = ownMOT(formattedData(beginningFrame:endFrame,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
 %[estimatedPositions, estimatedQuats] = ownMOT(formattedData(1000:end,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
 toc
 %profile viewer

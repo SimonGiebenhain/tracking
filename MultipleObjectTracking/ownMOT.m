@@ -6,7 +6,7 @@
 % TODO
 % Explanation goes here
 
-function [estimatedPositions, estimatedQuats, positionVariance, rotationVariance, snapshots, certainties] = ownMOT(D, patterns, patternNames, useVICONinit, initialStates, nObjects, shouldShowTruth, trueTrajectory, trueOrientation, quatMotionType, hyperParams)
+function [estimatedPositions, estimatedQuats, snapshots, certainties] = ownMOT(D, patterns, patternNames, useVICONinit, initialStates, nObjects, shouldShowTruth, trueTrajectory, trueOrientation, quatMotionType, hyperParams)
 % OWNMOT does multi object tracking
 %   @D all observations/detections in the format:
 %       T x maxDetectionsPerFrame x 3
@@ -74,21 +74,20 @@ lastVisibleFrames = zeros(nObjects, 1);
 
 [tracks, ghostTracks] = initializeTracks();
 
-
-
-markersForVisualization = cell(1,1);
-ghostBirdsVis = cell(1,1);
-birdsTrajectories = cell(nObjects,1);
-trueTrajectories = cell(nObjects,1);
-%birdsPositions = cell(nObjects,1);
-markerPositions = cell(nObjects, nMarkers);
-viconMarkerPositions = cell(nObjects, nMarkers);
+visualizeTracking = hyperParams.visualizeTracking;
+if visualizeTracking
+    markersForVisualization = cell(1,1);
+    ghostBirdsVis = cell(1,1);
+    birdsTrajectories = cell(nObjects,1);
+    trueTrajectories = cell(nObjects,1);
+    %birdsPositions = cell(nObjects,1);
+    markerPositions = cell(nObjects, nMarkers);
+    viconMarkerPositions = cell(nObjects, nMarkers);
+end
 
 colorsPredicted = distinguishable_colors(nObjects);
 colorsTrue = (colorsPredicted + 2) ./ (max(colorsPredicted,[],2) +2);
 keepOldTrajectory = 0;
-visualizeTracking = hyperParams.visualizeTracking;
-%shouldShowTruth = 1;
 vizHistoryLength = 200;
 if visualizeTracking == 1
     initializeFigure();
@@ -97,8 +96,6 @@ end
 
 estimatedPositions = zeros(nObjects, T, 3);
 estimatedQuats = zeros(nObjects, T, 4);
-positionVariance = zeros(nObjects, T);
-rotationVariance = zeros(nObjects, T);
 certainties = NaN*zeros(nObjects, T);
 
 snapshots = {};
@@ -106,13 +103,11 @@ snapshotIdx = 1;
 
 for t = 1:T
     freshInits = zeros(nObjects,1);
-    %tic
     detections = squeeze(D(t,:,:));
     detections = reshape(detections(~isnan(detections)),[],dim);
     
     predictNewLocationsOfTracks();
     [assignedTracks, unassignedTracks, assignedGhostTracks, unassignedGhostTracks, unassignedDetections] = detectionToTrackAssignment();
-    %[assignedTracks, unassignedTracks, assignedGhostTracks, unassignedGhostTracks, unassignedDetections] = detectionToTrackAssignment();
 
     [deletedGhostTracks, rejectedDetections] = updateAssignedTracks();
     updateUnassignedTracks();
@@ -123,13 +118,6 @@ for t = 1:T
         [tracks, ghostTracks, unassignedPatterns, extraFreshInits] = createNewTracks(unusedDets, unassignedPatterns, tracks, patterns, params, patternNames, similarPairs, lastVisibleFrames, ghostTracks);
         freshInits = freshInits | extraFreshInits;
     end
-    %t
-    %if t == 4880
-    %   t %rot
-    %end
-    %if t==5000
-    %   t % total chaos
-    %end % 8700grün
     if visualizeTracking == 1
         displayTrackingResults();
     end
@@ -138,33 +126,20 @@ for t = 1:T
     for ii = 1:nObjects
         if tracks(ii).age > 0
             if strcmp(model, 'LieGroup')
-                p = tracks(ii).kalmanFilter.mu.X(1:3, 4);
-                
-                estimatedPositions(ii, t, :) = p;
+                estimatedPositions(ii, t, :) = tracks(ii).kalmanFilter.mu.X(1:3, 4);
                 estimatedQuats(ii, t, :) = rotm2quat(tracks(ii).kalmanFilter.mu.X(1:3,1:3));
-                P = tracks(ii).kalmanFilter.P;
-                rotationVariance(ii, t) = (P(1,1) + P(2,2) + P(3,3)) / 3;
-                positionVariance(ii, t) = (P(4,4) + P(5,5) + P(6,6)) / 3;
             else
                 state = tracks(ii).kalmanFilter.x;
-                P = tracks(ii).kalmanFilter.P;
                 estimatedPositions(ii,t,:) = state(1:dim);
-                positionVariance(ii,t) = (P(1,1) + P(2,2) + P(3,3)) / 3;
                 if strcmp(params.motionType, 'constAcc')
                     estimatedQuats(ii,t,:) = state(3*dim+1:3*dim+4);
-                    rotationVariance(ii,t) = (P(3*dim+1, 3*dim+1) + P(3*dim+2, 3*dim+2) + ... 
-                                              P(3*dim+3, 3*dim+3) + P(3*dim+4, 3*dim+4)) / 4;
                 else
                     estimatedQuats(ii,t,:) = state(2*dim+1:2*dim+4);
-                    rotationVariance(ii,t) = (P(2*dim+1, 2*dim+1) + P(2*dim+2, 2*dim+2) + ...
-                                              P(2*dim+3, 2*dim+3) + P(2*dim+4, 2*dim+4)) / 4;
                 end
             end
         else
             estimatedPositions(ii,t,:) = ones(3,1) * NaN;
             estimatedQuats(ii,t,:) = ones(4,1) * NaN;
-            rotationVariance(ii,t) = NaN;
-            positionVariance(ii,t) = NaN;
         end
     end
     
@@ -176,7 +151,6 @@ for t = 1:T
        snapshots{snapshotIdx} = state;
        snapshotIdx = snapshotIdx + 1;
     end
-    %toc
 end
 
 
@@ -216,6 +190,7 @@ end
 %}
 
     function [tracks, ghostTracks] = initializeTracks()
+        % This case is not used; only 'else' case is relevant
         if useVICONinit
             for i = 1:nObjects
                 [s, kalmanParams] = setupKalman(squeeze(patterns(i,:,:)), -1, params);
@@ -285,7 +260,7 @@ end
         for i = 1:length(tracks)
             if tracks(i).age > 0
                 % Predict the current location of the track.
-                tracks(i).kalmanFilter = predictKalman(tracks(i).kalmanFilter, 1, tracks(i).kalmanParams, 'extended');
+                tracks(i).kalmanFilter = predictKalman(tracks(i).kalmanFilter);
             end
         end
         
@@ -344,15 +319,12 @@ end
         for i = 1:nTracks
             if i <= length(tracks)
                 if tracks(i).age > 0
-                    %TODO: something more sophisticated here would be useful!
-                    %TODO: bc. costOfNonAssignment can mess up
+                    %TODO: Try how malahanobis distance would work here!
                     cost((i-1)*nMarkers+1:i*nMarkers, :) = distanceKalman(tracks(i).kalmanFilter, detections, params.motionType);
                 else
                     cost((i-1)*nMarkers+1:i*nMarkers, :) = Inf;
                 end
             else
-                %TODO allow max of nMarkers markers to be assigned to
-                %ghost bird??
                 if ghostTracks(i-length(tracks)).age > 0
                     cost((i-1)*nMarkers+1:i*nMarkers, :) = 1.3*repmat(...
                         pdist2( ghostTracks(i-length(tracks)).kalmanFilter.x(1:3)', detections), ...
@@ -497,20 +469,12 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
             
             detectedMarkersForCurrentTrack = detections(detectionIdx, :);
             
-            %if size(detectedMarkersForCurrentTrack, 1) > 2 && t > 10
-            %   dist = distanceKalman(tracks(currentTrackIdx).kalmanFilter, detectedMarkersForCurrentTrack);
-            %   minDist = min(dist, [], 1);
-            %   %distToCenter =  sqrt(sum((detectedMarkersForCurrentTrack - tracks(currentTrackIdx).kalmanFilter.x(1:dim)').^2,2));
-            %   isValidDetections = minDist < 30;
-            %   detectedMarkersForCurrentTrack = detectedMarkersForCurrentTrack(isValidDetections', :);
-            %end
-            
             % Correct the estimate of the object's location
             % using the new detection.
             s = tracks(currentTrackIdx).kalmanFilter;
             if strcmp(model, 'LieGroup')
                 s.z = reshape(detectedMarkersForCurrentTrack', [], 1);
-                [tracks(currentTrackIdx).kalmanFilter, rejectedDetections, cert] = correctKalman(s, 1, tracks(currentTrackIdx).kalmanParams, 0, hyperParams, tracks(currentTrackIdx).age, params.motionType, currentTrackIdx);
+                [tracks(currentTrackIdx).kalmanFilter, rejectedDetections, cert] = correctKalman(s, tracks(currentTrackIdx).kalmanParams, hyperParams, tracks(currentTrackIdx).age, params.motionType);
                 certainties(currentTrackIdx, t) = cert;
                 allRejectedDetections(end + 1: end + size(rejectedDetections, 1), :) = rejectedDetections;
                 if s.mu.motionModel > 0 && norm( s.mu.v ) > 35
@@ -585,16 +549,12 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
             % simialr patterns are already assigned, in order to avoid
             % id-switches
             if nAssgnDets >= 3 %&& ~(sum(potentialReInit) == 1 + sum(abs(patterns)>=1000, 'all'))
-                %if nAssgnDets == 3
-                %    unassignedandSafeIdx = find(unassignedPatterns & safePatternsBool);
-                %else
-                unassignedandSafeIdx = find(potentialReInit);
-                %end
-                matchingCosts = zeros(length(unassignedandSafeIdx), 1);
-                rotations = zeros(length(unassignedandSafeIdx), 3, 3);
-                translations = zeros(length(unassignedandSafeIdx), 3);
-                for j=1:length(unassignedandSafeIdx)
-                   pattern = squeeze(patterns(unassignedandSafeIdx(j), :, :));
+                unassignedIdx = find(potentialReInit);
+                matchingCosts = zeros(length(unassignedIdx), 1);
+                rotations = zeros(length(unassignedIdx), 3, 3);
+                translations = zeros(length(unassignedIdx), 3);
+                for j=1:length(unassignedIdx)
+                   pattern = squeeze(patterns(unassignedIdx(j), :, :));
                    p = match_patterns(pattern, detectedMarkersForCurrentGhostTrack, 'noKnowledge');
                    assignment = zeros(4,1);
                    assignment(p) = 1:length(p);
@@ -613,15 +573,12 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
                 elseif length(minCost2) == 1
                     costDiff = Inf;
                 end
-                patternIdx = unassignedandSafeIdx(minIdx2(1));
+                patternIdx = unassignedIdx(minIdx2(1));
                 if ~isempty(minCost2(1)) && ...
                     (  ( minCost2(1) < params.initThreshold4 && nAssgnDets == 4 && costDiff > 1)  || ...
                         ( minCost2(1) < params.initThreshold && nAssgnDets == 3 && safePatternsBool(patternIdx)==1 && costDiff > 2) ||... 
                         ( minCost2(1) < 0.3 && nAssgnDets == 3 && costDiff > 0.8) ...
                     )
-                    %randomIdx = randperm(sum(potentialReInit));
-                    %potIdx = find(potentialReInit);
-                    %patternIdx = potIdx(randomIdx(1));
                     pattern = squeeze(patterns(patternIdx, :, :));
                     if isfield(tracks(patternIdx).kalmanFilter, 'mu')
                         newTrack = createLGEKFtrack(squeeze(rotations(minIdx2(1), :, :)), ...
@@ -649,7 +606,9 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
                     continue;
 
                 end
-                %TODO fix to regular case!!!!!!!!!!
+                
+                %Automatic ReInit if only 1 bird is unassigned. This is not
+                % super safe however!
 %             elseif ( sum(potentialReInit) == 1 + sum(abs(patterns)>=1000, 'all') && ...
 %                          ghostTracks(currentGhostTrackIdx).trustworthyness > hyperParams.minTrustworthyness )%if all but 1 bird are intialized we can initialize even with 2 or less dets
 %                 for j=1:size(potentialReInit)
@@ -774,6 +733,9 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
         %ghostTracks(deletedGhostTracks==1) = [];
     end
 
+    % Tried to multithread, as 'correctKalman' is the most computationally
+    % costful part of the code. However the overhead of the parfor loop
+    % exceeds the benefits of parrallelism.
     function updateAssignedTracksMultiThreaded()
         assignments = double(assignments);
         allAssignedTracksIdx = unique(floor((assignments(:,1)-1)/nMarkers) + 1);
@@ -886,8 +848,6 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
             end
         end
         
-        %assignedGhostTracks(:, 1) = assignedGhostTracks(:, 1) - length(tracks)*nMarkers;
-        %assignedGhostTracks = double(assignedGhostTracks);
         allAssignedGhostTracksIdx = unique(floor((assignedGhostTracks(:,1)-1)/nMarkers) + 1);
         unassignedGhostTracks(:) = unassignedGhostTracks(:) - length(tracks)*nMarkers;
         unassignedGhostTracks = double(unassignedGhostTracks);
@@ -978,7 +938,7 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
         end
         
         
-                % Find the indices of 'lost' tracks.
+        % Find the indices of 'lost' tracks.
         lostIdxBool = ( [tracks(:).consecutiveInvisibleCount] >= invisibleForTooLong | ... 
                         tooCloseBirds' ) & (ages > 0);
         lostIdx = find(lostIdxBool);
