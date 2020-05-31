@@ -6,7 +6,7 @@
 % TODO
 % Explanation goes here
 
-function [estimatedPositions, estimatedQuats, positionVariance, rotationVariance, snapshots] = ownMOT(D, patterns, patternNames, useVICONinit, initialStates, nObjects, shouldShowTruth, trueTrajectory, trueOrientation, quatMotionType, hyperParams)
+function [estimatedPositions, estimatedQuats, positionVariance, rotationVariance, snapshots, certainties] = ownMOT(D, patterns, patternNames, useVICONinit, initialStates, nObjects, shouldShowTruth, trueTrajectory, trueOrientation, quatMotionType, hyperParams)
 % OWNMOT does multi object tracking
 %   @D all observations/detections in the format:
 %       T x maxDetectionsPerFrame x 3
@@ -65,7 +65,6 @@ params.initMotionModel = 0;
 similarPairs = getSimilarPatterns(patterns, hyperParams.patternSimilarityThreshold);
 
 
-nextId = 1;
 if useVICONinit
     unassignedPatterns = zeros(nObjects, 1);
 else
@@ -104,7 +103,6 @@ certainties = NaN*zeros(nObjects, T);
 
 snapshots = {};
 snapshotIdx = 1;
-freshInitis = zeros(nObjects, 1);
 
 for t = 1:T
     freshInits = zeros(nObjects,1);
@@ -125,10 +123,10 @@ for t = 1:T
         [tracks, ghostTracks, unassignedPatterns, extraFreshInits] = createNewTracks(unusedDets, unassignedPatterns, tracks, patterns, params, patternNames, similarPairs, lastVisibleFrames, ghostTracks);
         freshInits = freshInits | extraFreshInits;
     end
-    t
-    if t == 4880
-       t %rot
-    end
+    %t
+    %if t == 4880
+    %   t %rot
+    %end
     %if t==5000
     %   t % total chaos
     %end % 8700grün
@@ -180,9 +178,6 @@ for t = 1:T
     end
     %toc
 end
-
-'finish'
-
 
 
 %% Initialize Tracks
@@ -613,16 +608,17 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
                 end
 
                 [minCost2, minIdx2] = mink(matchingCosts, 2);
-                costDiff = minCost2(2)-minCost2(1);
+                if length(minCost2) == 2
+                    costDiff = minCost2(2) - minCost2(1);
+                elseif length(minCost2) == 1
+                    costDiff = Inf;
+                end
                 patternIdx = unassignedandSafeIdx(minIdx2(1));
                 if ~isempty(minCost2(1)) && ...
                     (  ( minCost2(1) < params.initThreshold4 && nAssgnDets == 4 && costDiff > 1)  || ...
                         ( minCost2(1) < params.initThreshold && nAssgnDets == 3 && safePatternsBool(patternIdx)==1 && costDiff > 2) ||... 
                         ( minCost2(1) < 0.3 && nAssgnDets == 3 && costDiff > 0.8) ...
                     )
-                    if nAssgnDets == 3
-                        minCost2(1)
-                    end
                     %randomIdx = randperm(sum(potentialReInit));
                     %potIdx = find(potentialReInit);
                     %patternIdx = potIdx(randomIdx(1));
@@ -926,8 +922,8 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
         invisibleForTooLong = 25;
         invisibleForTooLongGhosts = 10;
 
-        ageThreshold = 10;
-        visibilityFraction = 0.5;
+        %ageThreshold = 10;
+        %visibilityFraction = 0.5;
         
         ages = [tracks(:).age];
         
@@ -1001,9 +997,9 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
         end
         
         % Compute the fraction of the track's age for which it was visible.
-        ages = [ghostTracks(:).age];
-        totalVisibleCounts = [ghostTracks(:).totalVisibleCount];
-        visibility = totalVisibleCounts ./ ages;
+        %ages = [ghostTracks(:).age];
+        %totalVisibleCounts = [ghostTracks(:).totalVisibleCount];
+        %visibility = totalVisibleCounts ./ ages;
         lostGhostsIdx = [ghostTracks(:).consecutiveInvisibleCount] >= invisibleForTooLongGhosts;% | ( ages < ageThreshold & visibility < visibilityFraction)
         lostGhostsIdx = lostGhostsIdx | deletedGhostTracks';
         ghostTracks(lostGhostsIdx == 1) = [];        
@@ -1161,39 +1157,4 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
         drawnow
         %pause(0.1)
     end
-
-
-%% helper functions
-    function cluster_centers = process_clusters(clusters)
-        %num_clusters = sum(~cellfun(@isempty,clusters),2);
-        num_clusters = 0;
-        for k = 1:length(clusters)
-            if size(clusters{1,k},1) > 1
-                num_clusters = num_clusters + 1;
-            end
-        end
-        
-        %TODO viellicht cluster mit size 1 wegnehmen
-        %TODO Checken ob vielleicht sogar zu fein geclustert wird, das könnte in geschossen reultieren
-        
-        cluster_centers = zeros(num_clusters,3);
-        idx = 1;
-        for c = 1:length(clusters)
-            if size(clusters{1,c},1) > 1
-                cluster_centers(idx,:) = mean(clusters{1,c},1);
-                idx = idx + 1;
-            end
-        end
-    end
-
-    function all_detections = combine_detections(assgn, unassgn)
-        is_new_detection = false(size(unassgn));
-        for i = 1:size(unassgn,1)
-            p = unassgn(i,:);
-            d = sqrt(sum((assgn - p).^2,2));
-            is_new_detection(i) = min(d) > 230;
-        end
-        all_detections = [assgn;unassgn(is_new_detection,:)];
-    end
-
 end

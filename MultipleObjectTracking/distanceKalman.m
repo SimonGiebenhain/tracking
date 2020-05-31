@@ -1,7 +1,6 @@
 function dist = distanceKalman(kalmanFilter, detections, motionType)
 %DISTANCEKALMAN Summary of this function goes here
 %   Detailed explanation goes here
-[nDetections, dim] = size(detections);
 if strcmp(kalmanFilter.type, 'LG-EKF')
     expectedMarkerLocations = measFuncNonHomogenous(kalmanFilter.mu, kalmanFilter.pattern);
 else

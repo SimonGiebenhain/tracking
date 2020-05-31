@@ -45,11 +45,6 @@ switch model
                 % Find an assignment between the individual markers and the detections
                 assignment = match_patterns(pattern, reshape(detections, [],dim), 'ML');
                 
-                % Print in case an error was made in the assignment
-                inversions = assignment(2:end) - assignment(1:end-1);
-                if min(inversions) < 1
-                    assignment
-                end
                 
                 % construct H and R from assignment vector, i.e. delete the
                 % corresponding rows in H and R.

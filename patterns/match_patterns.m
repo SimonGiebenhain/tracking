@@ -1,4 +1,4 @@
-function [assignment, lostDets, FPs, certainty, method, c_ret] = match_patterns(whole_pattern, detected_pattern, method, rotMat, hyperParams)
+function [assignment, lostDets, certainty, method, c_ret] = match_patterns(whole_pattern, detected_pattern, method, rotMat, hyperParams)
 %MATCH_PATTERNS Find corresponing points in two sets of points
 %
 %   assignment = MATCH_PATTERNS(whole_pattern, detected_pattern, 'ML', rotMat)
@@ -24,13 +24,10 @@ function [assignment, lostDets, FPs, certainty, method, c_ret] = match_patterns(
 %   The algorithm is very simple and only a first draft.
 c_ret = NaN;
 lostDets = -1;
-FPs = -1;
 dim = size(whole_pattern,2);
 if strcmp(method, 'correct')
     rotatedPattern = (rotMat*whole_pattern')';
-    
-    FPs = zeros(size(detected_pattern,1),1);
-    
+        
     % the rotated pattern also is the expected location of the markers
     % filter some False Positives
     

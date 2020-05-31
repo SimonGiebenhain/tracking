@@ -1,6 +1,6 @@
 %% load data and patterns
 % Also add folder with patterns to path of matlab!
-dataFilename = 'datasets/session8/Starling_Trials_10-12-2019_16-00-00_Trajectories_100.csv'; % 'datasets/session1/all.csv'; %
+dataFilename =  'datasets/session8/Starling_Trials_10-12-2019_16-00-00_Trajectories_100.csv'; %'datasets/session8/all.csv'; %
 patternDirectoryName = 'datasets/session8';
 filePrefix = strsplit(dataFilename, '.');
 filePrefix = filePrefix{1};
@@ -105,15 +105,18 @@ quatMotionType = 'brownian';
 
 fprintf('Starting to track!\n')
 
-%profile on
+%profile on;
 beginningFrame = 1;%4000;%7800+ blau macht sehr komische sachen;5300 %+ 1000 jittery;%%2000+4000;
-endFrame = size(formattedData,1);
-stdHyperParams.visualizeTracking = 1;
+endFrame = 2000;%size(formattedData,1);
+stdHyperParams.visualizeTracking = 0;
 tic
-[estimatedPositions, estimatedQuats, positionVariance, rotationVariance, snapshots] = ownMOT(formattedData(beginningFrame:endFrame,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
+[estimatedPositions, estimatedQuats, positionVariance, rotationVariance, snapshots, certainties] = ownMOT(formattedData(beginningFrame:endFrame,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
 %[estimatedPositions, estimatedQuats] = ownMOT(formattedData(1000:end,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
 toc
 %profile viewer
+%profile off;
+%p=profile('info'); 
+%findNonSuppressedOutput( p, '/Users/sigi/uni/7sem/project' )
 
 %%
 stdHyperParams.visualizeTracking = 1;
@@ -124,7 +127,7 @@ stdHyperParams.visualizeTracking = 1;
 
 [estimatedPositionsBackward, estimatedQuatsBackward] = ownMOTbackward(formattedData(beginningFrame:endFrame,:,:), patterns, patternNames, snapshots, 0, stdHyperParams);
 revIdx = sort(1:length(formattedData), 'descend');
-%%
+
 estimatedPositionsBackward = estimatedPositionsBackward(:, revIdx, :);
 estimatedQuatsBackward = estimatedQuatsBackward(:, revIdx, :);
 
@@ -179,6 +182,10 @@ dets = formattedData(beginningFrame:endFrame,:,:);
 %dets = formattedData(revIdx, :, :);
 %reverseIdx = sort(1:size(estimatedPositionsRev, 2), 'descend');
 %vizRes(dets, patterns, estimatedPositionsBackward, estimatedQuatsBackward, vizParams, 0)
+%%
 vizRes(dets, patterns, estPos, estQuat, vizParams, 0)
 
+%%
+vizParams.vizSpeed = 5;
+vizRes(formattedData, patterns, viconTrajectories, viconOrientation, vizParams, 0)
 

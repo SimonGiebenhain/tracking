@@ -29,9 +29,7 @@ invisCounts = [tracks(:).consecutiveInvisibleCount];
 invis = invisCounts >= 5;
 unassignedPatterns = unassignedPatternsReturn | invis';
 
-if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
-    costOfNonAssignment = 1;
-    
+if size(detections, 1) > 1 && sum(unassignedPatterns) > 0    
     dim = size(patterns,3);
     epsilon = 55;
     clustersRaw = clusterUnassignedDetections(detections, epsilon);
@@ -104,9 +102,6 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
                     
                     % Create a Kalman filter object.
                     patternIdx = unassignedPatternsIdx(specificPatternIdx);
-                    if patternIdx == 1 || patternIdx == 2 || patternIdx == 4
-                        patternIdx
-                    end
                     pattern = squeeze( patterns(patternIdx,:,:));
                     if isfield(tracks(patternIdx).kalmanFilter, 'mu')
                         newTrack = createLGEKFtrack(rotm, pos', l2Error, patternIdx, pattern, patternNames{patternIdx}, params, tracks(patternIdx).kalmanFilter.mu.motionModel);
@@ -220,15 +215,10 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
                         costDiff = minMSE2(2) - minMSE2(1);
                     elseif length(minMSE2) == 1
                         costDiff = Inf;
-                    else
-                       'ERROR' 
                     end
                     minPatIdx = safeAndUnassignedPatterns(minIdx2(1));
 
                     if minMSE2(1) < initThreshold3 && costDiff > 1.5
-                        if minPatIdx == 1 || minPatIdx == 2 || minPatIdx == 4
-                           minPatIdx 
-                        end
                         if isfield(tracks(minPatIdx).kalmanFilter, 'mu')
                             newTrack = createLGEKFtrack(squeeze(rotMats(minIdx2(1), :, :)), ...
                                 squeeze(transVecs(minIdx2(1), :))', ...
