@@ -6,7 +6,7 @@
 % TODO
 % Explanation goes here
 
-function [estimatedPositions, estimatedQuats, snapshots, certainties] = ownMOT(D, patterns, patternNames, useVICONinit, initialStates, nObjects, shouldShowTruth, trueTrajectory, trueOrientation, quatMotionType, hyperParams)
+function [estimatedPositions, estimatedQuats, snapshots, certainties] = ownMOT(D, patterns, patternNames, useVICONinit, initialStates, nObjects, shouldShowTruth, trueTrajectory, trueOrientation, quatMotionType, hyperParams, snapshots)
 % OWNMOT does multi object tracking
 %   @D all observations/detections in the format:
 %       T x maxDetectionsPerFrame x 3
@@ -27,12 +27,25 @@ function [estimatedPositions, estimatedQuats, snapshots, certainties] = ownMOT(D
 %       Holds ground truth quaternions representing the orientation of each
 %       object at each timeframe
 
+
+
 nMarkers = 4;
 
 [T, ~, dim] = size(D);
 
 maxPos = squeeze(max(D,[],[1 2]));
 minPos = squeeze(min(D,[],[1 2]));
+
+goBackwards = 0;
+% If this is a backwards pass, invert the time in the detections and the
+% snapshots
+if exist('snapshots', 'var')
+    goBackwards = 1;
+    inverseIdx = sort(1:T, 'descend');
+    D = D(inverseIdx, :, :);
+    inverseSnapshotIdx = sort(1:length(snapshots), 'descend');
+    snapshots = snapshots(inverseSnapshotIdx);
+end
 
 processNoise.position = hyperParams.posNoise;
 processNoise.positionBrownian = hyperParams.posNoiseBrownian;
@@ -71,8 +84,17 @@ else
     unassignedPatterns = ones(nObjects, 1);
 end
 lastVisibleFrames = zeros(nObjects, 1);
+if goBackwards == 1
+    birdsOfInterest = zeros(length(snapshots{1}.freshInits),1);
+end
 
-[tracks, ghostTracks] = initializeTracks();
+[tracks, ghostTracks] = initializeTracks(1);
+if goBackwards == 1
+    t = T - snapshots{1}.t + 1;
+    nextSnapshotIdx = 2;
+else
+   t = 1; 
+end
 
 visualizeTracking = hyperParams.visualizeTracking;
 if visualizeTracking
@@ -94,14 +116,16 @@ if visualizeTracking == 1
 end
 
 
-estimatedPositions = zeros(nObjects, T, 3);
-estimatedQuats = zeros(nObjects, T, 4);
+estimatedPositions = NaN*zeros(nObjects, T, 3);
+estimatedQuats = NaN*zeros(nObjects, T, 4);
 certainties = NaN*zeros(nObjects, T);
 
-snapshots = {};
-snapshotIdx = 1;
+if goBackwards == 0
+    snapshots = {};
+    snapshotIdx = 1;
+end
 
-for t = 1:T
+while t < T && ( goBackwards == 0 || ~isempty(birdsOfInterest) )
     freshInits = zeros(nObjects,1);
     detections = squeeze(D(t,:,:));
     detections = reshape(detections(~isnan(detections)),[],dim);
@@ -143,13 +167,85 @@ for t = 1:T
         end
     end
     
-    if any(freshInits)
+    if any(freshInits) && goBackwards == 0
        state.tracks = tracks;
        state.ghostTracks = ghostTracks;
        state.t = t;
        state.freshInits = find(freshInits);
        snapshots{snapshotIdx} = state;
        snapshotIdx = snapshotIdx + 1;
+    end
+    if goBackwards == 1
+        if nextSnapshotIdx <= length(snapshots)
+            % Check whether to skip to next snapshot
+            nextSnapshot = snapshots{nextSnapshotIdx};
+
+            if T-t <= nextSnapshot.t
+                %add freshInits to birdsOfInterest, avoid duplicates
+                % als take care of lastVisibleFrames
+                nextSnapshotIdx = nextSnapshotIdx + 1;
+                birdsOfInterest = [birdsOfInterest; nextSnapshot.freshInits];
+                %TODO: also init new bOI manually from snapshot
+                for ii=1:length(tracks)
+                   if tracks(ii).age == 0 && nextSnapshot.tracks(ii).age > 0
+                    tracks(ii) = nextSnapshot.tracks(ii);
+                    tracks(ii).age = 1;
+                    tracks(ii).totalVisibleCount = 0;
+                    tracks(ii).consecutiveInvisibleCount = 0;
+
+                    tracks(ii).kalmanFilter.consecutiveInvisibleCount = 0;
+                    tracks(ii).kalmanFilter.framesInMotionModel = 15;
+
+                    tracks(ii).kalmanFilter.latest5pos = zeros(5, 3);
+                    tracks(ii).kalmanFilter.latest5pos(1, :) = tracks(ii).kalmanFilter.mu.X(1:3, 4);
+                    tracks(ii).kalmanFilter.latestPosIdx = 1;
+
+                    if tracks(ii).kalmanFilter.mu.motionModel == 2
+                        tracks(ii).kalmanFilter.mu.v = -tracks(ii).kalmanFilter.mu.v;
+                        tracks(ii).kalmanFilter.mu.a = -tracks(ii).kalmanFilter.mu.a;
+                    end
+                   end
+                end
+
+                newVisBreakPoints = zeros(length(nextSnapshot.freshInits),1);
+                for ii=1:length(newVisBreakPoints)
+                    trackIdx = nextSnapshot.freshInits(ii);
+                    if isfield(nextSnapshot.tracks(trackIdx).kalmanFilter, 'lastVisibleFrame')
+                        newVisBreakPoints(ii) = nextSnapshot.tracks(trackIdx).kalmanFilter.lastVisibleFrame; 
+                    else
+                        newVisBreakPoints(ii) = 0; 
+                    end
+                end
+                lastVisibleFrames = [lastVisibleFrames; newVisBreakPoints];
+            end
+        end
+
+        %go through lastVisibleFrames, where t <= lastVisibleFrames: remove
+        %bird from birdsOfInterest
+
+        filledGaps = zeros( length( lastVisibleFrames ) ,1 );
+
+
+        for ind=1:length(lastVisibleFrames)
+            if lastVisibleFrames(ind) >= T - t + 1
+                filledGaps(ind) = 1;
+            end
+        end
+        birdsOfInterest = birdsOfInterest(filledGaps ~=1);
+        lastVisibleFrames = lastVisibleFrames(filledGaps ~=1);
+
+
+        % if birdsOfInterest is empty: set t to nextSnap.t and set states, i.e.
+        % reuse init method maybe
+        if isempty(birdsOfInterest) && nextSnapshotIdx <= length(snapshots)
+            [tracks, ghostTracks] = initializeTracks(nextSnapshotIdx);
+            t = T-nextSnapshot.t+1;
+            nextSnapshotIdx = nextSnapshotIdx + 1;
+        else
+            t=t+1;
+        end
+    else
+       t=t+1; 
     end
 end
 
@@ -189,48 +285,8 @@ end
 % frames.
 %}
 
-    function [tracks, ghostTracks] = initializeTracks()
-        % This case is not used; only 'else' case is relevant
-        if useVICONinit
-            for i = 1:nObjects
-                [s, kalmanParams] = setupKalman(squeeze(patterns(i,:,:)), -1, params);
-                if strcmp(model, 'LieGroup')
-                    mu.X = [ quat2rotm(initialStates.quat(i,:)) initialStates.pos(i,:)'; [0 0 0 1] ];
-                    mu.v = initialStates.velocity(i,:)';
-                    mu.a = initialStates.acceleration(i,:)';
-                    s.mu = mu;
-                    s.P = diag(repelem([params.initialNoise.initQuatVar; 
-                                        params.initialNoise.initPositionVar; 
-                                        params.initialNoise.initMotionVar; 
-                                        params.initialNoise.initAccVar
-                                       ],[dim, dim, dim, dim]));
-                else
-                    %if strcmp(quatMotionType, 'brownian')
-                    %    s.x = [initialStates.pos(i,:) initialStates.velocity(i,:) initialStates.quat(i,:)]'; %;initialStates(i,1:end-4)';
-                    %    s.P = eye(2*dim+4) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initQuatVar], [dim, dim, 4]);
-               
-                    if strcmp(params.motionType, 'constAcc')
-                        %TODO: add acceleration=0 in initial state
-                        s.x = [initialStates.pos(i,:) initialStates.velocity(i,:) initialStates.acceleration(i,:) initialStates.quat(i,:)]'; %initialStates(i,1:end-4);
-                        s.P = eye(3*dim+4) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initAccVar; kalmanParams.initQuatVar], [dim, dim, dim, 4]);
-                    else
-                        s.x = [initialStates.pos(i,:) initialStates.velocity(i,:) initialStates.acceleration(i,:) initialStates.quat(i,:) 0 0 0 0]';%initialStates(i,:)';
-                        s.P = eye(2*dim+8) .* repelem([kalmanParams.initPositionVar; kalmanParams.initMotionVar; kalmanParams.initQuatVar; kalmanParams.initQuatMotionVar], [dim, dim, 4, 4]);
-                    end
-                end
-                s.pattern = squeeze(patterns(i,:,:));
-                s.flying = -1;
-                s.consecutiveInvisibleCount = 0;
-                tracks(i) = struct(...
-                    'id', i, ... 
-                    'name', patternNames{i}, ...
-                    'kalmanFilter', s, ...
-                    'kalmanParams', kalmanParams, ...
-                    'age', 1, ...
-                    'totalVisibleCount', 1, ...
-                    'consecutiveInvisibleCount', 0);
-            end
-        else
+    function [tracks, ghostTracks] = initializeTracks(baseFrame)
+        if goBackwards == 0
             emptyTrack.age = 0;
             emptyTrack.totalVisibleCount = 0;
             emptyTrack.consecutiveInvisibleCount = 0;
@@ -248,6 +304,56 @@ end
             unassignedDetections = squeeze(D(1,:,:));
             unassignedDetections = reshape(unassignedDetections(~isnan(unassignedDetections)),[],dim);
             [tracks, ghostTracks, unassignedPatterns, freshInits] = createNewTracks(unassignedDetections, unassignedPatterns, tracks, patterns, params, patternNames, similarPairs, lastVisibleFrames);
+        else
+            if baseFrame > length(snapshots)
+                return
+            end
+            tracks = snapshots{baseFrame}.tracks;
+            for i=1:length(tracks)
+                if tracks(i).age > 0
+                    tracks(i).age = 1;
+                    tracks(i).totalVisibleCount = 0;
+                    tracks(i).consecutiveInvisibleCount = 0;
+                    
+                    tracks(i).kalmanFilter.consecutiveInvisibleCount = 0;
+                    tracks(i).kalmanFilter.framesInMotionModel = 15;
+                    
+                    tracks(i).kalmanFilter.latest5pos = zeros(5, 3);
+                    tracks(i).kalmanFilter.latest5pos(1, :) = tracks(i).kalmanFilter.mu.X(1:3, 4);
+                    tracks(i).kalmanFilter.latestPosIdx = 1;
+                    
+                    if tracks(i).kalmanFilter.mu.motionModel == 2
+                        tracks(i).kalmanFilter.mu.v = -tracks(i).kalmanFilter.mu.v;
+                        tracks(i).kalmanFilter.mu.a = -tracks(i).kalmanFilter.mu.a;
+                    end
+                end
+            end
+            ghostTracks = snapshots{baseFrame}.ghostTracks;
+            for i=1:length(ghostTracks)
+                ghostTracks(i).age = 1;
+                ghostTracks(i).totalVisibleCount = 0;
+                ghostTracks(i).consecutiveInvisibleCount = 0;
+                ghostTracks(i).trustworthyness = 5;
+                ghostTracks(i).kalmanFilter.latest5pos = zeros(5, 3);
+                ghostTracks(i).kalmanFilter.latest5pos(1, :) = ghostTracks(i).kalmanFilter.x(1:3);
+                ghostTracks(i).kalmanFilter.latestPosidx = 1;
+                ghostTracks(i).kalmanFilter.framesInMotionModel = 15;
+                if ghostTracks(i).kalmanFilter.motionModel == 2
+                    ghostTracks(i).kalmanFilter.x(4:end) = -ghostTracks(i).kalmanFilter.x(4:end);
+                end
+            end
+            
+            birdsOfInterest = snapshots{baseFrame}.freshInits;
+            lastVisibleFrames = zeros(length(birdsOfInterest), 1);
+            
+            for i=1:length(lastVisibleFrames)
+                trackIdx = birdsOfInterest(i);
+                if isfield( snapshots{baseFrame}.tracks(trackIdx).kalmanFilter, 'lastVisibleFrame')
+                    lastVisibleFrames(i) = snapshots{baseFrame}.tracks(trackIdx).kalmanFilter.lastVisibleFrame;
+                else
+                    lastVisibleFrames(i) = 0;
+                end
+            end
         end
     end
 
@@ -878,91 +984,180 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
 % that have been invisible for too many frames overall.
 
     function deleteLostTracks(deletedGhostTracks)
-        
-        invisibleForTooLong = 25;
-        invisibleForTooLongGhosts = 10;
-
-        %ageThreshold = 10;
-        %visibilityFraction = 0.5;
-        
-        ages = [tracks(:).age];
-        
-        %TODO: do the same for ghost birds
-        % delte tracks that drift towards other birds, because their own
-        % detections vanished
-        nTracks = length(tracks);
-        tooCloseBirds = zeros(nTracks,1);
-        tooClose = 40;
-        positions = NaN*zeros(nTracks,3);
-        for i=1:nTracks
-           if tracks(i).age > 0
-              positions(i,:) = tracks(i).kalmanFilter.mu.X(1:3, 4); 
-           end
-        end
-        distsBirds = triu(squareform(pdist(positions)));
-        [rows, cols] = ind2sub(size(distsBirds), find(distsBirds > 0 & distsBirds < tooClose));
-        
-        for r =1:length(rows)
-            bird1Idx = rows(r);
-            bird2Idx = cols(r);
-            s1 = tracks(bird1Idx).kalmanFilter;
-            s2 = tracks(bird2Idx).kalmanFilter;
-            if tracks(bird1Idx).kalmanFilter.mu.motionModel == 0 && ...
-                    tracks(bird2Idx).kalmanFilter.mu.motionModel == 0
-                deltas1 = s1.latest5pos - [s1.latest5pos(end, :); s1.latest5pos(1:end-1, :)];
-                deltas1(s1.latestPosIdx+1, :) = [];
-                delta1 = sum(norm(deltas1, 1));
-                deltas2 = s2.latest5pos - [s2.latest5pos(end, :); s2.latest5pos(1:end-1, :)];
-                deltas2(s2.latestPosIdx+1, :) = [];
-                delta2 = sum(norm(deltas2, 1));
-                
-                if delta1 > delta2
-                    tooCloseBirds(bird1Idx) = 1;
-                else
-                    tooCloseBirds(bird2Idx) = 1;
-                end
-            elseif tracks(bird1Idx).kalmanFilter.mu.motionModel == 2 && ...
-                    tracks(bird2Idx).kalmanFilter.mu.motionModel == 0
-                tooCloseBirds(bird1Idx) = 1;
-            elseif tracks(bird1Idx).kalmanFilter.mu.motionModel == 0 && ...
-                    tracks(bird2Idx).kalmanFilter.mu.motionModel == 2
-                tooCloseBirds(bird2Idx) = 1;
-            elseif tracks(bird1Idx).kalmanFilter.mu.motionModel == 2 && ...
-                    tracks(bird2Idx).kalmanFilter.mu.motionModel == 2
-                if norm(tracks(bird1Idx).kalmanFilter.mu) > norm(tracks(bird2Idx).kalmanFilter.mu)
-                    tooCloseBirds(bird1Idx) = 1;
-                else
-                    tooCloseBirds(bird2Idx) = 1;
+        if goBackwards == 0
+            invisibleForTooLong = 25;
+            invisibleForTooLongGhosts = 10;
+            
+            %ageThreshold = 10;
+            %visibilityFraction = 0.5;
+            
+            ages = [tracks(:).age];
+            
+            %TODO: do the same for ghost birds
+            % delte tracks that drift towards other birds, because their own
+            % detections vanished
+            nTracks = length(tracks);
+            tooCloseBirds = zeros(nTracks,1);
+            tooClose = 40;
+            positions = NaN*zeros(nTracks,3);
+            for i=1:nTracks
+                if tracks(i).age > 0
+                    positions(i,:) = tracks(i).kalmanFilter.mu.X(1:3, 4);
                 end
             end
-        end
-        
-        
-        % Find the indices of 'lost' tracks.
-        lostIdxBool = ( [tracks(:).consecutiveInvisibleCount] >= invisibleForTooLong | ... 
-                        tooCloseBirds' ) & (ages > 0);
-        lostIdx = find(lostIdxBool);
-        if ~isempty(lostIdx)
-            for i=1:length(lostIdx)
-                %mark track as lost/pattern as unassigned
-                unassignedPatterns(lostIdx(i)) = 1;
-                tracks(lostIdx(i)).age = 0;
-                tracks(lostIdx(i)).kalmanFilter.framesInNewMotionModel = 5;
-                tracks(lostIdx(i)).kalmanFilter.latest5pos = zeros(5,3);
-                tracks(lostIdx(i)).kalmanFilter.latestPosIdx = 0;
-        
-                estimatedPositions(lostIdx(i), max(1,t-invisibleForTooLong):t-1, :) = NaN;
-                estimatedQuats(lostIdx(i), max(1, t-invisibleForTooLong):t-1, :) = NaN;
+            distsBirds = triu(squareform(pdist(positions)));
+            [rows, cols] = ind2sub(size(distsBirds), find(distsBirds > 0 & distsBirds < tooClose));
+            
+            for r =1:length(rows)
+                bird1Idx = rows(r);
+                bird2Idx = cols(r);
+                s1 = tracks(bird1Idx).kalmanFilter;
+                s2 = tracks(bird2Idx).kalmanFilter;
+                if tracks(bird1Idx).kalmanFilter.mu.motionModel == 0 && ...
+                        tracks(bird2Idx).kalmanFilter.mu.motionModel == 0
+                    deltas1 = s1.latest5pos - [s1.latest5pos(end, :); s1.latest5pos(1:end-1, :)];
+                    deltas1(s1.latestPosIdx+1, :) = [];
+                    delta1 = sum(norm(deltas1, 1));
+                    deltas2 = s2.latest5pos - [s2.latest5pos(end, :); s2.latest5pos(1:end-1, :)];
+                    deltas2(s2.latestPosIdx+1, :) = [];
+                    delta2 = sum(norm(deltas2, 1));
+                    
+                    if delta1 > delta2
+                        tooCloseBirds(bird1Idx) = 1;
+                    else
+                        tooCloseBirds(bird2Idx) = 1;
+                    end
+                elseif tracks(bird1Idx).kalmanFilter.mu.motionModel == 2 && ...
+                        tracks(bird2Idx).kalmanFilter.mu.motionModel == 0
+                    tooCloseBirds(bird1Idx) = 1;
+                elseif tracks(bird1Idx).kalmanFilter.mu.motionModel == 0 && ...
+                        tracks(bird2Idx).kalmanFilter.mu.motionModel == 2
+                    tooCloseBirds(bird2Idx) = 1;
+                elseif tracks(bird1Idx).kalmanFilter.mu.motionModel == 2 && ...
+                        tracks(bird2Idx).kalmanFilter.mu.motionModel == 2
+                    if norm(tracks(bird1Idx).kalmanFilter.mu) > norm(tracks(bird2Idx).kalmanFilter.mu)
+                        tooCloseBirds(bird1Idx) = 1;
+                    else
+                        tooCloseBirds(bird2Idx) = 1;
+                    end
+                end
             end
+            
+            
+            % Find the indices of 'lost' tracks.
+            lostIdxBool = ( [tracks(:).consecutiveInvisibleCount] >= invisibleForTooLong | ...
+                tooCloseBirds' ) & (ages > 0);
+            lostIdx = find(lostIdxBool);
+            if ~isempty(lostIdx)
+                for i=1:length(lostIdx)
+                    %mark track as lost/pattern as unassigned
+                    unassignedPatterns(lostIdx(i)) = 1;
+                    tracks(lostIdx(i)).age = 0;
+                    tracks(lostIdx(i)).kalmanFilter.framesInNewMotionModel = 5;
+                    tracks(lostIdx(i)).kalmanFilter.latest5pos = zeros(5,3);
+                    tracks(lostIdx(i)).kalmanFilter.latestPosIdx = 0;
+                    
+                    estimatedPositions(lostIdx(i), max(1,t-invisibleForTooLong):t-1, :) = NaN;
+                    estimatedQuats(lostIdx(i), max(1, t-invisibleForTooLong):t-1, :) = NaN;
+                end
+            end
+            
+            % Compute the fraction of the track's age for which it was visible.
+            %ages = [ghostTracks(:).age];
+            %totalVisibleCounts = [ghostTracks(:).totalVisibleCount];
+            %visibility = totalVisibleCounts ./ ages;
+            lostGhostsIdx = [ghostTracks(:).consecutiveInvisibleCount] >= invisibleForTooLongGhosts;% | ( ages < ageThreshold & visibility < visibilityFraction)
+            lostGhostsIdx = lostGhostsIdx | deletedGhostTracks';
+            ghostTracks(lostGhostsIdx == 1) = [];
+        else
+            invisibleForTooLong = 25;
+            invisibleForTooLongGhosts = 10;
+            
+            ageThreshold = 10;
+            visibilityFraction = 0.5;
+            
+            ages = [tracks(:).age];
+            
+            %TODO: do the same for ghost birds
+            % delte tracks that drift towards other birds, because their own
+            % detections vanished
+            nTracks = length(tracks);
+            tooCloseBirds = zeros(nTracks,1);
+            tooClose = 40;
+            positions = NaN*zeros(nTracks,3);
+            for i=1:nTracks
+                if tracks(i).age > 0
+                    positions(i,:) = tracks(i).kalmanFilter.mu.X(1:3, 4);
+                end
+            end
+            distsBirds = triu(squareform(pdist(positions)));
+            [rows, cols] = ind2sub(size(distsBirds), find(distsBirds > 0 & distsBirds < tooClose));
+            
+            for r =1:length(rows)
+                bird1Idx = rows(r);
+                bird2Idx = cols(r);
+                s1 = tracks(bird1Idx).kalmanFilter;
+                s2 = tracks(bird2Idx).kalmanFilter;
+                if tracks(bird1Idx).kalmanFilter.mu.motionModel == 0 && ...
+                        tracks(bird2Idx).kalmanFilter.mu.motionModel == 0
+                    deltas1 = s1.latest5pos - [s1.latest5pos(end, :); s1.latest5pos(1:end-1, :)];
+                    deltas1(s1.latestPosIdx+1, :) = [];
+                    delta1 = sum(norm(deltas1, 1));
+                    deltas2 = s2.latest5pos - [s2.latest5pos(end, :); s2.latest5pos(1:end-1, :)];
+                    deltas2(s2.latestPosIdx+1, :) = [];
+                    delta2 = sum(norm(deltas2, 1));
+                    
+                    if delta1 > delta2
+                        tooCloseBirds(bird1Idx) = 1;
+                    else
+                        tooCloseBirds(bird2Idx) = 1;
+                    end
+                elseif tracks(bird1Idx).kalmanFilter.mu.motionModel == 2 && ...
+                        tracks(bird2Idx).kalmanFilter.mu.motionModel == 0
+                    tooCloseBirds(bird1Idx) = 1;
+                elseif tracks(bird1Idx).kalmanFilter.mu.motionModel == 0 && ...
+                        tracks(bird2Idx).kalmanFilter.mu.motionModel == 2
+                    tooCloseBirds(bird2Idx) = 1;
+                elseif tracks(bird1Idx).kalmanFilter.mu.motionModel == 2 && ...
+                        tracks(bird2Idx).kalmanFilter.mu.motionModel == 2
+                    if norm(tracks(bird1Idx).kalmanFilter.mu) > norm(tracks(bird2Idx).kalmanFilter.mu)
+                        tooCloseBirds(bird1Idx) = 1;
+                    else
+                        tooCloseBirds(bird2Idx) = 1;
+                    end
+                end
+            end
+            
+            
+            % Find the indices of 'lost' tracks.
+            lostIdxBool = ( [tracks(:).consecutiveInvisibleCount] >= invisibleForTooLong | ...
+                tooCloseBirds' ) & (ages > 0);
+            lostIdx = find(lostIdxBool);
+            if ~isempty(lostIdx)
+                for i=1:length(lostIdx)
+                    %mark track as lost/pattern as unassigned
+                    unassignedPatterns(lostIdx(i)) = 1;
+                    tracks(lostIdx(i)).age = 0;
+                    tracks(lostIdx(i)).kalmanFilter.framesInNewMotionModel = 5;
+                    tracks(lostIdx(i)).kalmanFilter.latest5pos = zeros(5,3);
+                    tracks(lostIdx(i)).kalmanFilter.latestPosIdx = 0;
+                    
+                    estimatedPositions(lostIdx(i), max(1,t-invisibleForTooLong):t-1, :) = NaN;
+                    estimatedQuats(lostIdx(i), max(1, t-invisibleForTooLong):t-1, :) = NaN;
+                end
+            end
+            removedInterestIdx = ~ismember(birdsOfInterest, lostIdx);
+            birdsOfInterest = birdsOfInterest(removedInterestIdx);
+            lastVisibleFrames = lastVisibleFrames(removedInterestIdx);
+            
+            % Compute the fraction of the track's age for which it was visible.
+            ages = [ghostTracks(:).age];
+            totalVisibleCounts = [ghostTracks(:).totalVisibleCount];
+            visibility = totalVisibleCounts ./ ages;
+            lostGhostsIdx = [ghostTracks(:).consecutiveInvisibleCount] >= invisibleForTooLongGhosts;% | ( ages < ageThreshold & visibility < visibilityFraction)
+            lostGhostsIdx = lostGhostsIdx | deletedGhostTracks';
+            ghostTracks(lostGhostsIdx == 1) = [];
         end
-        
-        % Compute the fraction of the track's age for which it was visible.
-        %ages = [ghostTracks(:).age];
-        %totalVisibleCounts = [ghostTracks(:).totalVisibleCount];
-        %visibility = totalVisibleCounts ./ ages;
-        lostGhostsIdx = [ghostTracks(:).consecutiveInvisibleCount] >= invisibleForTooLongGhosts;% | ( ages < ageThreshold & visibility < visibilityFraction)
-        lostGhostsIdx = lostGhostsIdx | deletedGhostTracks';
-        ghostTracks(lostGhostsIdx == 1) = [];        
     end
 
 

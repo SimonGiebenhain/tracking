@@ -107,7 +107,7 @@ fprintf('Starting to track!\n')
 
 %profile on;
 beginningFrame = 1;%4000;%7800+ blau macht sehr komische sachen;5300 %+ 1000 jittery;%%2000+4000;
-endFrame = 2000;%size(formattedData,1);
+endFrame = 1000;%size(formattedData,1);
 stdHyperParams.visualizeTracking = 1;
 tic
 [estimatedPositions, estimatedQuats, snapshots, certainties] = ownMOT(formattedData(beginningFrame:endFrame,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
@@ -124,9 +124,10 @@ stdHyperParams.visualizeTracking = 1;
 %TODO: kill ghosts when too close to real birds
 % TODO: especially when using forward pass to reinit bird that was lost in
 % backwardMOT (once next checkpoint was passed, witout complete reinit)
-
-[estimatedPositionsBackward, estimatedQuatsBackward] = ownMOTbackward(formattedData(beginningFrame:endFrame,:,:), patterns, patternNames, snapshots, 0, stdHyperParams);
-revIdx = sort(1:length(formattedData), 'descend');
+[estimatedPositionsBackward, estimatedQuatsBackward, ~, certainties] = ownMOT(formattedData(beginningFrame:endFrame,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams, snapshots);
+%%
+%[estimatedPositionsBackward, estimatedQuatsBackward] = ownMOTbackward(formattedData(beginningFrame:endFrame,:,:), patterns, patternNames, snapshots, 0, stdHyperParams);
+revIdx = sort(1:endFrame, 'descend');
 
 estimatedPositionsBackward = estimatedPositionsBackward(:, revIdx, :);
 estimatedQuatsBackward = estimatedQuatsBackward(:, revIdx, :);
@@ -172,11 +173,11 @@ resultsFilename = [filePrefix '_RESULTS.csv'];
 exportToCSV(resultsFilename, estimatedPositions, estimatedQuats, beginningFrame, patternNames, 1, 0);
 
 %%
-vizParams.vizSpeed = 10;
+vizParams.vizSpeed = 1;
 vizParams.keepOldTrajectory = 0;
 vizParams.vizHistoryLength = 500;
 vizParams.startFrame = 1;
-vizParams.endFrame = -1;
+vizParams.endFrame = endFrame;
 dets = formattedData(beginningFrame:endFrame,:,:);
 %revIdx = sort(1:length(formattedData), 'descend');
 %dets = formattedData(revIdx, :, :);
