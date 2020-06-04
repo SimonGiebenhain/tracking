@@ -66,7 +66,7 @@ end
 s.pattern = pattern;
 s.flying = -1;
 s.consecutiveInvisibleCount = 0;
-s.framesInNewMotionModel = 5;
+s.framesInNewMotionModel = 11;
 s.latest5pos = zeros(5, 3);
 s.latest5pos(1, :) = pos;
 s.latestPosIdx = 1;

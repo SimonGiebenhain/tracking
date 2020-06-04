@@ -57,7 +57,7 @@ delta = norm(sum(deltas, 1));
 
 
 if s.mu.motionModel == 0
-    if mean(dists) > 20 && delta > 30 && s.mu.motionModel == 0 && s.framesInNewMotionModel > 10
+    if mean(dists) > 20 && ( delta > 30 && s.mu.motionModel == 0 && s.framesInNewMotionModel > 10 || age < 3)
             vEst = norm( mean(detections) - mean(expectedPositions) );
             s = switchMotionModel(s, vEst, 2, hyperParams);
     end

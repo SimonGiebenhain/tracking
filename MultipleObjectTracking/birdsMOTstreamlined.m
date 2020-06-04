@@ -1,6 +1,6 @@
 %% load data and patterns
 % Also add folder with patterns to path of matlab!
-dataFilename =  'datasets/session8/Starling_Trials_10-12-2019_16-00-00_Trajectories_100.csv'; %'datasets/session8/all.csv'; %
+dataFilename =  'datasets/Starling_Trials_10-12-2019_08-30-00.txt';%'datasets/session8/Starling_Trials_10-12-2019_16-00-00_Trajectories_100.csv'; %'datasets/session8/all.csv'; %
 patternDirectoryName = 'datasets/session8';
 filePrefix = strsplit(dataFilename, '.');
 filePrefix = filePrefix{1};
@@ -8,7 +8,8 @@ if isfile([filePrefix, '.mat'])
     load([filePrefix, '.mat']);
 else
     % Also add folder with patterns to path of matlab!
-    [formattedData, patternsPlusNames] = readVICONcsv(dataFilename, patternDirectoryName);
+    %[formattedData, patternsPlusNames] = readVICONcsv(dataFilename, patternDirectoryName);
+    formattedData = readTxtData(dataFilename);
 end
 patternsPlusNames = read_patterns(patternDirectoryName);
 patterns = zeros(length(patternsPlusNames),4,3);
@@ -107,7 +108,7 @@ fprintf('Starting to track!\n')
 
 %profile on;
 beginningFrame = 1;%4000;%7800+ blau macht sehr komische sachen;5300 %+ 1000 jittery;%%2000+4000;
-endFrame = 1000;%size(formattedData,1);
+endFrame = size(formattedData,1);
 stdHyperParams.visualizeTracking = 1;
 tic
 [estimatedPositions, estimatedQuats, snapshots, certainties] = ownMOT(formattedData(beginningFrame:endFrame,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
@@ -173,7 +174,7 @@ resultsFilename = [filePrefix '_RESULTS.csv'];
 exportToCSV(resultsFilename, estimatedPositions, estimatedQuats, beginningFrame, patternNames, 1, 0);
 
 %%
-vizParams.vizSpeed = 1;
+vizParams.vizSpeed = 10;
 vizParams.keepOldTrajectory = 0;
 vizParams.vizHistoryLength = 500;
 vizParams.startFrame = 1;

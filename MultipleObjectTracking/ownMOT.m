@@ -139,8 +139,12 @@ while t < T && ( goBackwards == 0 || ~isempty(birdsOfInterest) )
     unusedDets = [detections(unassignedDetections, :); rejectedDetections];
 
     if sum(unassignedPatterns) > 0 &&  length(unusedDets) > 1
-        [tracks, ghostTracks, unassignedPatterns, extraFreshInits] = createNewTracks(unusedDets, unassignedPatterns, tracks, patterns, params, patternNames, similarPairs, lastVisibleFrames, ghostTracks);
-        freshInits = freshInits | extraFreshInits;
+        if goBackwards == 0
+            [tracks, ghostTracks, unassignedPatterns, extraFreshInits] = createNewTracks(unusedDets, unassignedPatterns, tracks, patterns, params, patternNames, similarPairs, lastVisibleFrames, ghostTracks);
+            freshInits = freshInits | extraFreshInits;
+        else
+            [tracks, ghostTracks, unassignedPatterns] = createNewTracks(unusedDets, unassignedPatterns, tracks, patterns, params, patternNames, similarPairs, NaN*zeros(length(tracks),1), ghostTracks);
+        end
     end
     if visualizeTracking == 1
         displayTrackingResults();
@@ -609,7 +613,9 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
             tracks(currentTrackIdx).kalmanFilter.latestPosIdx = mod(tracks(currentTrackIdx).kalmanFilter.latestPosIdx + 1, 5);
             tracks(currentTrackIdx).kalmanFilter.lastSeen = tracks(currentTrackIdx).kalmanFilter.mu.X(1:3, 4);
             tracks(currentTrackIdx).kalmanFilter.lastVisibleFrame = t;
-            lastVisibleFrames(currentTrackIdx) = t;
+            if goBackwards == 0
+                lastVisibleFrames(currentTrackIdx) = t;
+            end
         end
         
         
@@ -699,7 +705,9 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
                                 params, -1, ...
                                 ghostTracks(currentGhostTrackIdx).kalmanFilter);
                     end
-                    newTrack.kalmanFilter.lastVisibleFrame = lastVisibleFrames(patternIdx);
+                    if goBackwards == 0
+                        newTrack.kalmanFilter.lastVisibleFrame = lastVisibleFrames(patternIdx);
+                    end
 
                     tracks(patternIdx) = newTrack;
                     unassignedPatterns(patternIdx) = 0;
@@ -985,7 +993,8 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
 
     function deleteLostTracks(deletedGhostTracks)
         if goBackwards == 0
-            invisibleForTooLong = 25;
+            invisibleForTooLongMoving = 10;
+            invisibleForTooLongStationary = 50;
             invisibleForTooLongGhosts = 10;
             
             %ageThreshold = 10;
@@ -1035,7 +1044,7 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
                     tooCloseBirds(bird2Idx) = 1;
                 elseif tracks(bird1Idx).kalmanFilter.mu.motionModel == 2 && ...
                         tracks(bird2Idx).kalmanFilter.mu.motionModel == 2
-                    if norm(tracks(bird1Idx).kalmanFilter.mu) > norm(tracks(bird2Idx).kalmanFilter.mu)
+                    if norm(tracks(bird1Idx).kalmanFilter.mu.v) > norm(tracks(bird2Idx).kalmanFilter.mu.v)
                         tooCloseBirds(bird1Idx) = 1;
                     else
                         tooCloseBirds(bird2Idx) = 1;
@@ -1045,8 +1054,15 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
             
             
             % Find the indices of 'lost' tracks.
-            lostIdxBool = ( [tracks(:).consecutiveInvisibleCount] >= invisibleForTooLong | ...
-                tooCloseBirds' ) & (ages > 0);
+            movingBirds = zeros(1,length(tracks));
+            for i=1:length(tracks)
+               if tracks(i).age > 0 && tracks(i).kalmanFilter.mu.motionModel == 2
+                   movingBirds = 1;
+               end
+            end
+            lostMovingIdx = [tracks(:).consecutiveInvisibleCount] >= invisibleForTooLongMoving & movingBirds;
+            lostStationaryIdx = [tracks(:).consecutiveInvisibleCount] >= invisibleForTooLongStationary & ~movingBirds;
+            lostIdxBool = ( lostMovingIdx | lostStationaryIdx | tooCloseBirds' ) & (ages > 0);
             lostIdx = find(lostIdxBool);
             if ~isempty(lostIdx)
                 for i=1:length(lostIdx)
@@ -1057,6 +1073,11 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
                     tracks(lostIdx(i)).kalmanFilter.latest5pos = zeros(5,3);
                     tracks(lostIdx(i)).kalmanFilter.latestPosIdx = 0;
                     
+                    if lostStationaryIdx(lostIdx(i)) == 1
+                        invisibleForTooLong = invisibleForTooLongStationary;
+                    else 
+                        invisibleForTooLong = invisibleForTooLongMoving;
+                    end
                     estimatedPositions(lostIdx(i), max(1,t-invisibleForTooLong):t-1, :) = NaN;
                     estimatedQuats(lostIdx(i), max(1, t-invisibleForTooLong):t-1, :) = NaN;
                 end
@@ -1120,7 +1141,7 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
                     tooCloseBirds(bird2Idx) = 1;
                 elseif tracks(bird1Idx).kalmanFilter.mu.motionModel == 2 && ...
                         tracks(bird2Idx).kalmanFilter.mu.motionModel == 2
-                    if norm(tracks(bird1Idx).kalmanFilter.mu) > norm(tracks(bird2Idx).kalmanFilter.mu)
+                    if norm(tracks(bird1Idx).kalmanFilter.mu.v) > norm(tracks(bird2Idx).kalmanFilter.mu.v)
                         tooCloseBirds(bird1Idx) = 1;
                     else
                         tooCloseBirds(bird2Idx) = 1;
