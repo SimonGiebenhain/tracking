@@ -87,7 +87,7 @@ lastVisibleFrames = zeros(nObjects, 1);
 if goBackwards == 1
     birdsOfInterest = zeros(length(snapshots{1}.freshInits),1);
 end
-
+nextGhostTrackID = 1;
 [tracks, ghostTracks] = initializeTracks(1);
 if goBackwards == 1
     t = T - snapshots{1}.t + 1;
@@ -123,6 +123,8 @@ certainties = NaN*zeros(nObjects, T);
 if goBackwards == 0
     snapshots = {};
     snapshotIdx = 1;
+else
+    storedGhostTracks = {};
 end
 
 while t < T && ( goBackwards == 0 || ~isempty(birdsOfInterest) )
@@ -137,13 +139,24 @@ while t < T && ( goBackwards == 0 || ~isempty(birdsOfInterest) )
     updateUnassignedTracks();
     deleteLostTracks(deletedGhostTracks);
     unusedDets = [detections(unassignedDetections, :); rejectedDetections];
+    t
 
     if sum(unassignedPatterns) > 0 &&  length(unusedDets) > 1
         if goBackwards == 0
-            [tracks, ghostTracks, unassignedPatterns, extraFreshInits] = createNewTracks(unusedDets, unassignedPatterns, tracks, patterns, params, patternNames, similarPairs, lastVisibleFrames, ghostTracks);
+            oldGhostTrackID = nextGhostTrackID;
+            oldNGhostTracks = length(ghostTracks);
+            [tracks, ghostTracks, unassignedPatterns, nextGhostTrackID, extraFreshInits] = createNewTracks(unusedDets, unassignedPatterns, tracks, patterns, params, patternNames, similarPairs, lastVisibleFrames, ghostTracks, nextGhostTrackID);
             freshInits = freshInits | extraFreshInits;
+            nNewGhostTracks = nextGhostTrackID - oldGhostTrackID;
+            if nNewGhostTracks > 0
+                for g = 1:nNewGhostTracks
+%TODO just store ID and trajectory and beginning frame
+                    storedGhostTracks{length(storedGhostTracks)+1} = ghostTracks(oldNGhostTracks+g);
+                    storedGhostTracks{length(storedGhostTracks)}.beginningFrame = t;
+                end
+            end
         else
-            [tracks, ghostTracks, unassignedPatterns] = createNewTracks(unusedDets, unassignedPatterns, tracks, patterns, params, patternNames, similarPairs, NaN*zeros(length(tracks),1), ghostTracks);
+            [tracks, ghostTracks, unassignedPatterns, nextGhostTrackID] = createNewTracks(unusedDets, unassignedPatterns, tracks, patterns, params, patternNames, similarPairs, NaN*zeros(length(tracks),1), ghostTracks, nextGhostTrackIDa);
         end
     end
     if visualizeTracking == 1
@@ -307,7 +320,7 @@ end
             end
             unassignedDetections = squeeze(D(1,:,:));
             unassignedDetections = reshape(unassignedDetections(~isnan(unassignedDetections)),[],dim);
-            [tracks, ghostTracks, unassignedPatterns, freshInits] = createNewTracks(unassignedDetections, unassignedPatterns, tracks, patterns, params, patternNames, similarPairs, lastVisibleFrames);
+            [tracks, ghostTracks, unassignedPatterns, nextGhostTrackID, freshInits] = createNewTracks(unassignedDetections, unassignedPatterns, tracks, patterns, params, patternNames, similarPairs, lastVisibleFrames);
         else
             if baseFrame > length(snapshots)
                 return
@@ -630,30 +643,38 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
         deletedGhostTracks = zeros(length(ghostTracks),1);
         
         
-        % Unassigned patterns that are not similar to any other unassigned
-        % pattern can be used to safely initialize a new track
-        % Determine these patterns.
-        safePatternsBool = zeros(length(patterns), 1);
-        potentialReInit = unassignedPatterns | ([tracks(:).consecutiveInvisibleCount] > 10)';
-        assignedPatternsIdx = find(~potentialReInit);
-        unassignedPatternsIdx = find(potentialReInit);
-        for jj=1:length(unassignedPatternsIdx)
-            p = unassignedPatternsIdx(jj);
-            conflicts = similarPairs(similarPairs(:, 1) == p, 2);
-            conflicts = [conflicts; similarPairs(similarPairs(:, 2) == p, 1)];
-            conflicts = setdiff(conflicts, assignedPatternsIdx);
-            if isempty(conflicts)
-                safePatternsBool(p) = 1;
-            end
-        end
         
+        somethingChanged = 1;
         
         for i = 1:nAssignedGhostTracks
+            
+            % Unassigned patterns that are not similar to any other unassigned
+            % pattern can be used to safely initialize a new track
+            % Determine these patterns.
+            if somethingChanged == 1
+                somethingChanged = 0;
+                safePatternsBool = zeros(length(patterns), 1);
+                potentialReInit = unassignedPatterns | ([tracks(:).consecutiveInvisibleCount] > 10)';
+                assignedPatternsIdx = find(~potentialReInit);
+                unassignedPatternsIdx = find(potentialReInit);
+                for jj=1:length(unassignedPatternsIdx)
+                    p = unassignedPatternsIdx(jj);
+                    conflicts = similarPairs(similarPairs(:, 1) == p, 2);
+                    conflicts = [conflicts; similarPairs(similarPairs(:, 2) == p, 1)];
+                    conflicts = setdiff(conflicts, assignedPatternsIdx);
+                    if isempty(conflicts)
+                        safePatternsBool(p) = 1;
+                    end
+                end
+            end
+            
             currentGhostTrackIdx = allAssignedGhostTracksIdx(i);
             assignmentsIdx = floor((assignedGhostTracks(:,1)-1)/nMarkers) + 1 == currentGhostTrackIdx;
             detectionIdx = assignedGhostTracks(assignmentsIdx,2);
             detectedMarkersForCurrentGhostTrack = detections(detectionIdx, :);
             nAssgnDets = size(detectedMarkersForCurrentGhostTrack, 1);
+            
+            
             
             % if  4 detections assigned: run pattern matching and
             %   umeyama, if good fit, init real track!
@@ -661,7 +682,26 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
             % simialr patterns are already assigned, in order to avoid
             % id-switches
             if nAssgnDets >= 3 %&& ~(sum(potentialReInit) == 1 + sum(abs(patterns)>=1000, 'all'))
-                unassignedIdx = find(potentialReInit);
+                
+                % Inits which would to unrealisitcally large jumps in the
+                % trajectory of a bird are removed apriori
+                detPos = mean(detectedMarkersForCurrentGhostTrack, 1);
+                unrealisticInits = zeros(size(potentialReInit));
+                closeInits = zeros(size(potentialReInit));
+                for j=1:length(unassignedPatternsIdx)
+                    pIdx = unassignedPatternsIdx(j);
+                    if ~isnan(tracks(pIdx).kalmanFilter.lastVisibleFrame) && ...
+                            (t - tracks(pIdx).kalmanFilter.lastVisibleFrame)*80 < norm(detPos-tracks(pIdx).kalmanFilter.latest5pos(mod(tracks(pIdx).kalmanFilter.latestPosIdx-1, 5)+1, :))
+                        unrealisticInits(pIdx) = 1;
+                    end
+                    if ~isnan(tracks(pIdx).kalmanFilter.lastVisibleFrame) && ...
+                            norm(detPos-tracks(pIdx).kalmanFilter.latest5pos(mod(tracks(pIdx).kalmanFilter.latestPosIdx-1, 5)+1, :)) < 75 && t - tracks(pIdx).kalmanFilter.lastVisibleFrame < 2000
+                        closeInits(pIdx) = 1;
+                    end
+                end
+                
+                
+                unassignedIdx = find(potentialReInit & ~unrealisticInits);
                 matchingCosts = zeros(length(unassignedIdx), 1);
                 rotations = zeros(length(unassignedIdx), 3, 3);
                 translations = zeros(length(unassignedIdx), 3);
@@ -689,8 +729,16 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
                 if ~isempty(minCost2(1)) && ...
                     (  ( minCost2(1) < params.initThreshold4 && nAssgnDets == 4 && costDiff > 1)  || ...
                         ( minCost2(1) < params.initThreshold && nAssgnDets == 3 && safePatternsBool(patternIdx)==1 && costDiff > 2) ||... 
-                        ( minCost2(1) < 0.25 && nAssgnDets == 3 && costDiff > 1.5) ...
+                        ( minCost2(1) < 0.25 && nAssgnDets == 3 && costDiff > 2) || ...
+                        ( minCost2(1) < 2 && closeInits(patternIdx) ) ...
                     )
+              
+                    if minCost2(1) > 1.5 && nAssgnDets == 3
+                       minCost2(1) 
+                    end
+                    if minCost2(2) < 0.25 && nAssgnDets == 3 && ~(safePatternsBool(patternIdx)==1)
+                        minCost2(1)
+                    end
                     pattern = squeeze(patterns(patternIdx, :, :));
                     if isfield(tracks(patternIdx).kalmanFilter, 'mu')
                         newTrack = createLGEKFtrack(squeeze(rotations(minIdx2(1), :, :)), ...
@@ -713,6 +761,7 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
                     unassignedPatterns(patternIdx) = 0;
                     potentialReInit(patternIdx) = 0;
                     freshInits(patternIdx) = true;
+                    somethingChanged = 1;
                     % mark ghosst bird as deleted and delete after loop
                     deletedGhostTracks(currentGhostTrackIdx) = 1;
                     % continue loop, as we don't have to update position of
@@ -780,7 +829,9 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
                     deltas(kF.latestPosIdx+1, :) = [];
                     delta = norm(sum(deltas, 1));
                     dists = pdist2(detectedMarkersForCurrentGhostTrack, kF.x(1:3)');
-                    if mean(dists) > 20 && delta > 45 && kF.motionModel == 0 && kF.framesInMotionModel > 15
+                    if kF.motionModel == 0 && mean(dists) > 20 && ...
+                        ( delta > 45 && kF.framesInMotionModel > 15 || ... 
+                         ghostTracks(currentGhostTrackIdx).age < 3 )
                         %switch to MotionModel 2
                         kF = switchGhostMM(kF, 2, params);
                         ghostTracks(currentGhostTrackIdx).kalmanFilter = kF;
@@ -993,7 +1044,7 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
 
     function deleteLostTracks(deletedGhostTracks)
         invisibleForTooLongMoving = 10;
-        invisibleForTooLongStationary = 100;
+        invisibleForTooLongStationary = 150;
         invisibleForTooLongGhosts = 10;
         invisibleForTooLongGhostsStationary = 50;
 
@@ -1110,9 +1161,9 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
                 %mark track as lost/pattern as unassigned
                 unassignedPatterns(lostIdx(i)) = 1;
                 tracks(lostIdx(i)).age = 0;
-                tracks(lostIdx(i)).kalmanFilter.framesInNewMotionModel = 5;
-                tracks(lostIdx(i)).kalmanFilter.latest5pos = zeros(5,3);
-                tracks(lostIdx(i)).kalmanFilter.latestPosIdx = 0;
+                tracks(lostIdx(i)).kalmanFilter.framesInNewMotionModel = 11;
+                %tracks(lostIdx(i)).kalmanFilter.latest5pos = zeros(5,3);
+                %tracks(lostIdx(i)).kalmanFilter.latestPosIdx = 0;
                 
                 if lostStationaryIdx(lostIdx(i)) == 1
                     invisibleForTooLong = invisibleForTooLongStationary;
@@ -1131,7 +1182,7 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
         
         
         movingGhosts = zeros(1,length(ghostTracks));
-        for i=1:length(tracks)
+        for i=1:length(ghostTracks)
             if ghostTracks(i).age > 0 && ghostTracks(i).kalmanFilter.motionModel == 2
                 movingGhosts = 1;
             end

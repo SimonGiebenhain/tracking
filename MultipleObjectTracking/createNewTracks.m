@@ -1,4 +1,4 @@
-function [tracks, ghostTracks, unassignedPatternsReturn, freshInits] = createNewTracks(detections, unassignedPatternsReturn, tracks, patterns, params, patternNames, similarPairs, lastVisibleFrames, ghostTracks)
+function [tracks, ghostTracks, unassignedPatternsReturn, nextGhostTrackID, freshInits] = createNewTracks(detections, unassignedPatternsReturn, tracks, patterns, params, patternNames, similarPairs, lastVisibleFrames, ghostTracks, nextGhostTrackID)
 %CREATENEWTRACKS Summary of this function goes here
 %   Detailed explanation goes here
 
@@ -7,6 +7,7 @@ freshInits = zeros(length(tracks),1);
 if exist('ghostTracks','var') ~= 1
     kF = constructGhostKF([0 0 0], params);
     ghostTrack = struct(...
+        'ID', 0, ...
         'kalmanFilter', kF, ...
         'age', 1, ...
         'totalVisibleCount', 1, ...
@@ -14,11 +15,12 @@ if exist('ghostTracks','var') ~= 1
         'trustworthyness', 0);
     ghostTracks(1) = ghostTrack;
     ghostTracks(:, 1) = [];
+    nextGhostTrackID = 1;
 end
 
 % Ghost birds should be initialized in the proximity of other birds
 minDistToBird = params.minDistToBird;
-initThreshold3 = params.initThreshold;%1.25;
+initThreshold3 = params.initThreshold;
 initThreshold4 = params.initThreshold4;
 
 
@@ -92,7 +94,7 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
             else
                 'ERROR';
             end
-            if minCosts2(1) < initThreshold4 && costDiff > 0.3
+            if minCosts2(1) < initThreshold4 && costDiff > 1
                 specificPatternIdx = minIdx2(1);
                 pos = squeeze( poss(specificPatternIdx,:) );
                 deletedClusters4(j) = 1;
@@ -218,7 +220,7 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
                     end
                     minPatIdx = safeAndUnassignedPatterns(minIdx2(1));
 
-                    if minMSE2(1) < initThreshold3 && costDiff > 1.5
+                    if minMSE2(1) < initThreshold3 && costDiff > 2
                         if isfield(tracks(minPatIdx).kalmanFilter, 'mu')
                             newTrack = createLGEKFtrack(squeeze(rotMats(minIdx2(1), :, :)), ...
                                 squeeze(transVecs(minIdx2(1), :))', ...
@@ -264,6 +266,7 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
                 pos = mean(potentialBirds4{i}, 1);
                 kF = constructGhostKF(pos, params);
                 ghostTrack = struct(...
+                    'ID', nextGhostTrackID, ...
                     'kalmanFilter', kF, ...
                     'age', 1, ...
                     'totalVisibleCount', 1, ...
@@ -271,6 +274,7 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
                     'trustworthyness', 12);
                 ghostTracks(length(ghostTracks) + 1) = ghostTrack;
                 positions(length(positions)+1, :) = pos;
+                nextGhostTrackID = nextGhostTrackID + 1;
             end
         end
         
@@ -281,6 +285,7 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
                pos = mean(potentialBirds3{i}, 1);
                kF = constructGhostKF(pos, params);
                 ghostTrack = struct(...
+                    'ID', nextGhostTrackID, ...
                     'kalmanFilter', kF, ...
                     'age', 1, ...
                     'totalVisibleCount', 1, ...
@@ -288,6 +293,8 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
                     'trustworthyness', 5);
                 ghostTracks(length(ghostTracks) + 1) = ghostTrack;
                 positions(length(positions)+1, :) = pos;
+                nextGhostTrackID = nextGhostTrackID + 1;
+
             end
         end
         
@@ -312,12 +319,15 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
             pos = mean(potentialGhosts{i}, 1);
             kF = constructGhostKF(pos, params);
             ghostTrack = struct(...
+                'ID', nextGhostTrackID, ...
                 'kalmanFilter', kF, ...
                 'age', 1, ...
                 'totalVisibleCount', 1, ...
                 'consecutiveInvisibleCount', 0, ...
                 'trustworthyness', 1);
             ghostTracks(length(ghostTracks) + 1) = ghostTrack;
+            nextGhostTrackID = nextGhostTrackID + 1;
+
         end
     end
 end
@@ -362,7 +372,7 @@ elseif ghostMM == 2
             zeros(3) eye(3) eye(3);
             zeros(3) zeros(3) eye(3)];
 end
-kF.framesInMotionModel = 5;
+kF.framesInMotionModel = 15;
 kF.latest5pos = zeros(5,3);
 kF.latest5pos(1, :) = pos;
 kF.latestPosIdx = 1;

@@ -95,9 +95,9 @@ stdHyperParams.minDistToBird = [95 80 50 40]; % number at index i is used when i
 stdHyperParams.minTrustworthyness = 10;
 
 % params regarding: initialization of birds
-stdHyperParams.initThreshold = 1.1;%0.85;
+stdHyperParams.initThreshold = 0.75;%0.85;
 stdHyperParams.initThreshold4 = 2.5;
-stdHyperParams.patternSimilarityThreshold = 1.2;%1;
+stdHyperParams.patternSimilarityThreshold = 1.25;%1;
 
 stdHyperParams.modelType = 'LieGroup';
 quatMotionType = 'brownian';
@@ -155,13 +155,13 @@ estQuat(missingFramesForwardQuat) = estimatedQuatsBackward(missingFramesForwardQ
 
 
 %%
-colors = distinguishable_colors(10);
-figure; hold on;
-for i=1:10
-    plot(min(smoothdata(positionVariance(i,:), 'movmedian', 30), 1000), 'color', colors(i,:))
-end
-
-hold off;
+% colors = distinguishable_colors(10);
+% figure; hold on;
+% for i=1:10
+%     plot(min(smoothdata(positionVariance(i,:), 'movmedian', 30), 1000), 'color', colors(i,:))
+% end
+% 
+% hold off;
 %%
 
 %profile viewer
@@ -170,8 +170,8 @@ hold off;
 %save([filePrefix, '_RESULTS.mat'], 'estimatedPositions', 'estimatedQuats')
 %%
 % Save file as .csv file, in VICON-style format
-resultsFilename = [filePrefix '_RESULTS.csv'];
-exportToCSV(resultsFilename, estimatedPositions, estimatedQuats, beginningFrame, patternNames, 1, 0);
+% resultsFilename = [filePrefix '_RESULTS.csv'];
+% exportToCSV(resultsFilename, estimatedPositions, estimatedQuats, beginningFrame, patternNames, 1, 0);
 
 %%
 vizParams.vizSpeed = 10;
@@ -188,6 +188,8 @@ dets = formattedData(beginningFrame:endFrame,:,:);
 vizRes(dets, patterns, estPos, estQuat, vizParams, 0)
 
 %%
-vizParams.vizSpeed = 5;
-vizRes(formattedData, patterns, viconTrajectories, viconOrientation, vizParams, 0)
+%vizRes(dets, patterns, estimatedPositions, estimatedQuats, vizParams, 0)
+
+%vizParams.vizSpeed = 5;
+%vizRes(formattedData, patterns, viconTrajectories, viconOrientation, vizParams, 0)
 
