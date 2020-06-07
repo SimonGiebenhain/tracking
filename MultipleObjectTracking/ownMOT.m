@@ -6,7 +6,7 @@
 % TODO
 % Explanation goes here
 
-function [estimatedPositions, estimatedQuats, snapshots, certainties] = ownMOT(D, patterns, patternNames, useVICONinit, initialStates, nObjects, shouldShowTruth, trueTrajectory, trueOrientation, quatMotionType, hyperParams, snapshots)
+function [estimatedPositions, estimatedQuats, snapshots, certainties, storedGhostTracks] = ownMOT(D, patterns, patternNames, useVICONinit, initialStates, nObjects, shouldShowTruth, trueTrajectory, trueOrientation, quatMotionType, hyperParams, snapshots)
 % OWNMOT does multi object tracking
 %   @D all observations/detections in the format:
 %       T x maxDetectionsPerFrame x 3
@@ -714,7 +714,22 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
             detectedMarkersForCurrentGhostTrack = detections(detectionIdx, :);
             nAssgnDets = size(detectedMarkersForCurrentGhostTrack, 1);
             
-            
+            % Inits which would to unrealisitcally large jumps in the
+                % trajectory of a bird are removed apriori
+            unrealisticInits = zeros(size(potentialReInit));
+            closeInits = zeros(size(potentialReInit));
+            detPos = mean(detectedMarkersForCurrentGhostTrack, 1);
+            for j=1:length(unassignedPatternsIdx)
+                pIdx = unassignedPatternsIdx(j);
+                if ~isnan(tracks(pIdx).kalmanFilter.lastVisibleFrame) && ...
+                        (t - tracks(pIdx).kalmanFilter.lastVisibleFrame)*80 < norm(detPos-tracks(pIdx).kalmanFilter.latest5pos(mod(tracks(pIdx).kalmanFilter.latestPosIdx-1, 5)+1, :))
+                    unrealisticInits(pIdx) = 1;
+                end
+                if ~isnan(tracks(pIdx).kalmanFilter.lastVisibleFrame) && ...
+                        norm(detPos-tracks(pIdx).kalmanFilter.latest5pos(mod(tracks(pIdx).kalmanFilter.latestPosIdx-1, 5)+1, :)) < 75 && t - tracks(pIdx).kalmanFilter.lastVisibleFrame < 1000
+                    closeInits(pIdx) = 1;
+                end
+            end
             
             % if  4 detections assigned: run pattern matching and
             %   umeyama, if good fit, init real track!
@@ -722,25 +737,6 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
             % simialr patterns are already assigned, in order to avoid
             % id-switches
             if nAssgnDets >= 3 %&& ~(sum(potentialReInit) == 1 + sum(abs(patterns)>=1000, 'all'))
-                
-                % Inits which would to unrealisitcally large jumps in the
-                % trajectory of a bird are removed apriori
-                detPos = mean(detectedMarkersForCurrentGhostTrack, 1);
-                unrealisticInits = zeros(size(potentialReInit));
-                closeInits = zeros(size(potentialReInit));
-                for j=1:length(unassignedPatternsIdx)
-                    pIdx = unassignedPatternsIdx(j);
-                    if ~isnan(tracks(pIdx).kalmanFilter.lastVisibleFrame) && ...
-                            (t - tracks(pIdx).kalmanFilter.lastVisibleFrame)*80 < norm(detPos-tracks(pIdx).kalmanFilter.latest5pos(mod(tracks(pIdx).kalmanFilter.latestPosIdx-1, 5)+1, :))
-                        unrealisticInits(pIdx) = 1;
-                    end
-                    if ~isnan(tracks(pIdx).kalmanFilter.lastVisibleFrame) && ...
-                            norm(detPos-tracks(pIdx).kalmanFilter.latest5pos(mod(tracks(pIdx).kalmanFilter.latestPosIdx-1, 5)+1, :)) < 75 && t - tracks(pIdx).kalmanFilter.lastVisibleFrame < 2000
-                        closeInits(pIdx) = 1;
-                    end
-                end
-                
-                
                 unassignedIdx = find(potentialReInit & ~unrealisticInits);
                 matchingCosts = zeros(length(unassignedIdx), 1);
                 rotations = zeros(length(unassignedIdx), 3, 3);
@@ -770,7 +766,7 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
                     (  ( minCost2(1) < params.initThreshold4 && nAssgnDets == 4 && costDiff > 1)  || ...
                         ( minCost2(1) < params.initThreshold && nAssgnDets == 3 && safePatternsBool(patternIdx)==1 && costDiff > 2) ||... 
                         ( minCost2(1) < 0.25 && nAssgnDets == 3 && costDiff > 2) || ...
-                        ( minCost2(1) < 2 && closeInits(patternIdx) ) ...
+                        ( minCost2(1) < 3 && closeInits(patternIdx) ) ...
                     )
               
                     if minCost2(1) > 1.5 && nAssgnDets == 3
@@ -810,41 +806,68 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
 
                 end
                 
+              elseif nAssgnDets == 2 && sum(closeInits) == 1
+                %initialize close init
+                patternIdx = find(closeInits);
+                pattern = squeeze(patterns(patternIdx, :, :));
+                newTrack = createLGEKFtrack(eye(3), ...
+                    detPos', 5, patternIdx, ...
+                    pattern, patternNames{patternIdx}, params, ...
+                    0);
+                
+                if goBackwards == 0
+                    newTrack.kalmanFilter.lastVisibleFrame = lastVisibleFrames(patternIdx);
+                end
+                
+                tracks(patternIdx) = newTrack;
+                unassignedPatterns(patternIdx) = 0;
+                potentialReInit(patternIdx) = 0;
+                freshInits(patternIdx) = true;
+                somethingChanged = 1;
+                % mark ghosst bird as deleted and delete after loop
+                deletedGhostTracks(currentGhostTrackIdx) = 1;
+                continue;
+                
+                
+
                 %Automatic ReInit if only 1 bird is unassigned. This is not
                 % super safe however!
-%             elseif ( sum(potentialReInit) == 1 + sum(abs(patterns)>=1000, 'all') && ...
-%                          ghostTracks(currentGhostTrackIdx).trustworthyness > hyperParams.minTrustworthyness )%if all but 1 bird are intialized we can initialize even with 2 or less dets
-%                 for j=1:size(potentialReInit)
-%                     if ( potentialReInit(j) == 1 && ...
-%                          ~any(abs(patterns(j, :, :)) >= 1000, 'all') && ...
-%                          ~(abs(t-tracks(j).kalmanFilter.lastVisibleFrame) < 15 && ...
-%                            norm(tracks(j).kalmanFilter.lastSeen - mean(detectedMarkersForCurrentGhostTrack, 1)') > 150)...
-%                      )
-%                         pattern = squeeze(patterns(j, :, :));
-%                         if isfield(tracks(j).kalmanFilter, 'mu')
-%                             newTrack = createLGEKFtrack(eye(3), ...
-%                                         mean(detectedMarkersForCurrentGhostTrack, 1)', 5, j, ...
-%                                         pattern, patternNames{j}, ...
-%                                         params, tracks(j).kalmanFilter.mu.motionModel, ...
-%                                         ghostTracks(currentGhostTrackIdx).kalmanFilter);
-%                         else
-%                             newTrack = createLGEKFtrack(eye(3), ...
-%                                         mean(detectedMarkersForCurrentGhostTrack, 1)', 5, j, ...
-%                                         pattern, patternNames{j}, ...
-%                                         params, -1, ...
-%                                         ghostTracks(currentGhostTrackIdx).kalmanFilter);
-%                         end
-%                         tracks(j) = newTrack;
-%                         unassignedPatterns(j) = 0;
-%                         potentialReInit(j) = 0;
-%                         % mark ghosst bird as deleted and delete after loop
-%                         deletedGhostTracks(currentGhostTrackIdx) = 1;
-%                         % continue loop, as we don't have to update position of
-%                         % ghost bird
-%                         break;
-%                     end
-%                 end
-%                 continue;
+            elseif ( sum(potentialReInit & ~unrealisticInits) <= 1 + sum(abs(patterns)>=1000, 'all') && ...
+                         ghostTracks(currentGhostTrackIdx).trustworthyness > hyperParams.minTrustworthyness && ...
+                         sum([tracks(:).age] > 200) >= nObjects - sum(abs(patterns)>=1000, 'all') && ...
+                         ghostTracks(currentGhostTrackIdx).age > 200 ...
+                    )
+                for j=1:size(potentialReInit)
+                    if ( potentialReInit(j) == 1 &&  unrealisticInits(j) == 0 && ...
+                         ~any(abs(patterns(j, :, :)) >= 1000, 'all') && ...
+                         ~(abs(t-tracks(j).kalmanFilter.lastVisibleFrame) < 15 && ...
+                           norm(tracks(j).kalmanFilter.lastSeen - mean(detectedMarkersForCurrentGhostTrack, 1)') > 150)...
+                     )
+                        pattern = squeeze(patterns(j, :, :));
+                        if isfield(tracks(j).kalmanFilter, 'mu')
+                            newTrack = createLGEKFtrack(eye(3), ...
+                                        mean(detectedMarkersForCurrentGhostTrack, 1)', 5, j, ...
+                                        pattern, patternNames{j}, ...
+                                        params, tracks(j).kalmanFilter.mu.motionModel, ...
+                                        ghostTracks(currentGhostTrackIdx).kalmanFilter);
+                        else
+                            newTrack = createLGEKFtrack(eye(3), ...
+                                        mean(detectedMarkersForCurrentGhostTrack, 1)', 5, j, ...
+                                        pattern, patternNames{j}, ...
+                                        params, -1, ...
+                                        ghostTracks(currentGhostTrackIdx).kalmanFilter);
+                        end
+                        tracks(j) = newTrack;
+                        unassignedPatterns(j) = 0;
+                        potentialReInit(j) = 0;
+                        % mark ghosst bird as deleted and delete after loop
+                        deletedGhostTracks(currentGhostTrackIdx) = 1;
+                        % continue loop, as we don't have to update position of
+                        % ghost bird
+                        break;
+                    end
+                end
+                continue;
             end
              
             
@@ -869,7 +892,7 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
                     deltas(kF.latestPosIdx+1, :) = [];
                     delta = norm(sum(deltas, 1));
                     dists = pdist2(detectedMarkersForCurrentGhostTrack, kF.x(1:3)');
-                    if kF.motionModel == 0 && mean(dists) > 20 && ...
+                    if kF.motionModel == 0 && mean(dists) > 15 && ...
                         ( delta > 45 && kF.framesInMotionModel > 15 || ... 
                          ghostTracks(currentGhostTrackIdx).age < 3 )
                         %switch to MotionModel 2

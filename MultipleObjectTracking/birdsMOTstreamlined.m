@@ -111,7 +111,7 @@ beginningFrame = 1;%4000;%7800+ blau macht sehr komische sachen;5300 %+ 1000 jit
 endFrame = size(formattedData,1);
 stdHyperParams.visualizeTracking = 1;
 tic
-[estimatedPositions, estimatedQuats, snapshots, certainties] = ownMOT(formattedData(beginningFrame:endFrame,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
+[estimatedPositions, estimatedQuats, snapshots, certainties, ghostTracks] = ownMOT(formattedData(beginningFrame:endFrame,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
 %[estimatedPositions, estimatedQuats] = ownMOT(formattedData(1000:end,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
 toc
 %profile viewer
@@ -188,7 +188,7 @@ dets = formattedData(beginningFrame:endFrame,:,:);
 vizRes(dets, patterns, estPos, estQuat, vizParams, 0)
 
 %%
-%vizRes(dets, patterns, estimatedPositions, estimatedQuats, vizParams, 0)
+vizRes(dets, patterns, estimatedPositions, estimatedQuats, vizParams, 0)
 
 %vizParams.vizSpeed = 5;
 %vizRes(formattedData, patterns, viconTrajectories, viconOrientation, vizParams, 0)
