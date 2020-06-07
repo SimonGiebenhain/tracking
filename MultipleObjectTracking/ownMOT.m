@@ -88,6 +88,9 @@ if goBackwards == 1
     birdsOfInterest = zeros(length(snapshots{1}.freshInits),1);
 end
 nextGhostTrackID = 1;
+if goBackwards == 0
+    storedGhostTracks = {};
+end
 [tracks, ghostTracks] = initializeTracks(1);
 if goBackwards == 1
     t = T - snapshots{1}.t + 1;
@@ -123,8 +126,6 @@ certainties = NaN*zeros(nObjects, T);
 if goBackwards == 0
     snapshots = {};
     snapshotIdx = 1;
-else
-    storedGhostTracks = {};
 end
 
 while t < T && ( goBackwards == 0 || ~isempty(birdsOfInterest) )
@@ -142,21 +143,35 @@ while t < T && ( goBackwards == 0 || ~isempty(birdsOfInterest) )
     t
 
     if sum(unassignedPatterns) > 0 &&  length(unusedDets) > 1
+        oldGhostTrackID = nextGhostTrackID;
+        oldNGhostTracks = length(ghostTracks);
         if goBackwards == 0
-            oldGhostTrackID = nextGhostTrackID;
-            oldNGhostTracks = length(ghostTracks);
             [tracks, ghostTracks, unassignedPatterns, nextGhostTrackID, extraFreshInits] = createNewTracks(unusedDets, unassignedPatterns, tracks, patterns, params, patternNames, similarPairs, lastVisibleFrames, ghostTracks, nextGhostTrackID);
             freshInits = freshInits | extraFreshInits;
             nNewGhostTracks = nextGhostTrackID - oldGhostTrackID;
+            %For every fresh ghost track, add space in storedGhostTracks
             if nNewGhostTracks > 0
                 for g = 1:nNewGhostTracks
-%TODO just store ID and trajectory and beginning frame
-                    storedGhostTracks{length(storedGhostTracks)+1} = ghostTracks(oldNGhostTracks+g);
-                    storedGhostTracks{length(storedGhostTracks)}.beginningFrame = t;
+                    ghostTrackInfo.trajectory = NaN*zeros(100, 3);
+                    ghostTrackInfo.ID = ghostTracks(oldNGhostTracks+g).ID;
+                    ghostTrackInfo.beginningFrame = t;
+                    ghostTrackInfo.ptr = 1;
+                    storedGhostTracks{length(storedGhostTracks)+1} = ghostTrackInfo;
                 end
             end
         else
             [tracks, ghostTracks, unassignedPatterns, nextGhostTrackID] = createNewTracks(unusedDets, unassignedPatterns, tracks, patterns, params, patternNames, similarPairs, NaN*zeros(length(tracks),1), ghostTracks, nextGhostTrackIDa);
+            nNewGhostTracks = nextGhostTrackID - oldGhostTrackID;
+            %For every fresh ghost track, add space in storedGhostTracks
+            if nNewGhostTracks > 0
+                for g = 1:nNewGhostTracks
+                    ghostTrackInfo.trajectory = NaN*zeros(100, 3);
+                    ghostTrackInfo.ID = ghostTracks(oldNGhostTracks+g).ID;
+                    ghostTrackInfo.beginningFrame = t;
+                    ghostTrackInfo.ptr = 1;
+                    storedGhostTracks{length(storedGhostTracks)+1} = ghostTrackInfo;
+                end
+            end
         end
     end
     if visualizeTracking == 1
@@ -182,6 +197,18 @@ while t < T && ( goBackwards == 0 || ~isempty(birdsOfInterest) )
             estimatedPositions(ii,t,:) = ones(3,1) * NaN;
             estimatedQuats(ii,t,:) = ones(4,1) * NaN;
         end
+    end
+    for ii=1:length(ghostTracks)
+        pos = ghostTracks(ii).kalmanFilter.x(1:3);
+        ID = ghostTracks(ii).ID;
+        ptr = storedGhostTracks{ID}.ptr;
+        len = length(storedGhostTracks{ID}.trajectory);
+        if ptr > len
+            storedGhostTracks{ID}.trajectory = [storedGhostTracks{ID}.trajectory;
+                                                NaN*zeros(200,3)];
+        end
+        storedGhostTracks{ID}.trajectory(ptr, :) = pos;
+        storedGhostTracks{ID}.ptr = ptr + 1;
     end
     
     if any(freshInits) && goBackwards == 0
@@ -320,7 +347,20 @@ end
             end
             unassignedDetections = squeeze(D(1,:,:));
             unassignedDetections = reshape(unassignedDetections(~isnan(unassignedDetections)),[],dim);
+            oldGhostTrackID = nextGhostTrackID;
+            oldNGhostTracks = 0;
             [tracks, ghostTracks, unassignedPatterns, nextGhostTrackID, freshInits] = createNewTracks(unassignedDetections, unassignedPatterns, tracks, patterns, params, patternNames, similarPairs, lastVisibleFrames);
+            nNewGhostTracks = nextGhostTrackID - oldGhostTrackID;
+            %For every fresh ghost track, add space in storedGhostTracks
+            if nNewGhostTracks > 0
+                for gg = 1:nNewGhostTracks
+                    ghostTrackInfo.trajectory = NaN*zeros(100, 3);
+                    ghostTrackInfo.ID = ghostTracks(oldNGhostTracks+gg).ID;
+                    ghostTrackInfo.beginningFrame = 1;
+                    ghostTrackInfo.ptr = 1;
+                    storedGhostTracks{length(storedGhostTracks)+1} = ghostTrackInfo;
+                end
+            end
         else
             if baseFrame > length(snapshots)
                 return
@@ -1194,8 +1234,26 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
         ages = [ghostTracks(:).age];
         totalVisibleCounts = [ghostTracks(:).totalVisibleCount];
         visibility = totalVisibleCounts ./ ages;
-        lostGhostsIdx = lostMovingIdx | lostStationaryIdx | visibility < 0.9 ;
+        lostGhostsIdx = lostMovingIdx | lostStationaryIdx | visibility < 0.2 ;
         lostGhostsIdx = lostGhostsIdx | deletedGhostTracks' | tooCloseGhosts';
+        
+        for i=1:length(lostGhostsIdx)
+            if lostGhostsIdx(i) == 1
+                % Remove part of trajectory when ghostBird was invisible
+                if lostMovingIdx(i) == 1
+                    ptr = storedGhostTracks{ghostTracks(i).ID}.ptr;
+                    storedGhostTracks{ghostTracks(i).ID}.trajectory(ptr-invisibleForTooLongGhosts:ptr-1, :) = NaN;
+                elseif lostStationaryIdx(i) == 1
+                    ptr = storedGhostTracks{ghostTracks(i).ID}.ptr;
+                    storedGhostTracks{ghostTracks(i).ID}.trajectory(ptr-invisibleForTooLongGhostsStationary:ptr-1, :) = NaN;
+                end
+                % Remove uninteresting GhostBirds from storedGhostBirds
+                if ages(i) < 100 || deletedGhostTracks(i) == 1 || tooCloseGhosts(i) == 1
+                    storedGhostTracks{ghostTracks(i).ID} = [];
+                end
+                
+            end
+        end
         ghostTracks(lostGhostsIdx == 1) = [];
         
     end
