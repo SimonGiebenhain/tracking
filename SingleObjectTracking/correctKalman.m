@@ -91,9 +91,9 @@ if size(ds, 1) >= 1
             % if so don't do costly pattern matching algorithm
             asg = asg(rejectedDetectionsIdx == 0);
             mse = mean(sqrt(sum(( detections - expectedPositions(asg, :) ).^2, 2)));
-            if mse < 2.5 && nDets >= 3
+            if mse < 2 && nDets >= 3 && length(asg) == length(unique(asg))
                 lostDs = zeros(0,1);
-                certainty = 2*mse + (4-length(asg))*hyperParams.costOfNonAsDtMA;
+                certainty = 5*mse + (4-length(asg))*hyperParams.costOfNonAsDtMA;
                 p = asg';
                 method = 'final4';
             else
