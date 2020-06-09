@@ -3,16 +3,18 @@ function [estPos, estQuat, certainties, ghostTracks] = birdsMOT(dataFilename, pa
 %   Detailed explanation goes here
 %% load data and patterns
 % Also add folder with patterns to path of matlab!
+dirPath = pwd;%'/Users/sigi/uni/7sem/project/datasets/';
+dataFolder = 'datasets';
 filePrefix = strsplit(dataFilename, '.');
 filePrefix = filePrefix{1};
-if isfile([filePrefix, '.mat'])
-    load([filePrefix, '.mat']);
+if isfile([dirPath, '/', dataFolder, '/', filePrefix, '.mat'])
+    load([dirPath, '/', dataFolder, '/', filePrefix, '.mat']);
 else
     % Also add folder with patterns to path of matlab!
     %[formattedData, patternsPlusNames] = readVICONcsv(dataFilename, patternDirectoryName);
-    formattedData = readTxtData(dataFilename);
+    formattedData = readTxtData([dirPath, '/', dataFolder, '/', dataFilename]);
 end
-patternsPlusNames = read_patterns(patternDirectoryName);
+patternsPlusNames = read_patterns([dirPath, '/', patternDirectoryName]);
 patterns = zeros(length(patternsPlusNames),4,3);
 patternNames = {};
 for i=1:length(patternsPlusNames)
@@ -26,10 +28,11 @@ quatMotionType = 'brownian';
 fprintf('Starting to track!\n')
 
 stdHyperParams.visualizeTracking = 0;
-[estimatedPositions, estimatedQuats, snapshots, certainties, ghostTracks] = ownMOT(formattedData(beginningFrame:endFrame,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
+[estimatedPositions, estimatedQuats, snapshots, certainties, ghostTracks] = ownMOT(formattedData, patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
 %%
-[estimatedPositionsBackward, estimatedQuatsBackward, ~, ~] = ownMOT(formattedData(beginningFrame:endFrame,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams, snapshots);
-revIdx = sort(1:endFrame, 'descend');
+fprintf('starting Backward Track!\n')
+[estimatedPositionsBackward, estimatedQuatsBackward, ~, ~] = ownMOT(formattedData, patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams, snapshots);
+revIdx = sort(1:length(formattedData), 'descend');
 
 estimatedPositionsBackward = estimatedPositionsBackward(:, revIdx, :);
 estimatedQuatsBackward = estimatedQuatsBackward(:, revIdx, :);
@@ -42,5 +45,6 @@ estPos = estimatedPositions;
 estQuat = estimatedQuats;
 estPos(missingFramesForwardPos) = estimatedPositionsBackward(missingFramesForwardPos);
 estQuat(missingFramesForwardQuat) = estimatedQuatsBackward(missingFramesForwardQuat);
+fprintf('done')
 end
 

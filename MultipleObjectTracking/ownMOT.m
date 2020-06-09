@@ -140,7 +140,9 @@ while t < T && ( goBackwards == 0 || ~isempty(birdsOfInterest) )
     updateUnassignedTracks();
     deleteLostTracks(deletedGhostTracks);
     unusedDets = [detections(unassignedDetections, :); rejectedDetections];
-    t
+    if mod(t, 1000) == 0
+        t
+    end
 
     if sum(unassignedPatterns) > 0 &&  length(unusedDets) > 1
         oldGhostTrackID = nextGhostTrackID;
@@ -160,18 +162,18 @@ while t < T && ( goBackwards == 0 || ~isempty(birdsOfInterest) )
                 end
             end
         else
-            [tracks, ghostTracks, unassignedPatterns, nextGhostTrackID] = createNewTracks(unusedDets, unassignedPatterns, tracks, patterns, params, patternNames, similarPairs, NaN*zeros(length(tracks),1), ghostTracks, nextGhostTrackIDa);
+            [tracks, ghostTracks, unassignedPatterns, nextGhostTrackID] = createNewTracks(unusedDets, unassignedPatterns, tracks, patterns, params, patternNames, similarPairs, NaN*zeros(length(tracks),1), ghostTracks, nextGhostTrackID);
             nNewGhostTracks = nextGhostTrackID - oldGhostTrackID;
             %For every fresh ghost track, add space in storedGhostTracks
-            if nNewGhostTracks > 0
-                for g = 1:nNewGhostTracks
-                    ghostTrackInfo.trajectory = NaN*zeros(100, 3);
-                    ghostTrackInfo.ID = ghostTracks(oldNGhostTracks+g).ID;
-                    ghostTrackInfo.beginningFrame = t;
-                    ghostTrackInfo.ptr = 1;
-                    storedGhostTracks{length(storedGhostTracks)+1} = ghostTrackInfo;
-                end
-            end
+%             if nNewGhostTracks > 0
+%                 for g = 1:nNewGhostTracks
+%                     ghostTrackInfo.trajectory = NaN*zeros(100, 3);
+%                     ghostTrackInfo.ID = ghostTracks(oldNGhostTracks+g).ID;
+%                     ghostTrackInfo.beginningFrame = t;
+%                     ghostTrackInfo.ptr = 1;
+%                     storedGhostTracks{length(storedGhostTracks)+1} = ghostTrackInfo;
+%                 end
+%             end
         end
     end
     if visualizeTracking == 1
@@ -198,17 +200,19 @@ while t < T && ( goBackwards == 0 || ~isempty(birdsOfInterest) )
             estimatedQuats(ii,t,:) = ones(4,1) * NaN;
         end
     end
-    for ii=1:length(ghostTracks)
-        pos = ghostTracks(ii).kalmanFilter.x(1:3);
-        ID = ghostTracks(ii).ID;
-        ptr = storedGhostTracks{ID}.ptr;
-        len = length(storedGhostTracks{ID}.trajectory);
-        if ptr > len
-            storedGhostTracks{ID}.trajectory = [storedGhostTracks{ID}.trajectory;
-                                                NaN*zeros(200,3)];
+    if goBackwards == 0
+        for ii=1:length(ghostTracks)
+            pos = ghostTracks(ii).kalmanFilter.x(1:3);
+            ID = ghostTracks(ii).ID;
+            ptr = storedGhostTracks{ID}.ptr;
+            len = length(storedGhostTracks{ID}.trajectory);
+            if ptr > len
+                storedGhostTracks{ID}.trajectory = [storedGhostTracks{ID}.trajectory;
+                                                    NaN*zeros(200,3)];
+            end
+            storedGhostTracks{ID}.trajectory(ptr, :) = pos;
+            storedGhostTracks{ID}.ptr = ptr + 1;
         end
-        storedGhostTracks{ID}.trajectory(ptr, :) = pos;
-        storedGhostTracks{ID}.ptr = ptr + 1;
     end
     
     if any(freshInits) && goBackwards == 0
@@ -260,23 +264,23 @@ while t < T && ( goBackwards == 0 || ~isempty(birdsOfInterest) )
                         newVisBreakPoints(ii) = 0; 
                     end
                 end
-                lastVisibleFrames = [lastVisibleFrames; newVisBreakPoints];
+                lastVisibleFramesBack = [lastVisibleFramesBack; newVisBreakPoints];
             end
         end
 
         %go through lastVisibleFrames, where t <= lastVisibleFrames: remove
         %bird from birdsOfInterest
 
-        filledGaps = zeros( length( lastVisibleFrames ) ,1 );
+        filledGaps = zeros( length( lastVisibleFramesBack ) ,1 );
 
 
-        for ind=1:length(lastVisibleFrames)
-            if lastVisibleFrames(ind) >= T - t + 1
+        for ind=1:length(lastVisibleFramesBack)
+            if lastVisibleFramesBack(ind) >= T - t + 1
                 filledGaps(ind) = 1;
             end
         end
         birdsOfInterest = birdsOfInterest(filledGaps ~=1);
-        lastVisibleFrames = lastVisibleFrames(filledGaps ~=1);
+        lastVisibleFramesBack = lastVisibleFramesBack(filledGaps ~=1);
 
 
         % if birdsOfInterest is empty: set t to nextSnap.t and set states, i.e.
@@ -371,6 +375,7 @@ end
                     tracks(i).age = 1;
                     tracks(i).totalVisibleCount = 0;
                     tracks(i).consecutiveInvisibleCount = 0;
+                    tracks(i).kalmanFilter.lastVisibleFrame = NaN;
                     
                     tracks(i).kalmanFilter.consecutiveInvisibleCount = 0;
                     tracks(i).kalmanFilter.framesInMotionModel = 15;
@@ -401,14 +406,14 @@ end
             end
             
             birdsOfInterest = snapshots{baseFrame}.freshInits;
-            lastVisibleFrames = zeros(length(birdsOfInterest), 1);
+            lastVisibleFramesBack = zeros(length(birdsOfInterest), 1);
             
-            for i=1:length(lastVisibleFrames)
+            for i=1:length(lastVisibleFramesBack)
                 trackIdx = birdsOfInterest(i);
                 if isfield( snapshots{baseFrame}.tracks(trackIdx).kalmanFilter, 'lastVisibleFrame')
-                    lastVisibleFrames(i) = snapshots{baseFrame}.tracks(trackIdx).kalmanFilter.lastVisibleFrame;
+                    lastVisibleFramesBack(i) = snapshots{baseFrame}.tracks(trackIdx).kalmanFilter.lastVisibleFrame;
                 else
-                    lastVisibleFrames(i) = 0;
+                    lastVisibleFramesBack(i) = 0;
                 end
             end
         end
@@ -666,9 +671,7 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
             tracks(currentTrackIdx).kalmanFilter.latestPosIdx = mod(tracks(currentTrackIdx).kalmanFilter.latestPosIdx + 1, 5);
             tracks(currentTrackIdx).kalmanFilter.lastSeen = tracks(currentTrackIdx).kalmanFilter.mu.X(1:3, 4);
             tracks(currentTrackIdx).kalmanFilter.lastVisibleFrame = t;
-            if goBackwards == 0
-                lastVisibleFrames(currentTrackIdx) = t;
-            end
+            lastVisibleFrames(currentTrackIdx) = t;
         end
         
         
@@ -722,11 +725,11 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
             for j=1:length(unassignedPatternsIdx)
                 pIdx = unassignedPatternsIdx(j);
                 if ~isnan(tracks(pIdx).kalmanFilter.lastVisibleFrame) && ...
-                        (t - tracks(pIdx).kalmanFilter.lastVisibleFrame)*80 < norm(detPos-tracks(pIdx).kalmanFilter.latest5pos(mod(tracks(pIdx).kalmanFilter.latestPosIdx-1, 5)+1, :))
+                        abs(t - tracks(pIdx).kalmanFilter.lastVisibleFrame)*80 < norm(detPos-tracks(pIdx).kalmanFilter.latest5pos(mod(tracks(pIdx).kalmanFilter.latestPosIdx-1, 5)+1, :))
                     unrealisticInits(pIdx) = 1;
                 end
                 if ~isnan(tracks(pIdx).kalmanFilter.lastVisibleFrame) && ...
-                        norm(detPos-tracks(pIdx).kalmanFilter.latest5pos(mod(tracks(pIdx).kalmanFilter.latestPosIdx-1, 5)+1, :)) < 75 && t - tracks(pIdx).kalmanFilter.lastVisibleFrame < 1000
+                        norm(detPos-tracks(pIdx).kalmanFilter.latest5pos(mod(tracks(pIdx).kalmanFilter.latestPosIdx-1, 5)+1, :)) < 75 && abs(t - tracks(pIdx).kalmanFilter.lastVisibleFrame) < 1000
                     closeInits(pIdx) = 1;
                 end
             end
@@ -789,9 +792,7 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
                                 params, -1, ...
                                 ghostTracks(currentGhostTrackIdx).kalmanFilter);
                     end
-                    if goBackwards == 0
-                        newTrack.kalmanFilter.lastVisibleFrame = lastVisibleFrames(patternIdx);
-                    end
+                    newTrack.kalmanFilter.lastVisibleFrame = lastVisibleFrames(patternIdx);
 
                     tracks(patternIdx) = newTrack;
                     unassignedPatterns(patternIdx) = 0;
@@ -815,9 +816,7 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
                     pattern, patternNames{patternIdx}, params, ...
                     0);
                 
-                if goBackwards == 0
-                    newTrack.kalmanFilter.lastVisibleFrame = lastVisibleFrames(patternIdx);
-                end
+                newTrack.kalmanFilter.lastVisibleFrame = lastVisibleFrames(patternIdx);
                 
                 tracks(patternIdx) = newTrack;
                 unassignedPatterns(patternIdx) = 0;
@@ -832,42 +831,43 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
 
                 %Automatic ReInit if only 1 bird is unassigned. This is not
                 % super safe however!
-            elseif ( sum(potentialReInit & ~unrealisticInits) <= 1 + sum(abs(patterns)>=1000, 'all') && ...
-                         ghostTracks(currentGhostTrackIdx).trustworthyness > hyperParams.minTrustworthyness && ...
-                         sum([tracks(:).age] > 200) >= nObjects - sum(abs(patterns)>=1000, 'all') && ...
-                         ghostTracks(currentGhostTrackIdx).age > 200 ...
-                    )
-                for j=1:size(potentialReInit)
-                    if ( potentialReInit(j) == 1 &&  unrealisticInits(j) == 0 && ...
-                         ~any(abs(patterns(j, :, :)) >= 1000, 'all') && ...
-                         ~(abs(t-tracks(j).kalmanFilter.lastVisibleFrame) < 15 && ...
-                           norm(tracks(j).kalmanFilter.lastSeen - mean(detectedMarkersForCurrentGhostTrack, 1)') > 150)...
-                     )
-                        pattern = squeeze(patterns(j, :, :));
-                        if isfield(tracks(j).kalmanFilter, 'mu')
-                            newTrack = createLGEKFtrack(eye(3), ...
-                                        mean(detectedMarkersForCurrentGhostTrack, 1)', 5, j, ...
-                                        pattern, patternNames{j}, ...
-                                        params, tracks(j).kalmanFilter.mu.motionModel, ...
-                                        ghostTracks(currentGhostTrackIdx).kalmanFilter);
-                        else
-                            newTrack = createLGEKFtrack(eye(3), ...
-                                        mean(detectedMarkersForCurrentGhostTrack, 1)', 5, j, ...
-                                        pattern, patternNames{j}, ...
-                                        params, -1, ...
-                                        ghostTracks(currentGhostTrackIdx).kalmanFilter);
-                        end
-                        tracks(j) = newTrack;
-                        unassignedPatterns(j) = 0;
-                        potentialReInit(j) = 0;
-                        % mark ghosst bird as deleted and delete after loop
-                        deletedGhostTracks(currentGhostTrackIdx) = 1;
-                        % continue loop, as we don't have to update position of
-                        % ghost bird
-                        break;
-                    end
-                end
-                continue;
+%             elseif ( sum(potentialReInit & ~unrealisticInits) <= 1 + sum(abs(patterns)>=1000, 'all') && ...
+%                          ghostTracks(currentGhostTrackIdx).trustworthyness > hyperParams.minTrustworthyness && ...
+%                          sum([tracks(:).age] > 500) >= nObjects - 1 - sum(abs(patterns)>=1000, 'all') && ...
+%                          ghostTracks(currentGhostTrackIdx).age > 500 && ...
+%                          length(ghostTracks) == 1 ...
+%                     )
+%                 for j=1:size(potentialReInit)
+%                     if ( potentialReInit(j) == 1 &&  unrealisticInits(j) == 0 && ...
+%                          ~any(abs(patterns(j, :, :)) >= 1000, 'all') && ...
+%                          ~(abs(t-tracks(j).kalmanFilter.lastVisibleFrame) < 15 && ...
+%                            norm(tracks(j).kalmanFilter.lastSeen - mean(detectedMarkersForCurrentGhostTrack, 1)') > 150)...
+%                      )
+%                         pattern = squeeze(patterns(j, :, :));
+%                         if isfield(tracks(j).kalmanFilter, 'mu')
+%                             newTrack = createLGEKFtrack(eye(3), ...
+%                                         mean(detectedMarkersForCurrentGhostTrack, 1)', 5, j, ...
+%                                         pattern, patternNames{j}, ...
+%                                         params, tracks(j).kalmanFilter.mu.motionModel, ...
+%                                         ghostTracks(currentGhostTrackIdx).kalmanFilter);
+%                         else
+%                             newTrack = createLGEKFtrack(eye(3), ...
+%                                         mean(detectedMarkersForCurrentGhostTrack, 1)', 5, j, ...
+%                                         pattern, patternNames{j}, ...
+%                                         params, -1, ...
+%                                         ghostTracks(currentGhostTrackIdx).kalmanFilter);
+%                         end
+%                         tracks(j) = newTrack;
+%                         unassignedPatterns(j) = 0;
+%                         potentialReInit(j) = 0;
+%                         % mark ghosst bird as deleted and delete after loop
+%                         deletedGhostTracks(currentGhostTrackIdx) = 1;
+%                         % continue loop, as we don't have to update position of
+%                         % ghost bird
+%                         break;
+%                     end
+%                 end
+%                 continue;
             end
              
             
@@ -1240,7 +1240,7 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
         if goBackwards == 1
             removedInterestIdx = ~ismember(birdsOfInterest, lostIdx);
             birdsOfInterest = birdsOfInterest(removedInterestIdx);
-            lastVisibleFrames = lastVisibleFrames(removedInterestIdx);
+            lastVisibleFramesBack = lastVisibleFramesBack(removedInterestIdx);
         end
         
         
@@ -1259,22 +1259,23 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
         visibility = totalVisibleCounts ./ ages;
         lostGhostsIdx = lostMovingIdx | lostStationaryIdx | visibility < 0.2 ;
         lostGhostsIdx = lostGhostsIdx | deletedGhostTracks' | tooCloseGhosts';
-        
-        for i=1:length(lostGhostsIdx)
-            if lostGhostsIdx(i) == 1
-                % Remove part of trajectory when ghostBird was invisible
-                if lostMovingIdx(i) == 1
-                    ptr = storedGhostTracks{ghostTracks(i).ID}.ptr;
-                    storedGhostTracks{ghostTracks(i).ID}.trajectory(ptr-invisibleForTooLongGhosts:ptr-1, :) = NaN;
-                elseif lostStationaryIdx(i) == 1
-                    ptr = storedGhostTracks{ghostTracks(i).ID}.ptr;
-                    storedGhostTracks{ghostTracks(i).ID}.trajectory(ptr-invisibleForTooLongGhostsStationary:ptr-1, :) = NaN;
+        if goBackwards == 0
+            for i=1:length(lostGhostsIdx)
+                if lostGhostsIdx(i) == 1
+                    % Remove part of trajectory when ghostBird was invisible
+                    if lostMovingIdx(i) == 1
+                        ptr = storedGhostTracks{ghostTracks(i).ID}.ptr;
+                        storedGhostTracks{ghostTracks(i).ID}.trajectory(ptr-invisibleForTooLongGhosts:ptr-1, :) = NaN;
+                    elseif lostStationaryIdx(i) == 1
+                        ptr = storedGhostTracks{ghostTracks(i).ID}.ptr;
+                        storedGhostTracks{ghostTracks(i).ID}.trajectory(ptr-invisibleForTooLongGhostsStationary:ptr-1, :) = NaN;
+                    end
+                    % Remove uninteresting GhostBirds from storedGhostBirds
+                    if ages(i) < 100 || deletedGhostTracks(i) == 1 || tooCloseGhosts(i) == 1
+                        storedGhostTracks{ghostTracks(i).ID} = [];
+                    end
+
                 end
-                % Remove uninteresting GhostBirds from storedGhostBirds
-                if ages(i) < 100 || deletedGhostTracks(i) == 1 || tooCloseGhosts(i) == 1
-                    storedGhostTracks{ghostTracks(i).ID} = [];
-                end
-                
             end
         end
         ghostTracks(lostGhostsIdx == 1) = [];

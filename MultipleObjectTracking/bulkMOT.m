@@ -52,14 +52,30 @@ files = {'Starling_Trials_10-12-2019_08-15-00.txt', ...
 patternDirectoryNames = {'datasets/session8', 'datasets/session8', 'datasets/session8'};
 
 estPosRes = {};
-estQuatsRes = {};
+estQuatRes = {};
 certRes = {};
 ghostTracksRes = {};
 
 parpool(3)
 parfor i=1:length(files)
+    fprintf(['Processing File: ', num2str(i), '\n'])
     [estPosRes{i}, estQuatRes{i}, certRes{i}, ghostTracksRes{i}] = ...
             birdsMOT(files{i}, patternDirectoryNames{i}, stdHyperParams);
 end
 
 delete(gcp('nocreate'))
+% %%
+% 
+% load(['datasets/Starling_Trials_10-12-2019_08-45-00.mat']);
+% patternsPlusNames = read_patterns(patternDirectoryNames{1});
+% patterns = zeros(length(patternsPlusNames),4,3);
+% for i=1:length(patternsPlusNames)
+%     patterns(i,:,:) = patternsPlusNames(i).pattern;
+% end
+% 
+% vizParams.vizSpeed = 10;
+% vizParams.keepOldTrajectory = 0;
+% vizParams.vizHistoryLength = 500;
+% vizParams.startFrame = 1;
+% vizParams.endFrame = length(estPosRes{3});
+% vizRes(formattedData(1:length(estPosRes{3}), :, :), patterns, estPosRes{3}, estQuatRes{3}, vizParams, 0)
