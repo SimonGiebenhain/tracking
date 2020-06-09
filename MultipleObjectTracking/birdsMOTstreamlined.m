@@ -1,6 +1,6 @@
 %% load data and patterns
 % Also add folder with patterns to path of matlab!
-dataFilename =  'datasets/session8/Starling_Trials_10-12-2019_16-00-00_Trajectories_100.csv'; %'datasets/Starling_Trials_10-12-2019_08-30-00.txt';%%'datasets/session8/all.csv'; %
+dataFilename =  'datasets/Starling_Trials_10-12-2019_16-00-00.txt';%'datasets/session8/Starling_Trials_10-12-2019_16-00-00_Trajectories_100.csv'; %'datasets/Starling_Trials_10-12-2019_08-30-00.txt';%%'datasets/session8/all.csv'; %
 patternDirectoryName = 'datasets/session8';
 filePrefix = strsplit(dataFilename, '.');
 filePrefix = filePrefix{1};
@@ -108,7 +108,7 @@ fprintf('Starting to track!\n')
 
 %profile on;
 beginningFrame = 1;%4000;%7800+ blau macht sehr komische sachen;5300 %+ 1000 jittery;%%2000+4000;
-endFrame = 10000;%size(formattedData,1);
+endFrame = length(formattedData);
 stdHyperParams.visualizeTracking = 0;
 tic
 [estimatedPositions, estimatedQuats, snapshots, certainties, ghostTracks] = ownMOT(formattedData(beginningFrame:endFrame,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
@@ -118,6 +118,15 @@ toc
 %profile off;
 %p=profile('info'); 
 %findNonSuppressedOutput( p, '/Users/sigi/uni/7sem/project' )
+%%
+relevantGhostTracks = {};
+c = 1;
+for i=1:length(ghostTracks)
+    if ~isempty(ghostTracks{i}) && TODO ghostTracks{i}.ptr > 1000
+        relevantGhostTracks{c} = ghostTracks{i};
+        c = c+1;
+    end
+end
 
 %%
 stdHyperParams.visualizeTracking = 0;
@@ -193,3 +202,7 @@ vizRes(dets, patterns, estimatedPositions, estimatedQuats, vizParams, 0)
 %vizParams.vizSpeed = 5;
 %vizRes(formattedData, patterns, viconTrajectories, viconOrientation, vizParams, 0)
 
+
+%%
+augPos = postProcessing(estPos, ghostTracks, patterns);
+vizRes(dets, patterns, augPos, estQuat, vizParams, 0)

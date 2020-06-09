@@ -135,14 +135,12 @@ while t < T && ( goBackwards == 0 || ~isempty(birdsOfInterest) )
     
     predictNewLocationsOfTracks();
     [assignedTracks, unassignedTracks, assignedGhostTracks, unassignedGhostTracks, unassignedDetections] = detectionToTrackAssignment();
-
+    t
     [deletedGhostTracks, rejectedDetections] = updateAssignedTracks();
     updateUnassignedTracks();
     deleteLostTracks(deletedGhostTracks);
     unusedDets = [detections(unassignedDetections, :); rejectedDetections];
-    if mod(t, 1000) == 0
-        t
-    end
+
 
     if sum(unassignedPatterns) > 0 &&  length(unusedDets) > 1
         oldGhostTrackID = nextGhostTrackID;
