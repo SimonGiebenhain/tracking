@@ -220,7 +220,7 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
                     end
                     minPatIdx = safeAndUnassignedPatterns(minIdx2(1));
 
-                    if minMSE2(1) < initThreshold3 && costDiff > 2
+                    if minMSE2(1) < initThreshold3 && costDiff > 3
                         if isfield(tracks(minPatIdx).kalmanFilter, 'mu')
                             newTrack = createLGEKFtrack(squeeze(rotMats(minIdx2(1), :, :)), ...
                                 squeeze(transVecs(minIdx2(1), :))', ...

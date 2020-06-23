@@ -17,7 +17,7 @@ k = 1;
 for i = 1:size(folder,1)
     filename = folder(i).name;
     if contains(filename, '.vsk')
-        patterns(k).pattern = read_pattern(filename);
+        patterns(k).pattern = read_pattern([directory_name, '/', filename]);
         patterns(k).name = filename;
         k = k + 1;
     else

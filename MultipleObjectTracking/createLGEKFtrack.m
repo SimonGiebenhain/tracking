@@ -1,5 +1,5 @@
 function [newTrack] = createLGEKFtrack(rotm, pos, l2Error, patternIdx, pattern, patternName, params, motionModel, ghostKF)
-%CREATELGEKFTRACK Summary of this function goes here
+%traLGEKFTRACK Summary of this function goes here
 %   Detailed explanation goes here
 
 if ~exist('motionModel', 'var') || motionModel == -1

@@ -1,10 +1,14 @@
-function [outputArg1,outputArg2] = readTxtData(file)
+function formattedData = readTxtData(file)
 %READTXTDATA Summary of this function goes here
 %   Detailed explanation goes here
 
 nLines = 90000;
 fprintf('Starting to process .txt file.\n')
 fid = fopen(file);
+if fid < 0
+ fprintf(2, 'failed to open "%s" because "%s"\n', fname, message);
+ %and here, get out gracefully
+end
 
 splittedName = strsplit(file, '.');
 storageName = [splittedName{1}, '.mat'];
@@ -58,7 +62,7 @@ fclose(fid);
 empty_cols = all(isnan(squeeze(data(:, :, 1))), 1);
 
 
-formattedData = data(:, ~empty_cols);
+formattedData = data(:, ~empty_cols, :);
 
 save(storageName, 'formattedData');
 

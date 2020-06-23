@@ -6,7 +6,11 @@ keepOldTrajectory = vizParams.keepOldTrajectory;
 vizHistoryLength = vizParams.vizHistoryLength;
 vizSpeed = vizParams.vizSpeed;
 startFrame = vizParams.startFrame;
-endFrame = vizParams.endFrame;
+if vizParams.endFrame == -1
+    endFrame = min(size(D,1), size(estimatedPositions,2));
+else
+    endFrame = vizParams.endFrame;
+end
 
 nObjects = size(patterns, 1);
 nMarkers = size(patterns, 2);
@@ -17,13 +21,22 @@ if vizSpeed > 1
     estimatedQuats = estimatedQuats(:, startFrame:vizSpeed:endFrame, :);
     estimatedPositions = estimatedPositions(:, startFrame:vizSpeed:endFrame, :);
     D = D(startFrame:vizSpeed:endFrame, :, :);
+    vizHistoryLength = ceil(vizHistoryLength / vizSpeed);
+    if exist('trueTrajectory', 'var') && exist('trueOrientation', 'var')
+       trueTrajectory = trueTrajectory(:, startFrame:vizSpeed:endFrame, :);
+       trueOrientation = trueOrientation(:, startFrame:vizSpeed:endFrame, :);
+    end
 else
     estimatedQuats = estimatedQuats(:, startFrame:endFrame, :);
     estimatedPositions = estimatedPositions(:, startFrame:endFrame, :);
     D = D(startFrame:endFrame, :, :);
+    if exist('trueTrajectory', 'var') && exist('trueOrientation', 'var')
+       trueTrajectory = trueTrajectory(:, startFrame:endFrame, :);
+       trueOrientation = trueOrientation(:, startFrame:endFrame, :);
+    end
 end
 
-detsForVisualization = cell(nObjects,1);
+%detsForVisualization = cell(nObjects,1);
 birdsTrajectories = cell(nObjects,1);
 trueTrajectories = cell(nObjects,1);
 %birdsPositions = cell(nObjects,1);
@@ -56,10 +69,9 @@ for k = 1:nObjects
     birdsTrajectories{k} = plot3(NaN, NaN, NaN, 'Color', colorsPredicted(k,:));
 end
 
-for k = 1:nObjects
-    dets = squeeze(D(1,(k-1)*nMarkers+1:k*nMarkers,:));
-    detsForVisualization{k} = plot3(dets(:,1),dets(:,2), dets(:,3), '*', 'MarkerSize', 5, 'MarkerEdgeColor', [0.5; 0.5; 0.5]);
-    %birdsPositions{k} = plot3(NaN, NaN, NaN, 'o', 'MarkerSize', 10, 'MarkerEdgeColor', colors(k,:));
+dets = squeeze(D(1,:,:));
+detsForVisualization = plot3(dets(:,1),dets(:,2), dets(:,3), '*', 'MarkerSize', 5, 'MarkerEdgeColor', [0.5; 0.5; 0.5]);
+for k = 1:nObjects  
     for n = 1:nMarkers
         markerPositions{k,n} = plot3(NaN, NaN, NaN, 'o', 'MarkerSize', 10, 'MarkerEdgeColor', colorsPredicted(k,:));
         viconMarkerPositions{k,n} = plot3(NaN, NaN, NaN, 'square', 'MarkerSize', 12, 'MarkerEdgeColor', colorsTrue(k,:));
@@ -70,10 +82,18 @@ end
 grid on;
 %axis equal;
 axis manual;
-
+%view(-180,20);
+%zoom(1.5);
 %TODO loop t over all timesteps
 for t=1:min(size(D,1), size(estimatedPositions,2))
-    t
+    if vizSpeed > 1
+       t*vizSpeed 
+    else
+        t
+    end
+    if t == 1150
+       t 
+    end
     for k = 1:nObjects
         if shouldShowTruth && exist('trueTrajectory', 'var') && size(trueTrajectory,2) > t
             newXTrue = [trueTrajectories{k}.XData trueTrajectory(k,t,1)];
@@ -93,7 +113,7 @@ for t=1:min(size(D,1), size(estimatedPositions,2))
            
         
             pattern = squeeze(patterns(k,:,:));
-            trueRotMat = quat2rotm(squeeze(trueOrientation(k, t, :)));
+            trueRotMat = quat2rotm(squeeze(trueOrientation(k, t, :))');
             %trueRotMat = Rot(squeeze(trueOrientation(k, t, :)));
             trueRotatedPattern = (trueRotMat * pattern')';
             
@@ -129,22 +149,26 @@ for t=1:min(size(D,1), size(estimatedPositions,2))
         
         pattern = squeeze(patterns(k,:,:));
         quat = squeeze(estimatedQuats(k,t,:));
-        rotMat = quat2rotm(quat');
+        if any(isnan(quat)) && ~isnan(xPos)
+            'eyeye'
+            rotMat = eye(3);
+        else
+            rotMat = quat2rotm(quat');
+        end
         %rotMat = Rot(quat);
         rotatedPattern = (rotMat * pattern')';
         
         for n = 1:nMarkers
-            
             markerPositions{k,n}.XData = xPos + rotatedPattern(n,1);
             markerPositions{k,n}.YData = yPos + rotatedPattern(n,2);
             markerPositions{k,n}.ZData = zPos + rotatedPattern(n,3);
-            
         end
-        dets = squeeze(D(t,(k-1)*nMarkers+1:k*nMarkers,:));
-        detsForVisualization{k}.XData = dets(:,1);
-        detsForVisualization{k}.YData = dets(:,2);
-        detsForVisualization{k}.ZData = dets(:,3);
+        
     end
+    dets = squeeze(D(t,:,:));
+    detsForVisualization.XData = dets(:,1);
+    detsForVisualization.YData = dets(:,2);
+    detsForVisualization.ZData = dets(:,3);
     drawnow
     if vizSpeed < 1
         pause(1-vizSpeed);
