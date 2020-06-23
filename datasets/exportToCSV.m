@@ -7,7 +7,7 @@ T = size(positions, 2);
 
 quats = quats ./ sqrt(sum(quats.^2, 3));
 
-if useVICONformat
+if useVICONformat == 1
     quats = cat(3, quats(:,:,2:4), quats(:,:,1));
 end
 
@@ -17,8 +17,16 @@ for t=1:T
     for k=1:nObjects
         completeTable{(t-1)*nObjects+k, 1} = t;
         completeTable{(t-1)*nObjects+k, 2} = patternNames{k};
-        completeTable{(t-1)*nObjects+k, 3:6} = quats(k,t, :);
-        completeTable{(t-1)*nObjects+k, 7:9} = positions(k,t,:);
+        
+        completeTable{(t-1)*nObjects+k, 3} = quats(k,t, 1);
+        completeTable{(t-1)*nObjects+k, 4} = quats(k,t, 2);
+        completeTable{(t-1)*nObjects+k, 5} = quats(k,t, 3);
+        completeTable{(t-1)*nObjects+k, 6} = quats(k,t, 4);
+
+        completeTable{(t-1)*nObjects+k, 7} = positions(k,t,1);
+        completeTable{(t-1)*nObjects+k, 8} = positions(k,t,2);
+        completeTable{(t-1)*nObjects+k, 9} = positions(k,t,3);
+
     end
 end
 
@@ -34,12 +42,14 @@ header{1,7} = 'X';
 header{1,8} = 'Y';
 header{1,9} = 'Z';
 
-fmt = repmat('%s, ', 1, length(header));
-fmt(end:end+1) = '\n';
-fid = fopen(filename, 'w');
-fprintf(fid, fmt, header{:});
-fclose(fid);
-dlmwrite(filename, completeTable, '-append', 'delimiter', ',');
+T = cell2table(completeTable,'VariableNames', header);
+writetable(T, filename);
+%fmt = repmat('%s, ', 1, length(header));
+%fmt(end:end+1) = '\n';
+%fid = fopen(filename, 'w');
+%fprintf(fid, fmt, header{:});
+%fclose(fid);
+%dlmwrite(filename, completeTable, '-append', 'delimiter', ',');
 end
 
 

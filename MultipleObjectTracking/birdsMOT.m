@@ -4,7 +4,8 @@ function [estPos, estQuat, certainties, ghostTracks] = birdsMOT(dataFilename, pa
 %% load data and patterns
 % Also add folder with patterns to path of matlab!
 dirPath = pwd;%'/Users/sigi/uni/7sem/project/datasets/';
-dataFolder = 'datasets';
+dataFolder = 'multiple_object_tracking_project/datasets';
+exportFolder = [dataFolder, 'RESULTS'];
 filePrefix = strsplit(dataFilename, '.');
 filePrefix = filePrefix{1};
 if isfile([dirPath, '/', dataFolder, '/', filePrefix, '.mat'])
@@ -45,6 +46,12 @@ estPos = estimatedPositions;
 estQuat = estimatedQuats;
 estPos(missingFramesForwardPos) = estimatedPositionsBackward(missingFramesForwardPos);
 estQuat(missingFramesForwardQuat) = estimatedQuatsBackward(missingFramesForwardQuat);
-fprintf('done')
+
+%% Export Results
+if ~exist(exportFolder, 'dir')
+       mkdir(exportFolder)
+end
+
+exportToCSV([dirPath, '/', exportFolder, '/', filePrefix, 'RESULT', '.mat'], estPos, estQuat, patternNames, 1)
 end
 

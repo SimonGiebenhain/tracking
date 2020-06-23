@@ -49,18 +49,13 @@ stdHyperParams.visualizeTracking = 0;
 files = {'Starling_Trials_10-12-2019_08-15-00.txt', ...
          'Starling_Trials_10-12-2019_08-30-00.txt', ...
          'Starling_Trials_10-12-2019_08-45-00.txt'};
-patternDirectoryNames = {'datasets/session8', 'datasets/session8', 'datasets/session8'};
+patternDirectoryNames = {'multiple_object_tracking_project/datasets/session8', 'multiple_object_tracking_project/datasets/session8', 'multiple_object_tracking_project/datasets/session8'};
 
-estPosRes = {};
-estQuatRes = {};
-certRes = {};
-ghostTracksRes = {};
 
 parpool(3)
 parfor i=1:length(files)
     fprintf(['Processing File: ', num2str(i), '\n'])
-    [estPosRes{i}, estQuatRes{i}, certRes{i}, ghostTracksRes{i}] = ...
-            birdsMOT(files{i}, patternDirectoryNames{i}, stdHyperParams);
+    birdsMOT(files{i}, patternDirectoryNames{i}, stdHyperParams);
 end
 
 delete(gcp('nocreate'))
