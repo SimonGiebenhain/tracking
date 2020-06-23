@@ -739,6 +739,9 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
             % id-switches
             if nAssgnDets >= 3 %&& ~(sum(potentialReInit) == 1 + sum(abs(patterns)>=1000, 'all'))
                 unassignedIdx = find(potentialReInit & ~unrealisticInits);
+                if isempty(unassignedIdx)
+                    continue; 
+                end
                 matchingCosts = zeros(length(unassignedIdx), 1);
                 rotations = zeros(length(unassignedIdx), 3, 3);
                 translations = zeros(length(unassignedIdx), 3);

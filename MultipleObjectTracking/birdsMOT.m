@@ -52,6 +52,6 @@ if ~exist(exportFolder, 'dir')
        mkdir(exportFolder)
 end
 
-exportToCSV([dirPath, '/', exportFolder, '/', filePrefix, 'RESULT', '.mat'], estPos, estQuat, patternNames, 1)
+exportToCSV([dirPath, '/', exportFolder, '/', filePrefix, 'RESULT', '.csv'], estPos, estQuat, patternNames, 1)
 end
 
