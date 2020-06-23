@@ -769,13 +769,6 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
                         ( minCost2(1) < 0.2 && nAssgnDets == 3 && costDiff > 2) || ...
                         ( minCost2(1) < 3 && closeInits(patternIdx) ) ...
                     )
-              
-                    if nAssgnDets == 3
-                       minCost2(1) 
-                    end
-                    if minCost2(2) < 0.25 && nAssgnDets == 3 && ~(safePatternsBool(patternIdx)==1)
-                        minCost2(1)
-                    end
                     pattern = squeeze(patterns(patternIdx, :, :));
                     if isfield(tracks(patternIdx).kalmanFilter, 'mu')
                         newTrack = createLGEKFtrack(squeeze(rotations(minIdx2(1), :, :)), ...
