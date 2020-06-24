@@ -5,7 +5,7 @@ function [estPos, estQuat, certainties, ghostTracks] = birdsMOT(dataFilename, pa
 % Also add folder with patterns to path of matlab!
 dirPath = pwd;%'/Users/sigi/uni/7sem/project/datasets/';
 dataFolder = 'multiple_object_tracking_project/datasets';
-exportFolder = [dataFolder, 'RESULTS'];
+exportFolder = [dataFolder, '/RESULTS'];
 filePrefix = strsplit(dataFilename, '.');
 filePrefix = filePrefix{1};
 if isfile([dirPath, '/', dataFolder, '/', filePrefix, '.mat'])
