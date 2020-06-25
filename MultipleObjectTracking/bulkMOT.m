@@ -46,10 +46,15 @@ stdHyperParams.visualizeTracking = 0;
 %%
 %TODO get list from folder
 
-files = {'Starling_Trials_10-12-2019_08-15-00.txt', ...
-         'Starling_Trials_10-12-2019_08-30-00.txt', ...
-         'Starling_Trials_10-12-2019_08-45-00.txt'};
-patternDirectoryNames = {'multiple_object_tracking_project/datasets/session8', 'multiple_object_tracking_project/datasets/session8', 'multiple_object_tracking_project/datasets/session8'};
+%files = {'Starling_Trials_10-12-2019_08-15-00.txt', ...
+%         'Starling_Trials_10-12-2019_08-30-00.txt', ...
+%         'Starling_Trials_10-12-2019_08-45-00.txt'};
+dirName = 'multiple_object_tracking_project/datasets';
+processedFileName = 'multiple_object_tracking_project/datasets/processedFiles.txt';
+files = getUnprocessedFiles(dirName, processedFileName);
+patternDirectoryNames = {'multiple_object_tracking_project/datasets/session8', ...
+                         'multiple_object_tracking_project/datasets/session8', ...
+                         'multiple_object_tracking_project/datasets/session8'};
 
 
 parpool(3)
