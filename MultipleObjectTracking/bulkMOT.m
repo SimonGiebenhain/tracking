@@ -65,7 +65,9 @@ parfor i=1:length(files)
     try
         birdsMOT(files{i}, patternDirectoryNames{i}, stdHyperParams);
         fid = fopen('multiple_object_tracking_project/datasets/processedFiles.txt', 'a');
-        fprintf(fid, '%s\n', files{i});
+        fs = strsplit(files{i}, '/');
+        f = fs{end};
+        fprintf(fid, '%s\n', f);
         fclose(fid);
     catch MExc
         disp(MExc.message)

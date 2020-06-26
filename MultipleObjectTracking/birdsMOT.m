@@ -8,6 +8,11 @@ dataFolder = 'multiple_object_tracking_project/datasets';
 exportFolder = [dataFolder, '/RESULTS'];
 filePrefix = strsplit(dataFilename, '.');
 filePrefix = filePrefix{1};
+fileNameChunks = strsplit(dataFilename, '/');
+fname = fileNameChunks{end};
+fnames = strsplit(fname, '.');
+fname = fnames{1};
+
 if isfile([filePrefix, '.mat'])
     load([filePrefix, '.mat']);
 else
@@ -52,6 +57,6 @@ if ~exist(exportFolder, 'dir')
        mkdir(exportFolder)
 end
 
-exportToCSV([dirPath, '/', exportFolder, '/', filePrefix, 'RESULT', '.csv'], estPos, estQuat, patternNames, 1)
+exportToCSV([dirPath, '/', exportFolder, '/', fname, 'RESULT', '.csv'], estPos, estQuat, patternNames, 1)
 end
 
