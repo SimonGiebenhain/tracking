@@ -1,3 +1,7 @@
+%%
+path = pwd;
+addpath(genpath([path, '/', 'multiple_object_tracking_project']))
+%%
 stdHyperParams.doFPFiltering = 1;
 stdHyperParams.adaptiveNoise = 1;
 stdHyperParams.lambda = 0;
@@ -58,7 +62,9 @@ patternDirectoryNames = {'multiple_object_tracking_project/datasets/session8', .
                          'multiple_object_tracking_project/datasets/session8'};
 
 
-parpool(3)
+disp('starting to process files in parallel!')
+                     
+parpool(8)
 parfor i=1:length(files)
     tic
     fprintf(['Processing File: ', num2str(i), '\n'])
@@ -76,6 +82,9 @@ parfor i=1:length(files)
 end
 
 delete(gcp('nocreate'))
+
+
+disp('Done processing all files')
 % %%
 % 
 % load(['datasets/Starling_Trials_10-12-2019_08-45-00.mat']);
