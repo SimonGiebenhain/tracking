@@ -6,7 +6,7 @@ nLines = 90000;
 fprintf('Starting to process .txt file.\n')
 fid = fopen(file);
 if fid < 0
- fprintf(2, 'failed to open "%s" because "%s"\n', fname, message);
+ fprintf(2, 'failed to open "%s" because "%s"\n', file, message);
  %and here, get out gracefully
 end
 

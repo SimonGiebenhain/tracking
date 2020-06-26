@@ -54,13 +54,23 @@ processedFileName = 'multiple_object_tracking_project/datasets/processedFiles.tx
 files = getUnprocessedFiles(dirName, processedFileName);
 patternDirectoryNames = {'multiple_object_tracking_project/datasets/session8', ...
                          'multiple_object_tracking_project/datasets/session8', ...
+                         'multiple_object_tracking_project/datasets/session8', ...
                          'multiple_object_tracking_project/datasets/session8'};
 
 
 parpool(3)
 parfor i=1:length(files)
+    tic
     fprintf(['Processing File: ', num2str(i), '\n'])
-    birdsMOT(files{i}, patternDirectoryNames{i}, stdHyperParams);
+    try
+        birdsMOT(files{i}, patternDirectoryNames{i}, stdHyperParams);
+        fid = fopen('multiple_object_tracking_project/datasets/processedFiles.txt', 'a');
+        fprintf(fid, '%s\n', files{i});
+        fclose(fid);
+    catch MExc
+        disp(MExc.message)
+    end
+    toc
 end
 
 delete(gcp('nocreate'))

@@ -8,12 +8,12 @@ dataFolder = 'multiple_object_tracking_project/datasets';
 exportFolder = [dataFolder, '/RESULTS'];
 filePrefix = strsplit(dataFilename, '.');
 filePrefix = filePrefix{1};
-if isfile([dirPath, '/', dataFolder, '/', filePrefix, '.mat'])
-    load([dirPath, '/', dataFolder, '/', filePrefix, '.mat']);
+if isfile([filePrefix, '.mat'])
+    load([filePrefix, '.mat']);
 else
     % Also add folder with patterns to path of matlab!
     %[formattedData, patternsPlusNames] = readVICONcsv(dataFilename, patternDirectoryName);
-    formattedData = readTxtData([dirPath, '/', dataFolder, '/', dataFilename]);
+    formattedData = readTxtData(dataFilename);
 end
 patternsPlusNames = read_patterns([dirPath, '/', patternDirectoryName]);
 patterns = zeros(length(patternsPlusNames),4,3);

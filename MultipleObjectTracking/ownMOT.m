@@ -135,7 +135,7 @@ while t < T && ( goBackwards == 0 || ~isempty(birdsOfInterest) )
     
     predictNewLocationsOfTracks();
     [assignedTracks, unassignedTracks, assignedGhostTracks, unassignedGhostTracks, unassignedDetections] = detectionToTrackAssignment();
-    t
+    %t
     [deletedGhostTracks, rejectedDetections] = updateAssignedTracks();
     updateUnassignedTracks();
     deleteLostTracks(deletedGhostTracks);
