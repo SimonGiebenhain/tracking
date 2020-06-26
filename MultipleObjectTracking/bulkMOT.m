@@ -59,10 +59,7 @@ stdHyperParams.visualizeTracking = 0;
 dirName = 'multiple_object_tracking_project/datasets';
 processedFileName = 'multiple_object_tracking_project/datasets/processedFiles.txt';
 files = getUnprocessedFiles(dirName, processedFileName);
-patternDirectoryNames = {'multiple_object_tracking_project/datasets/session8', ...
-                         'multiple_object_tracking_project/datasets/session8', ...
-                         'multiple_object_tracking_project/datasets/session8', ...
-                         'multiple_object_tracking_project/datasets/session8'};
+patternDirectoryName = 'multiple_object_tracking_project/datasets/session8';
 
 
 disp('starting to process files in parallel!')
@@ -72,7 +69,7 @@ parfor i=1:length(files)
     tic
     fprintf(['Processing File: ', num2str(i), '\n'])
     try
-        birdsMOT(files{i}, patternDirectoryNames{i}, stdHyperParams);
+        birdsMOT(files{i}, patternDirectoryName, stdHyperParams);
         fid = fopen('multiple_object_tracking_project/datasets/processedFiles.txt', 'a');
         fs = strsplit(files{i}, '/');
         f = fs{end};
