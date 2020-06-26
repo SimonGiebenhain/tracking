@@ -1,4 +1,7 @@
 %%
+if batchStartupOptionUsed
+    cd ../..
+end
 path = pwd;
 addpath(genpath([path, '/', 'multiple_object_tracking_project']))
 %%
