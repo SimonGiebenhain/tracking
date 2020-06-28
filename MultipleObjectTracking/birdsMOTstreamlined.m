@@ -1,6 +1,13 @@
+%%
+if batchStartupOptionUsed
+    cd ../..
+end
+path = pwd;
+addpath(genpath([path, '/', 'multiple_object_tracking_project']))
+
 %% load data and patterns
 % Also add folder with patterns to path of matlab!
-dataFilename =  'multiple_object_tracking_project/datasets/Starling_Trials_10-12-2019_15-45-00.txt';%'datasets/session8/Starling_Trials_10-12-2019_16-00-00_Trajectories_100.csv'; %'datasets/Starling_Trials_10-12-2019_08-30-00.txt';%%'datasets/session8/all.csv'; %
+dataFilename =  'multiple_object_tracking_project/datasets/Starling_Trials_10-12-2019_08-30-00.txt';%'datasets/session8/Starling_Trials_10-12-2019_16-00-00_Trajectories_100.csv'; %'datasets/Starling_Trials_10-12-2019_08-30-00.txt';%%'datasets/session8/all.csv'; %
 patternDirectoryName = 'multiple_object_tracking_project/datasets/session8';
 filePrefix = strsplit(dataFilename, '.');
 filePrefix = filePrefix{1};
@@ -108,7 +115,7 @@ fprintf('Starting to track!\n')
 
 %profile on;
 beginningFrame = 1;%4000;%7800+ blau macht sehr komische sachen;5300 %+ 1000 jittery;%%2000+4000;
-endFrame = 5000;%length(formattedData);
+endFrame = length(formattedData);
 stdHyperParams.visualizeTracking = 0;
 tic
 [estimatedPositions, estimatedQuats, snapshots, certainties, ghostTracks] = ownMOT(formattedData(beginningFrame:endFrame,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
@@ -198,7 +205,7 @@ vizRes(dets, patterns, estPos, estQuat, vizParams, 0)
 
 %%
 %
-vizRes(dets, patterns, estimatedPositions, estimatedQuats, vizParams, 0)
+%vizRes(dets, patterns, estimatedPositions, estimatedQuats, vizParams, 0)
 
 %vizParams.vizSpeed = 5;
 %vizRes(formattedData, patterns, viconTrajectories, viconOrientation, vizParams, 0)
