@@ -1,5 +1,5 @@
 %% load patterns nd detections
-dataFilename =  'multiple_object_tracking_project/datasets/Starling_Trials_10-12-2019_08-15-00.txt';%'datasets/session8/Starling_Trials_10-12-2019_16-00-00_Trajectories_100.csv'; %'datasets/Starling_Trials_10-12-2019_08-30-00.txt';%%'datasets/session8/all.csv'; %
+dataFilename =  'multiple_object_tracking_project/datasets/Starling_Trials_10-12-2019_08-30-00.txt';%'datasets/session8/Starling_Trials_10-12-2019_16-00-00_Trajectories_100.csv'; %'datasets/Starling_Trials_10-12-2019_08-30-00.txt';%%'datasets/session8/all.csv'; %
 patternDirectoryName = 'multiple_object_tracking_project/datasets/session8';
 filePrefix = strsplit(dataFilename, '.');
 filePrefix = filePrefix{1};
@@ -19,14 +19,15 @@ for i=1:length(patternsPlusNames)
     patternNames{i} = patternsPlusNames(i).name;
 end
 
-
 %% import csv
-fname = 'multiple_object_tracking_project/datasets/RESULTS/Starling_Trials_10-12-2019_08-15-00RESULT.csv';
+%fname = 'multiple_object_tracking_project/datasets/RESULTS2/Starling_Trials_10-12-2019_08-30-00RESULT.csv';
+fname = 'testExport.csv';
 [pos, quats] = importFromCSV(fname);
 %% visualize
-vizParams.vizSpeed = 10;
+vizParams.vizSpeed = 5;
 vizParams.keepOldTrajectory = 0;
 vizParams.vizHistoryLength = 500;
 vizParams.startFrame = 1;
 vizParams.endFrame = -1;
+% check 11.900 light blue bird again!!!
 vizRes(formattedData, patterns, pos, quats, vizParams, 0)

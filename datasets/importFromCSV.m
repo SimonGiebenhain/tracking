@@ -14,7 +14,7 @@ quats = NaN*zeros(numObjects, T, 4);
 for k=1:numObjects
     pattern = patternNames{k};
     strsFound =  strfind(patternIDs, pattern);
-    objIdx = find(~cellfun(@isempty,strsFound));
+    objIdx = find(~cellfun(@isempty, strsFound));
     pos(k, :, :) = table2array(table(objIdx, 7:9));
     quats(k, :, :) = table2array(table(objIdx, 3:6));
 end
