@@ -135,7 +135,11 @@ while t < T && ( goBackwards == 0 || ~isempty(birdsOfInterest) )
     
     predictNewLocationsOfTracks();
     [assignedTracks, unassignedTracks, assignedGhostTracks, unassignedGhostTracks, unassignedDetections] = detectionToTrackAssignment();
-    %t
+    if t==14900
+        for ii=1:nObjects
+           disp(rotm2quat(tracks(ii).kalmanFilter.mu.X(1:3,1:3)))
+        end
+    end
     [deletedGhostTracks, rejectedDetections] = updateAssignedTracks();
     updateUnassignedTracks();
     deleteLostTracks(deletedGhostTracks);
