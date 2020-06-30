@@ -654,10 +654,10 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
             s = tracks(currentTrackIdx).kalmanFilter;
             if strcmp(model, 'LieGroup')
                 s.z = reshape(detectedMarkersForCurrentTrack', [], 1);
-                [tracks(currentTrackIdx).kalmanFilter, rejectedDetections, cert, condn] = correctKalman(s, tracks(currentTrackIdx).kalmanParams, hyperParams, tracks(currentTrackIdx).age, params.motionType);
-                if condn > 10000
-                   disp(['Time: ', num2str(t), ' Bird: ', tracks(currentTrackIdx).name, ' condn: ', num2str(condn)])
-                end
+                [tracks(currentTrackIdx).kalmanFilter, rejectedDetections, cert] = correctKalman(s, tracks(currentTrackIdx).kalmanParams, hyperParams, tracks(currentTrackIdx).age, params.motionType);
+                %if condn > 10000
+                %   disp(['Time: ', num2str(t), ' Bird: ', tracks(currentTrackIdx).name, ' condn: ', num2str(condn)])
+                %end
                 certainties(currentTrackIdx, t) = cert;
                 allRejectedDetections(end + 1: end + size(rejectedDetections, 1), :) = rejectedDetections;
                 if s.mu.motionModel > 0 && norm( s.mu.v ) > 35
