@@ -135,11 +135,12 @@ while t < T && ( goBackwards == 0 || ~isempty(birdsOfInterest) )
     
     predictNewLocationsOfTracks();
     [assignedTracks, unassignedTracks, assignedGhostTracks, unassignedGhostTracks, unassignedDetections] = detectionToTrackAssignment();
-    if t==14900
-        for ii=1:nObjects
-           disp(rotm2quat(tracks(ii).kalmanFilter.mu.X(1:3,1:3)))
-        end
-    end
+%     if t==6662
+%         for ii=1:nObjects
+%            disp(rotm2quat(tracks(ii).kalmanFilter.mu.X(1:3,1:3)))
+%            disp(tracks(ii).name)
+%         end
+%     end
     [deletedGhostTracks, rejectedDetections] = updateAssignedTracks();
     updateUnassignedTracks();
     deleteLostTracks(deletedGhostTracks);
@@ -187,6 +188,15 @@ while t < T && ( goBackwards == 0 || ~isempty(birdsOfInterest) )
         if tracks(ii).age > 0
             if strcmp(model, 'LieGroup')
                 estimatedPositions(ii, t, :) = tracks(ii).kalmanFilter.mu.X(1:3, 4);
+%                 rotm = tracks(ii).kalmanFilter.mu.X(1:3,1:3);
+%                 q = rotm2quat(rotm);
+%                 rotm2 = quat2rotm(q);
+%                 if any(abs(rotm - rotm2) > 0.001)
+%                    rotm 
+%                 end
+%                 if det(rotm) < 0
+%                    rotm 
+%                 end
                 estimatedQuats(ii, t, :) = rotm2quat(tracks(ii).kalmanFilter.mu.X(1:3,1:3));
             else
                 state = tracks(ii).kalmanFilter.x;
@@ -644,7 +654,10 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
             s = tracks(currentTrackIdx).kalmanFilter;
             if strcmp(model, 'LieGroup')
                 s.z = reshape(detectedMarkersForCurrentTrack', [], 1);
-                [tracks(currentTrackIdx).kalmanFilter, rejectedDetections, cert] = correctKalman(s, tracks(currentTrackIdx).kalmanParams, hyperParams, tracks(currentTrackIdx).age, params.motionType);
+                [tracks(currentTrackIdx).kalmanFilter, rejectedDetections, cert, condn] = correctKalman(s, tracks(currentTrackIdx).kalmanParams, hyperParams, tracks(currentTrackIdx).age, params.motionType);
+                if condn > 10000
+                   disp(['Time: ', num2str(t), ' Bird: ', tracks(currentTrackIdx).name, ' condn: ', num2str(condn)])
+                end
                 certainties(currentTrackIdx, t) = cert;
                 allRejectedDetections(end + 1: end + size(rejectedDetections, 1), :) = rejectedDetections;
                 if s.mu.motionModel > 0 && norm( s.mu.v ) > 35

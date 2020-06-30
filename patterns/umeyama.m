@@ -32,12 +32,19 @@ sigma = 1/n*Y_demean*X_demean';
 
 %% Define S
 S = eye(m);
-if det(sigma) < 0 || (rank(sigma) == m-1 && det(U)*det(V) < 0)
+if rank(sigma) >= m-1 
+    if det(U)*det(V) < 0
+        S(m,m) = -1;
+    end
+elseif det(sigma) < 0
     S(m,m) = -1;
 end
 
 %% Bootstrap
 R = U*S*V';
+if det(R) < 0
+   R 
+end
 t = mean_Y - R*mean_X;
 XPrime = [R t; 0 0 0 1] * [X;ones(1,n)]; 
 MSE = mean( sqrt( sum((Y - XPrime(1:3,:)).^2, 1) ) );

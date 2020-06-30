@@ -86,14 +86,16 @@ axis manual;
 %zoom(1.5);
 %TODO loop t over all timesteps
 for t=1:min(size(D,1), size(estimatedPositions,2))
-    if vizSpeed > 1
-       t*vizSpeed 
-    else
-        t
-    end
-    if t == 1150
+    %if vizSpeed > 1
+    %   t*vizSpeed 
+    %else
+    %    t
+    %end
+    
+    if t*vizSpeed > 15000
        t 
     end
+    
     for k = 1:nObjects
         if shouldShowTruth && exist('trueTrajectory', 'var') && size(trueTrajectory,2) > t
             newXTrue = [trueTrajectories{k}.XData trueTrajectory(k,t,1)];

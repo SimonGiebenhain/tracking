@@ -1,7 +1,9 @@
+ver
 %%
 if batchStartupOptionUsed
     cd ../..
 end
+%cd ../..
 path = pwd;
 addpath(genpath([path, '/', 'multiple_object_tracking_project']))
 
@@ -115,7 +117,7 @@ fprintf('Starting to track!\n')
 
 %profile on;
 beginningFrame = 1;%4000;%7800+ blau macht sehr komische sachen;5300 %+ 1000 jittery;%%2000+4000;
-endFrame = length(formattedData);
+endFrame = 15000;%length(formattedData);
 stdHyperParams.visualizeTracking = 0;
 tic
 [estimatedPositions, estimatedQuats, snapshots, certainties, ghostTracks] = ownMOT(formattedData(beginningFrame:endFrame,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
@@ -201,7 +203,7 @@ dets = formattedData(beginningFrame:endFrame,:,:);
 %reverseIdx = sort(1:size(estimatedPositionsRev, 2), 'descend');
 %vizRes(dets, patterns, estimatedPositionsBackward, estimatedQuatsBackward, vizParams, 0)
 %%
-vizRes(dets, patterns, estPos, estQuat, vizParams, 0)
+%vizRes(dets, patterns, estPos, estQuat, vizParams, 0)
 
 %%
 %

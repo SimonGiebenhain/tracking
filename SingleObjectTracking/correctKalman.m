@@ -1,4 +1,4 @@
-function [s, rejectedDetections, c_ret] = correctKalman(s, globalParams, hyperParams, age, motionType)
+function [s, rejectedDetections, c_ret, condn] = correctKalman(s, globalParams, hyperParams, age, motionType)
 %CORRECTKALMAN Summary of this function goes here
 %   Detailed explanation goes here
 
@@ -151,8 +151,8 @@ if size(ds, 1) >= 1
                 divisor = 3;
             end
             certainty = (certainty/hyperParams.certaintyScale)^2 / divisor;
-            certainty = max(0.05, certainty);
-            certainty = min(150, certainty);
+            certainty = max(0.05, certainty);%0.05
+            certainty = min(150, certainty);%150
         end
     else
         fprintf('unknown method encountered')
@@ -209,8 +209,9 @@ if size(ds, 1) >= 1
         H = @(S) jac(s.pattern, S.X);
         H = H(s.mu);
         H = H(detectionsIdx, :);
-        
-        K = s.P*H'/(H*s.P*H'+s.R);
+        tempo = H*s.P*H'+s.R;
+        condn = cond(tempo);
+        K = s.P*H'/tempo;
         predErr = z(~lostIdx)-zPred(detectionsIdx);
         if length(predErr) >= 12
             c_ret = mean(predErr.^2);

@@ -17,6 +17,9 @@ else
 end
 %L = eye(3) + ((n-sin(n))/n^3)*(phi*phi') + (1-cos(n))/n^2*vecToSO3Algebra(phi);
 %X = [expSO3vec(phi) L*t; zeros(1,3) 1];
+if det(R) < 0
+   R 
+end
 X = [R V*t; zeros(1,3) 1];
 end
 
