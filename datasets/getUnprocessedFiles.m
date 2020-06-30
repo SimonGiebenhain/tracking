@@ -1,9 +1,18 @@
-function [unprocessedFiles] = getUnprocessedFiles(dirName, processedFileName)
-%GETUNPROCESSEDFILES Summary of this function goes here
-%   Detailed explanation goes here
+function [unprocessedFiles] = getUnprocessedFiles(dirName, processedFileNames)
+%GETUNPROCESSEDFILES Get all .txt files in directory dirName, except for the files
+%lsited in processedFileNames
+%   Arguments:
+%   @dirName string containing path to folder holding the files of interest
+%   @processedFileNames name of .txt file where each line indicates a file
+%   that has already been processed. This file has to contain its own
+%   filename as well.
+%
+%   Returns:
+%   @unprocessedFiles cell array, where each entry is a string of file to
+%   be processed.
 
 fileListing = dir(dirName);
-fID = fopen(processedFileName);
+fID = fopen(processedFileNames);
 processedFilesCell = textscan(fID, '%s');
 processedFiles = processedFilesCell{1};
 

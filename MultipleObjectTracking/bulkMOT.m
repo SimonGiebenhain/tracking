@@ -1,10 +1,12 @@
-%%
-if batchStartupOptionUsed
+%% add relevant functions to path, when working on server
+
+% this MATLAB built-in requires at least version R2019a 
+%if batchStartupOptionUsed
     cd ../..
-end
+%end
 path = pwd;
 addpath(genpath([path, '/', 'multiple_object_tracking_project']))
-%%
+%% Set parameters for code
 stdHyperParams.doFPFiltering = 1;
 stdHyperParams.adaptiveNoise = 1;
 stdHyperParams.lambda = 0;
@@ -50,26 +52,31 @@ stdHyperParams.modelType = 'LieGroup';
 
 stdHyperParams.visualizeTracking = 0;
 
-%%
-%TODO get list from folder
-
-%files = {'Starling_Trials_10-12-2019_08-15-00.txt', ...
-%         'Starling_Trials_10-12-2019_08-30-00.txt', ...
-%         'Starling_Trials_10-12-2019_08-45-00.txt'};
+%% Read files that need to processed
+% Files to be processed must be in this directory
 dirName = 'multiple_object_tracking_project/datasets';
+% This file should contain the names of all .txt files that already have been processed 
 processedFileName = 'multiple_object_tracking_project/datasets/processedFiles.txt';
 files = getUnprocessedFiles(dirName, processedFileName);
-patternDirectoryName = 'multiple_object_tracking_project/datasets/session8';
+% The .vsk files specifiying the patterns for the recordings need to be
+% stored in this directory
+patternDirectoryName = 'session8';
 
-
+%% Process files in parallel 
 disp('starting to process files in parallel!')
-                     
-parpool(8)
+        
+% number of CPUs to be used
+parpool(3)
 parfor i=1:length(files)
     tic
-    fprintf(['Processing File: ', num2str(i), '\n'])
+    fprintf(['Processing File ', num2str(i), ': ', files{i}, '\n'])
     try
+        % 'birdsMOT' does all the work, i.e. read data from .txt to .mat
+        % and then runs the MOT algorithm and stores the results in the
+        % 'RESULTS' folder
         birdsMOT(files{i}, patternDirectoryName, stdHyperParams);
+        % For a successfully processed file, write filename to
+        % 'processedFiles.txt'
         fid = fopen('multiple_object_tracking_project/datasets/processedFiles.txt', 'a');
         fs = strsplit(files{i}, '/');
         f = fs{end};
@@ -81,22 +88,8 @@ parfor i=1:length(files)
     toc
 end
 
+% delete parpool
 delete(gcp('nocreate'))
 
 
 disp('Done processing all files')
-% %%
-% 
-% load(['datasets/Starling_Trials_10-12-2019_08-45-00.mat']);
-% patternsPlusNames = read_patterns(patternDirectoryNames{1});
-% patterns = zeros(length(patternsPlusNames),4,3);
-% for i=1:length(patternsPlusNames)
-%     patterns(i,:,:) = patternsPlusNames(i).pattern;
-% end
-% 
-% vizParams.vizSpeed = 10;
-% vizParams.keepOldTrajectory = 0;
-% vizParams.vizHistoryLength = 500;
-% vizParams.startFrame = 1;
-% vizParams.endFrame = length(estPosRes{3});
-% vizRes(formattedData(1:length(estPosRes{3}), :, :), patterns, estPosRes{3}, estQuatRes{3}, vizParams, 0)

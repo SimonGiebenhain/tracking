@@ -1,10 +1,31 @@
 function [estPos, estQuat, certainties, ghostTracks] = birdsMOT(dataFilename, patternDirectoryName, stdHyperParams)
-%BIRDSMOT Summary of this function goes here
-%   Detailed explanation goes here
+%BIRDSMOT This function takes the central role in this multiple object
+%tracking framwork, by directing everything from reading the input file and
+%patterns, to running the MOT algorithm itself and saving the results.
+%   Arguments:
+%   @dataFilename string containing the name of .txt file containing all detections
+%   from the VICON system, which has to be located inside the 'datasets'
+%   folder.
+%   @patternDirectoryName string containing the name of folder, containing 
+%   all .vsk files used for the recording.
+%   @stdHyperParams strcut containing relevant paramters for the MOT
+%   algorithm.
+%
+%   Return Values:
+%   @estPos array of dimensions [numObjects x numTimesteps x 3] cotaining
+%   the position estimate for every object at every timestep. NaN values
+%   are used, when object not detected at a time step.
+%   @estQuat array of dimensions [numObjects x numTimesteps x 4] containing
+%   the estimated quaternion for every object at every timestep. Again NaN
+%   values are used when objects are missing.
+%   @certainties not used, detaild description: TODO
+%   @ghostTracks not used, detaild description: TODO
+
+
 %% load data and patterns
-% Also add folder with patterns to path of matlab!
-dirPath = pwd;%'/Users/sigi/uni/7sem/project/datasets/';
+dirPath = pwd;
 dataFolder = 'multiple_object_tracking_project/datasets';
+% Results will be stored here
 exportFolder = [dataFolder, '/RESULTS'];
 filePrefix = strsplit(dataFilename, '.');
 filePrefix = filePrefix{1};
@@ -16,11 +37,10 @@ fname = fnames{1};
 if isfile([filePrefix, '.mat'])
     load([filePrefix, '.mat']);
 else
-    % Also add folder with patterns to path of matlab!
-    %[formattedData, patternsPlusNames] = readVICONcsv(dataFilename, patternDirectoryName);
+    % old .csv input format: [formattedData, patternsPlusNames] = readVICONcsv(dataFilename, patternDirectoryName);
     formattedData = readTxtData(dataFilename);
 end
-patternsPlusNames = read_patterns([dirPath, '/', patternDirectoryName]);
+patternsPlusNames = read_patterns([dirPath, '/', dataFolder, '/', patternDirectoryName]);
 patterns = zeros(length(patternsPlusNames),4,3);
 patternNames = {};
 for i=1:length(patternsPlusNames)
@@ -29,13 +49,13 @@ for i=1:length(patternsPlusNames)
 end
 fprintf('Loaded data successfully!\n')    
     
-%% test MOT
+%% Forward MOT
 quatMotionType = 'brownian';
 fprintf('Starting to track!\n')
 
 stdHyperParams.visualizeTracking = 0;
 [estimatedPositions, estimatedQuats, snapshots, certainties, ghostTracks] = ownMOT(formattedData, patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
-%%
+%% Backward MOT
 fprintf('starting Backward Track!\n')
 [estimatedPositionsBackward, estimatedQuatsBackward, ~, ~] = ownMOT(formattedData, patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams, snapshots);
 revIdx = sort(1:length(formattedData), 'descend');

@@ -1,16 +1,32 @@
 function exportToCSV(filename, positions, quats, patternNames, useVICONformat)
-%EXPORTTOCSV Summary of this function goes here
-%   Detailed explanation goes here
+%EXPORTTOCSV Exports tracking results to .csv file
+%   Arguments:
+%   @filename string denoting the filename to write to
+%   @positions array of dimensions [K x T x 3], where K is the number of
+%   objects and T the number of frames. Contains position estimates.
+%   @quats array of dimensions [K x T x 4], where K is the number of
+%   objects and T the number of frames. Contains orientation estimates.
+%   @patternNames cell array of length K, containing the names of patterns
+%   @useVICONformat when 1 use t convention of VICON, which has the 
+%   components of a quaternion q in the following order q = [qx, qy, qz,qw]
+%   Otherwise the standard convention of q = [qw, qx, qy, qz] is used. The
+%   latter version is used in MATLAB.
+%
+%   Details:
+%   The written .csv file will have the following format:
+%   Time (1 column) | patternName (1 column) | quaternion (4 columns) | position (3 columns)
 
 nObjects = size(positions, 1);
 T = size(positions, 2);
 
 quats = quats ./ sqrt(sum(quats.^2, 3));
 
+%reorder quaternions when specified
 if useVICONformat == 1
     quats = cat(3, quats(:,:,2:4), quats(:,:,1));
 end
 
+%bring data in requested format
 completeTable = cell(T*nObjects, 1+1+4+3);
 
 for t=1:T
@@ -44,12 +60,6 @@ header{1,9} = 'Z';
 
 T = cell2table(completeTable,'VariableNames', header);
 writetable(T, filename);
-%fmt = repmat('%s, ', 1, length(header));
-%fmt(end:end+1) = '\n';
-%fid = fopen(filename, 'w');
-%fprintf(fid, fmt, header{:});
-%fclose(fid);
-%dlmwrite(filename, completeTable, '-append', 'delimiter', ',');
 end
 
 

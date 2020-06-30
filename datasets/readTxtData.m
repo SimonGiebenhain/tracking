@@ -3,7 +3,7 @@ function formattedData = readTxtData(file)
 %   Detailed explanation goes here
 
 nLines = 90000;
-fprintf('Starting to process .txt file.\n')
+fprintf(['Starting to process ', file, ' file.\n'])
 fid = fopen(file);
 if fid < 0
  fprintf(2, 'failed to open "%s" because "%s"\n', file, message);
