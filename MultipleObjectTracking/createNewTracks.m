@@ -1,6 +1,33 @@
 function [tracks, ghostTracks, unassignedPatternsReturn, nextGhostTrackID, freshInits] = createNewTracks(detections, unassignedPatternsReturn, tracks, patterns, params, patternNames, similarPairs, lastVisibleFrames, ghostTracks, nextGhostTrackID)
-%CREATENEWTRACKS Summary of this function goes here
-%   Detailed explanation goes here
+%CREATENEWTRACKS Search for patterns of untracked birds in unassigned
+%detections in order to initialize new tracks.
+%   Arguments:
+%   @detections array of dimensions [N x 3], where N is the number of
+%   detections which have not been assigned to one of the tracked birds
+%   @unassignedPatternsReturn binary array, where a 1 in the i-th position
+%   denotes, that the i-th bird is not currently tracked
+%   @tracks struct array, where each element holds all relevant information
+%   about a tracked birds
+%   @patterns array of dimensions [K x 4 x 3], holding the patterns for
+%   each of the K birds of the recording. Each pattern is specified by 4 
+%   3-D points
+%   @params struct holding several parameters used inside the Kalman filter 
+%   as well as in the initialization procedure
+%   @patternNames struct holding the names of the patterns
+%   @similarPairs array of dimensions [M x 2], where each row contains the
+%   pattern indices of two patterns which are similar to each other.
+%   @lastVisibleFrames lists frames when each bird was last seen
+%   @ghostTracks struct array, where each struct holds all relevant 
+%   information about a ghost track
+%   @nextGhostTrackID number indicating the ID of the next ghostTrack to be
+%   initialized. 
+%
+%   Returns:
+%   @tracks updated version of trakcs
+%   @ghostTracks updated version of ghostTracks
+%   @unassignedPatternsReturn list of IDs of birds that are still untracked
+%   @nextGhostTrackID ghostTrackID to be used next
+%   @freshInits binary array indicating which birds are still not tracked
 
 freshInits = zeros(length(tracks),1);
 
@@ -22,6 +49,18 @@ end
 minDistToBird = params.minDistToBird;
 initThreshold3 = params.initThreshold;
 initThreshold4 = params.initThreshold4;
+
+% Get positions of all active tracks
+ages = [tracks(:).age];
+nActiveTracks = sum(ages>0);
+trackedPos = zeros(nActiveTracks, 3);
+idx = 1;
+for i=1:length(tracks)
+    if tracks(i).age > 0
+       trackedPos(idx, :) =  tracks(i).kalmanFilter.mu.X(1:3, 4);
+       idx = idx + 1;
+    end
+end
 
 
 
@@ -220,10 +259,18 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
                     end
                     minPatIdx = safeAndUnassignedPatterns(minIdx2(1));
 
-                    if minMSE2(1) < initThreshold3 && costDiff > 3
+                    if minMSE2(1) < initThreshold3 && costDiff > 2
+                        % Check whether new bird is too close to existing
+                        % bird!
+                        pos = squeeze(transVecs(minIdx2(1), :))';
+                        dists = pdist2(pos', trackedPos);
+                        if min(dists) < 75
+                            continue;
+                        end
+                        
                         if isfield(tracks(minPatIdx).kalmanFilter, 'mu')
                             newTrack = createLGEKFtrack(squeeze(rotMats(minIdx2(1), :, :)), ...
-                                squeeze(transVecs(minIdx2(1), :))', ...
+                                pos, ...
                                 minMSE2(1), minPatIdx, ...
                                 squeeze(patterns(minPatIdx, :, :)),...
                                 patternNames{minPatIdx}, params, ...
