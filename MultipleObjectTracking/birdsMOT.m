@@ -1,4 +1,4 @@
-function [estPos, estQuat, certainties, ghostTracks] = birdsMOT(dataFilename, patternDirectoryName, stdHyperParams)
+function [estPos, estQuat, certainties, ghostTracks] = birdsMOT(dataFilename, dataFolder, stdHyperParams)
 %BIRDSMOT This function takes the central role in this multiple object
 %tracking framwork, by directing everything from reading the input file and
 %patterns, to running the MOT algorithm itself and saving the results.
@@ -24,15 +24,23 @@ function [estPos, estQuat, certainties, ghostTracks] = birdsMOT(dataFilename, pa
 
 %% load data and patterns
 dirPath = pwd;
-dataFolder = 'multiple_object_tracking_project/datasets';
 % Results will be stored here
 exportFolder = [dataFolder, '/RESULTS'];
 filePrefix = strsplit(dataFilename, '.');
 filePrefix = filePrefix{1};
+
 fileNameChunks = strsplit(dataFilename, '/');
 fname = fileNameChunks{end};
 fnames = strsplit(fname, '.');
 fname = fnames{1};
+
+fnameChunks = strsplit(fname, '_');
+date = fnameChunks{3};
+dateChunks = strsplit(date, '-');
+day = str2double(dateChunks{1});
+time = fnameChunks{4};
+timeChunks = strsplit(time, '-');
+hour = str2double(timeChunks{1});
 
 if isfile([filePrefix, '.mat'])
     load([filePrefix, '.mat']);
@@ -40,7 +48,7 @@ else
     % old .csv input format: [formattedData, patternsPlusNames] = readVICONcsv(dataFilename, patternDirectoryName);
     formattedData = readTxtData(dataFilename);
 end
-patternsPlusNames = read_patterns([dirPath, '/', dataFolder, '/', patternDirectoryName]);
+patternsPlusNames = read_patterns([dirPath, '/', dataFolder, '/patterns']);
 patterns = zeros(length(patternsPlusNames),4,3);
 patternNames = {};
 for i=1:length(patternsPlusNames)
@@ -48,7 +56,18 @@ for i=1:length(patternsPlusNames)
     patternNames{i} = patternsPlusNames(i).name;
 end
 fprintf('Loaded data successfully!\n')    
-    
+
+
+if day >= 9
+    patterns(7, :, :) = [];
+    patternNames(7) = [];
+end
+if day >= 9 && hour > 12
+    patterns(10, :, :) = [];
+    patternNames(10) = [];
+end
+
+
 %% Forward MOT
 quatMotionType = 'brownian';
 fprintf('Starting to track!\n')
