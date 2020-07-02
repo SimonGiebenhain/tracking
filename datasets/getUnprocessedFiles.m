@@ -12,9 +12,13 @@ function [unprocessedFiles] = getUnprocessedFiles(dirName, processedFileNames)
 %   be processed.
 
 fileListing = dir(dirName);
-fID = fopen(processedFileNames);
-processedFilesCell = textscan(fID, '%s');
-processedFiles = processedFilesCell{1};
+if processedFileNames == -1
+    processedFiles = {};
+else
+    fID = fopen(processedFileNames);
+    processedFilesCell = textscan(fID, '%s');
+    processedFiles = processedFilesCell{1};
+end
 
 unprocessedFiles = {};
 idx = 1;
