@@ -2,6 +2,9 @@ function [newTrack] = createLGEKFtrack(rotm, pos, l2Error, patternIdx, pattern, 
 %traLGEKFTRACK Summary of this function goes here
 %   Detailed explanation goes here
 
+if patternIdx == 7 || patternIdx == 11
+   patternIdx 
+end
 if ~exist('motionModel', 'var') || motionModel == -1
     mM = params.initMotionModel;
 else

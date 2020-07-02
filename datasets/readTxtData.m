@@ -1,7 +1,16 @@
 function formattedData = readTxtData(file)
-%READTXTDATA Summary of this function goes here
-%   Detailed explanation goes here
+%READTXTDATA Read data from .txt log extracted from VICON system
+%   Arguments:
+%   @file filename of .txt to read
+%
+%   Returns:
+%   @formattedData array of dimensions [90000 x 50 x 3], 90000 was chosen
+%   as the used recordings have slightly less than 90000 frames. For each
+%   frame there should be at most 4*numObjects detections. Therefore 50
+%   leaves a bit of room for false positive detections
+%   TODO: make this function more general
 
+% Upper bound on frames for specific, used recordings 
 nLines = 90000;
 fprintf(['Starting to process ', file, ' file.\n'])
 fid = fopen(file);
@@ -14,6 +23,7 @@ splittedName = strsplit(file, '.');
 storageName = [splittedName{1}, '.mat'];
 fprintf(['The formatted data will be stored at ', storageName, '\n'])
 
+%upper bound of detections per frame
 nColumns = 50;
 data = NaN * ones(nLines, nColumns, 3);
 
@@ -24,16 +34,19 @@ firstFrameFound = 0;
 firstFrame = -1;
 t = -1;
 while ischar(tline)
+    % print progres update
     if t/nLines > percentDone
         fprintf([num2str(percentDone*100), 'percent done!\n'])
         percentDone = percentDone + 0.1;
     end
     [startIdx, endIdx] = regexp(tline, 'Frame Number: \d*');
+    % Get frame number
     if ~isempty(startIdx) && startIdx == 1
         t = str2num(tline(startIdx+14:endIdx));
         if firstFrame >= 0 && t+1 == firstFrame
             break
         end
+    % Get detections of that current frame
     elseif ~isempty(regexp(tline, '\s*Unlabeled Markers (', 'once'))
         [startIdx, endIdx] = regexp(tline, '\d*');
         numDets = str2num(tline(startIdx:endIdx)); 

@@ -71,6 +71,13 @@ params.motionType = 'constAcc';
 params.minDistToBird = hyperParams.minDistToBird;
 params.initThreshold = hyperParams.initThreshold;
 params.initThreshold4 = hyperParams.initThreshold4;
+params.costDiff = hyperParams.costDiff;
+params.costDiff4 = hyperParams.costDiff4;
+params.initThresholdTight = hyperParams.initThresholdTight;
+params.initThreshold4Tight = hyperParams.initThreshold4Tight;
+params.costDiffTight = hyperParams.costDiffTight;
+params.costDiff4Tight = hyperParams.costDiff4Tight;
+
 
 params.initMotionModel = 0;
 
@@ -783,12 +790,12 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
                     costDiff = Inf;
                 end
                 patternIdx = unassignedIdx(minIdx2(1));
-                if ~isempty(minCost2(1)) && ...
-                    (  ( minCost2(1) < params.initThreshold4 && nAssgnDets == 4 && costDiff > 1)  || ...
-                        ( minCost2(1) < params.initThreshold && nAssgnDets == 3 && safePatternsBool(patternIdx)==1 && costDiff > 2) ||... 
-                        ( minCost2(1) < 0.2 && nAssgnDets == 3 && costDiff > 2) || ...
-                        ( minCost2(1) < 3 && closeInits(patternIdx) ) ...
-                    )
+                
+                %direct initialization if fit is almost perfect
+                if ( minCost2(1) < params.initThreshold4Tight && nAssgnDets == 4 && costDiff > params.costDiff4Tight)  || ...
+                        ( minCost2(1) < params.initThresholdTight && nAssgnDets == 3 && safePatternsBool(patternIdx)==1 && costDiff > params.costDiffTight) ||... 
+                        ( minCost2(1) < 0.2 && nAssgnDets == 3 && costDiff > params.costDiffTight ) || ...
+                        ( minCost2(1) < 2.5 && closeInits(patternIdx) )
                     pattern = squeeze(patterns(patternIdx, :, :));
                     if isfield(tracks(patternIdx).kalmanFilter, 'mu')
                         newTrack = createLGEKFtrack(squeeze(rotations(minIdx2(1), :, :)), ...
@@ -815,8 +822,52 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
                     % continue loop, as we don't have to update position of
                     % ghost bird
                     continue;
+                    
+                % If fit is good but not perfect, only mark potential initi
+                % in struct of ghost bird. When potential inits uniqule
+                % indicate ID, then initialize bird as well.
+                elseif  ( t - ghostTracks(currentGhostTrackIdx).lastPotentialInit > 5 ) && ( ...
+                        ( minCost2(1) < params.initThreshold4 && nAssgnDets == 4 && costDiff > params.costDiff4)  || ...
+                        ( minCost2(1) < params.initThreshold && nAssgnDets == 3 && safePatternsBool(patternIdx)==1 && costDiff > params.costDiff) ||... 
+                        ( minCost2(1) < 0.25 && nAssgnDets == 3 && costDiff > params.costDiff) )
+                    ghostTracks(currentGhostTrackIdx).lastPotentialInit = t;
+                    ghostTracks(currentGhostTrackIdx).potentialInits(patternIdx) = ghostTracks(currentGhostTrackIdx).potentialInits(patternIdx) + 1;
+                    [maxPotentialInits, maxIdx] = maxk(ghostTracks(currentGhostTrackIdx).potentialInits, 2);
+                    if maxPotentialInits(1) - maxPotentialInits(2) > 10
+                        if maxIdx(1) ~=patternIdx
+                            error('something went Wrong in new Init!') 
+                        end
+                        pattern = squeeze(patterns(patternIdx, :, :));
+                        if isfield(tracks(patternIdx).kalmanFilter, 'mu')
+                            newTrack = createLGEKFtrack(squeeze(rotations(minIdx2(1), :, :)), ...
+                                        squeeze(translations(minIdx2(1), :))', MSE, patternIdx, ...
+                                        pattern, patternNames{patternIdx}, params, ...
+                                        tracks(patternIdx).kalmanFilter.mu.motionModel, ...
+                                        ghostTracks(currentGhostTrackIdx).kalmanFilter);
+                        else
+                            newTrack = createLGEKFtrack(squeeze(rotations(minIdx2(1), :, :)), ...
+                                    squeeze(translations(minIdx2(1), :))', MSE, ...
+                                    patternIdx, pattern, patternNames{patternIdx}, ...
+                                    params, -1, ...
+                                    ghostTracks(currentGhostTrackIdx).kalmanFilter);
+                        end
+                        newTrack.kalmanFilter.lastVisibleFrame = lastVisibleFrames(patternIdx);
 
+                        tracks(patternIdx) = newTrack;
+                        unassignedPatterns(patternIdx) = 0;
+                        potentialReInit(patternIdx) = 0;
+                        freshInits(patternIdx) = true;
+                        somethingChanged = 1;
+                        % mark ghosst bird as deleted and delete after loop
+                        deletedGhostTracks(currentGhostTrackIdx) = 1;
+                        % continue loop, as we don't have to update position of
+                        % ghost bird
+                        continue;
+                    end
+                    
                 end
+                
+                
                 
               elseif nAssgnDets == 2 && sum(closeInits) == 1
                 %initialize close init
