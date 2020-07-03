@@ -17,7 +17,8 @@ function exportToCSV(filename, positions, quats, patternNames, useVICONformat)
 %   Time (1 column) | patternName (1 column) | quaternion (4 columns) | position (3 columns)
 
 nObjects = size(positions, 1);
-T = size(positions, 2);
+
+T = find(any(~isnan(squeeze(positions(:, :, 1))), 1), 1, 'last');
 
 quats = quats ./ sqrt(sum(quats.^2, 3));
 
@@ -47,16 +48,18 @@ for t=1:T
 end
 
 %write to csv file
-header = cell(1, 9);
-header{1,1} = 'Frame';
-header{1,2} = 'patternID';
-header{1,3} = 'RX';
-header{1,4} = 'RY';
-header{1,5} = 'RZ';
-header{1,6} = 'RW';
-header{1,7} = 'X';
-header{1,8} = 'Y';
-header{1,9} = 'Z';
+header = cell(2, 9);
+header{1,1} = 'numRecordedFrames';
+header{1,2} = T;
+header{2,1} = 'Frame';
+header{2,2} = 'patternID';
+header{2,3} = 'RX';
+header{2,4} = 'RY';
+header{2,5} = 'RZ';
+header{2,6} = 'RW';
+header{2,7} = 'X';
+header{2,8} = 'Y';
+header{2,9} = 'Z';
 
 T = cell2table(completeTable,'VariableNames', header);
 writetable(T, filename);

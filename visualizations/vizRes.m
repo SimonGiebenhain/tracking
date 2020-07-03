@@ -1,6 +1,31 @@
-function vizRes(D, patterns, estimatedPositions, estimatedQuats, vizParams, shouldShowTruth, trueTrajectory, trueOrientation)
-%UNTITLED Summary of this function goes here
-%   Detailed explanation goes here
+function vizRes(D, patterns, estimatedPositions, estimatedQuats, vizParams, colorsPredicted, shouldShowTruth, trueTrajectory, trueOrientation)
+%UNTITLED Visualize Multiple-Object Tracking
+%   Arguments:
+%   @D point detections, array of dimensions [T x M x 3], where T is the
+%   number of frames and M is the maximum number of detections per frame
+%   @patterns array of dimension [K x 4 x 3], where K is the number of
+%   objects and each pattern is specified as 4 3-D points
+%   @estimatedPositions array of dimensions [K x T x 3]. NaN values
+%   indicate an untracked state
+%   @estimatedQuats array of dimensions [K x T x 4]. NaN values
+%   indicate an untracked state
+%   @vizParams struct holding information about details of the
+%   visualization. The fileds are:
+%       .keepOldTrajectory: boolean indicating whether to show past
+%       trajecotry of a bird
+%       .vizHistoryLength: number of frames the past trajecotry should be
+%       displayed for. If too large the visualization will become confusing
+%       .vizSpeed: integer value intigating rate of speed up of video. i.e.
+%       if set to 5 only ever 5th frame is shown
+%       .startFrame: indicates the first frame to show
+%       .ednFrame: indicates the last frame to show
+%   @colorsPredicted optional paramteter dictating what colors to use.
+%   Should be an [Kx3] array, where each row is an RGB value
+%   @shouldShowTruth boolean dictating whether to include "true" tracking
+%   results as well. Can be used to compare with VICON result, or just two
+%   different tracking results in general
+%   @trueTrajectory pendant of estimatedPositions of second tracking result
+%   @trueOrientation pendant of estimatedQuats of second tracking result
 
 keepOldTrajectory = vizParams.keepOldTrajectory;
 vizHistoryLength = vizParams.vizHistoryLength;
@@ -42,8 +67,9 @@ trueTrajectories = cell(nObjects,1);
 %birdsPositions = cell(nObjects,1);
 markerPositions = cell(nObjects, nMarkers);
 viconMarkerPositions = cell(nObjects, nMarkers);
-
-colorsPredicted = distinguishable_colors(nObjects);
+if ~exist('colorsPredicted', 'var')
+    colorsPredicted = distinguishable_colors(nObjects);
+end
 colorsTrue = (colorsPredicted + 2) ./ (max(colorsPredicted,[],2) +2);
 
 
@@ -84,6 +110,7 @@ grid on;
 axis manual;
 %view(-180,20);
 %zoom(1.5);
+
 %TODO loop t over all timesteps
 for t=1:min(size(D,1), size(estimatedPositions,2))
     %if vizSpeed > 1
@@ -91,10 +118,6 @@ for t=1:min(size(D,1), size(estimatedPositions,2))
     %else
     %    t
     %end
-    
-    if t*vizSpeed > 15000
-       t 
-    end
     
     for k = 1:nObjects
         if shouldShowTruth && exist('trueTrajectory', 'var') && size(trueTrajectory,2) > t

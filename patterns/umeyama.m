@@ -10,10 +10,8 @@ function [ R, t, MSE ] = umeyama( X, Y, plotResult )
 % figure is created plotting the registration result and the average
 % registration error.
 %
-% Author: Christoph Graumann, 2015
-%   Chair for Computer Aided Medical Procedures and Augmented Reality
-%   Technische Universitaet Muenchen (Munich, Germany) and 
-%   Johns Hopkins University (Baltimore, MD, USA)
+% Author: Originally Christoph Graumann, 2015, correct condition for
+% improper rotations from Simon Giebenhain 2020
 
 assert(size(X,1)==size(Y,1) && size(X,2)==size(Y,2),'Dimensions of matrices must match!');
 assert(size(X,1)==3, 'The points must be given in format [3xn]');

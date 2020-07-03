@@ -1,6 +1,8 @@
 function [formattedData, patternsPlusNames] = readVICONcsv(file, patternDirectory)
-%READVICONCSV Summary of this function goes here
-%   Detailed explanation goes here
+%READVICONCSV Reads .csv file holding raw detections exttracted from the
+%VICON software. Addtionally reads the corresponding patterns. 
+%   Note: This format is not used anymore, instead the readTxtData()
+%   function is used to read the data from a .txt file instead.
 
 [ ~, cmdRes] = system(['wc -l ', file]);
 [startIdx, endIdx] = regexp(cmdRes, '\d+\s');

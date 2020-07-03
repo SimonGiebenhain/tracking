@@ -1,12 +1,14 @@
 function res = JacOfFonSE3CA(S)
-%JACOFFONSE3CA Summary of this function goes here
-%   Detailed explanation goes here
-
-%syms e1 e2 e3 e4 e5 e6 e7 e8 e9 e10 e11 e12 real;
-%[Xe, ve, ae] = expSE3CAvec([e1;e2;e3;e4;e5;e6], [e7;e8;e9], [e10;e11;e12]);
-%f = @(X, v, a) stateTrans(comp(X, a, v, Xe, ve, ae));
-
-%J = jacobian(f, [e1 e2 e3 e4 e5 e6 e7 e8 e9 e10 e11 e12])
+%JACOFFONSE3CA Calculates the Jacobian of the state transition function for
+% state S.
+%   The Extended Kalman FIlter linearizes the state transition function
+%   around its current estimate for some computations. This function
+%   implements the formula form the LG-EKF paper https://hal.archives-ouvertes.fr/hal-00903252/document
+%   Arguemnts:
+%   @S state of the LG-EKF
+%   
+%   Returns:
+%   @res Jacobian of the state transition function.
 if S.motionModel == 0
     j = zeros(6);
     res = Ad(expSE3ACvec(-stateTrans(S))) + j;
