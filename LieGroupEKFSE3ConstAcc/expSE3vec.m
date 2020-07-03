@@ -1,6 +1,11 @@
 function X = expSE3vec(v)
-%EXPSE3VEC Summary of this function goes here
-%   Detailed explanation goes here
+%EXPSE3VEC Exponential map, linking Lie Group SE(3) and its Lie algebra
+%   Normally maps form the Lie algebra to the Lie group. This
+%   implementation however directly maps from the R^3 to the Lie group, as
+%   R^6 and the Lie algebra of SE(3) are isomorphic. I.e. this
+%   implementation works with a vector representation of the elements from
+%   the Lie algebra, instead of the matrix representation.
+%   Formula taken from: http://www.ethaneade.org/lie.pdf
 phi = v(1:3);
 t = v(4:6);
 n = norm(phi);
@@ -15,11 +20,7 @@ else
     R = eye(3) + a*w + b*w^2;
     V = eye(3) + b*w + c*w^2;
 end
-%L = eye(3) + ((n-sin(n))/n^3)*(phi*phi') + (1-cos(n))/n^2*vecToSO3Algebra(phi);
-%X = [expSO3vec(phi) L*t; zeros(1,3) 1];
-if det(R) < 0
-   R 
-end
+
 X = [R V*t; zeros(1,3) 1];
 end
 

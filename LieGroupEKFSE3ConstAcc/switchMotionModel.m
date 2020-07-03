@@ -1,6 +1,18 @@
 function kF = switchMotionModel(kF, v, newMotionModel, params)
-%SWITCHMOTIONMODEL Summary of this function goes here
-%   Detailed explanation goes here
+%SWITCHMOTIONMODEL Switches the motion model of a Kalman filter
+%   Arguemnts:
+%   @kF struct holding all information about the Kalman filter
+%   @v TODO
+%   @newMotionModel integer representing the type of motion model. Here 0
+%   stands for a brwonian motion model, 1 for a constant velocity model and
+%   2 for a constant acceleration model. Note that a constant velocity
+%   model is not implemented yet. I'm only switching back and forth between
+%   0 and 2.
+%   @params struct containing noise assumptions of the system, which are 
+%   necessary to specify for a Kalman filter.
+%
+%   Returns:
+%   @kF updated Kalman filter struct
 
 if kF.mu.motionModel == 0 && newMotionModel == 2
     
@@ -8,10 +20,7 @@ if kF.mu.motionModel == 0 && newMotionModel == 2
     F = JacOfFonSE3CA(kF.mu);
     kF.mu = comp(kF.mu, expSE3ACvec(-stateTrans(kF.mu)));
     kF.P = kF.P - kF.Q;
-    %invF = inv(F);
-    %s.P = invF * s.P * invF';
     kF.P = F\kF.P/F;
-    %s.P = F*s.P*F';
     
     %prepare new motion model, then redo prediction step with new motion
     %model
@@ -34,6 +43,8 @@ if kF.mu.motionModel == 0 && newMotionModel == 2
     kF.framesInNewMotionModel = 0;
     
 elseif kF.mu.motionModel == 2 && newMotionModel == 0
+    %TODO: should I undo prediction step of constant acceleration motion
+    %model?
     kF.Q = diag([repmat(params.quatNoise, 3, 1);
                  repmat(params.posNoiseBrownian, 3, 1)]);
     kF.P = kF.P(1:6, 1:6);
@@ -43,6 +54,13 @@ elseif kF.mu.motionModel == 2 && newMotionModel == 0
     
     kF.framesInNewMotionModel = 0;
 
+% All other transitions not implemented
+else
+    err_msg = ['Switching from motion model ' , num2str(kf.mu.motionModel), ...
+               ' to motion model ', num2str(newMotionModel), ...
+               ' is not implemented!\n'];
+    help_msg = 'Note that in only motion model 0 and 2 are implemented!';
+    error([err_msg, help_msg])
 end
 end
 

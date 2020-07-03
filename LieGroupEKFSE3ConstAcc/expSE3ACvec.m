@@ -1,6 +1,6 @@
 function [S] = expSE3ACvec(s)
-%EXPSE3CAVEC Summary of this function goes here
-%   Detailed explanation goes here
+%EXPSE3CAVEC Exponential map of SE(3) x R^3 x R^3
+%   
 d = length(s);
 if d == 6
     S.X = expSE3vec(s(1:6));
