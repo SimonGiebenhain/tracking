@@ -1,9 +1,9 @@
 %% add relevant functions to path, when working on server
 
 % this MATLAB built-in requires at least version R2019a 
-%if batchStartupOptionUsed
+if batchStartupOptionUsed
     cd ../..
-%end
+end
 path = pwd;
 addpath(genpath([path, '/', 'multiple_object_tracking_project']))
 %% Set parameters for code
@@ -18,7 +18,7 @@ stdHyperParams.useAssignmentLength = 1;
 stdHyperParams.minAssignmentThreshold = 30; %35%30;
 stdHyperParams.ghostFPFilterDist = 65;
 stdHyperParams.costOfNonAsDtMA = 10;
-stdHyperParams.eucDistWeight = 1/4;%1/3;
+stdHyperParams.eucDistWeight = 1/10;%1/3;
 
 % params regarding: process noise, i.e. how reliable the predictions of the
 % motion models are
@@ -49,7 +49,7 @@ stdHyperParams.initThreshold4 = 3;
 stdHyperParams.costDiff = 1.2;
 stdHyperParams.costDiff4 = 1;
 
-stdHyperParams.initThresholdTight = 0.65;
+stdHyperParams.initThresholdTight = 0.6;
 stdHyperParams.initThreshold4Tight = 2.5;
 stdHyperParams.costDiffTight = 2;
 stdHyperParams.costDiff4Tight = 1.5;
@@ -71,9 +71,10 @@ patternDirectoryName = 'multiple_object_tracking_project/datasets/flock2';
 
 %% Process files in parallel 
 disp('starting to process files in parallel!')
-        
+
+parpool(32)
 % number of CPUs to be used
-for i=1:length(files)
+parfor i=1:length(files)
     tic
     fprintf(['Processing File ', num2str(i), ': ', files{i}, '\n'])
     try

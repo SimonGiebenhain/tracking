@@ -41,6 +41,7 @@ day = str2double(dateChunks{1});
 time = fnameChunks{4};
 timeChunks = strsplit(time, '-');
 hour = str2double(timeChunks{1});
+minute = str2double(timeChunks{2});
 
 if isfile([filePrefix, '.mat'])
     load([filePrefix, '.mat']);
@@ -58,11 +59,13 @@ end
 fprintf('Loaded data successfully!\n')    
 
 
-if day >= 9
+if (day == 8 && hour == 9 && minute > 15) || ...
+        (day == 8 && hour > 9) || day > 8
     patterns(7, :, :) = [];
     patternNames(7) = [];
 end
-if day >= 9 && hour > 12
+if (day == 9 && hour == 8 && minute > 15 ) || ...
+        (day == 9 && hour > 8) || day > 9
     patterns(10, :, :) = [];
     patternNames(10) = [];
 end
@@ -76,7 +79,7 @@ stdHyperParams.visualizeTracking = 0;
 [estimatedPositions, estimatedQuats, snapshots, certainties, ghostTracks] = ownMOT(formattedData, patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
 %% Backward MOT
 fprintf('starting Backward Track!\n')
-[estimatedPositionsBackward, estimatedQuatsBackward, ~, ~] = ownMOT(formattedData, patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams, snapshots);
+[estimatedPositionsBackward, estimatedQuatsBackward, ~, ~] = ownMOT(formattedData, patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams, -1, snapshots);
 revIdx = sort(1:length(formattedData), 'descend');
 
 estimatedPositionsBackward = estimatedPositionsBackward(:, revIdx, :);

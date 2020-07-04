@@ -6,7 +6,7 @@
 % TODO
 % Explanation goes here
 
-function [estimatedPositions, estimatedQuats, snapshots, certainties, storedGhostTracks] = ownMOT(D, patterns, patternNames, useVICONinit, initialStates, nObjects, shouldShowTruth, trueTrajectory, trueOrientation, quatMotionType, hyperParams, snapshots)
+function [estimatedPositions, estimatedQuats, snapshots, certainties, storedGhostTracks] = ownMOT(D, patterns, patternNames, useVICONinit, initialStates, nObjects, shouldShowTruth, trueTrajectory, trueOrientation, quatMotionType, hyperParams, colorsPredicted, snapshots)
 % OWNMOT does multi object tracking
 %   @D all observations/detections in the format:
 %       T x maxDetectionsPerFrame x 3
@@ -117,7 +117,9 @@ if visualizeTracking
     viconMarkerPositions = cell(nObjects, nMarkers);
 end
 
-colorsPredicted = distinguishable_colors(nObjects);
+if ~exist('colorsPredicted', 'var') || length(colorsPredicted) == 1
+    colorsPredicted = distinguishable_colors(nObjects);
+end
 colorsTrue = (colorsPredicted + 2) ./ (max(colorsPredicted,[],2) +2);
 keepOldTrajectory = 0;
 vizHistoryLength = 200;
@@ -826,7 +828,7 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
                 % If fit is good but not perfect, only mark potential initi
                 % in struct of ghost bird. When potential inits uniqule
                 % indicate ID, then initialize bird as well.
-                elseif  ( t - ghostTracks(currentGhostTrackIdx).lastPotentialInit > 5 ) && ( ...
+                elseif  ( t - ghostTracks(currentGhostTrackIdx).lastPotentialInit > 15 ) && ( ...
                         ( minCost2(1) < params.initThreshold4 && nAssgnDets == 4 && costDiff > params.costDiff4)  || ...
                         ( minCost2(1) < params.initThreshold && nAssgnDets == 3 && safePatternsBool(patternIdx)==1 && costDiff > params.costDiff) ||... 
                         ( minCost2(1) < 0.25 && nAssgnDets == 3 && costDiff > params.costDiff) )

@@ -1,18 +1,31 @@
 ver
 %%
-if batchStartupOptionUsed
-    cd ../..
-end
+%if batchStartupOptionUsed
+%    cd ../..
+%end
 %cd ../..
-path = pwd;
-addpath(genpath([path, '/', 'multiple_object_tracking_project']))
+%path = pwd;
+%addpath(genpath([path, '/', 'multiple_object_tracking_project']))
 
 %% load data and patterns
 % Also add folder with patterns to path of matlab!
-dataFilename =  'multiple_object_tracking_project/datasets/Starling_Trials_10-12-2019_08-30-00.txt';%'datasets/session8/Starling_Trials_10-12-2019_16-00-00_Trajectories_100.csv'; %'datasets/Starling_Trials_10-12-2019_08-30-00.txt';%%'datasets/session8/all.csv'; %
-patternDirectoryName = 'multiple_object_tracking_project/datasets/session8';
+dataFilename =  'multiple_object_tracking_project/datasets/flock2/Starling_Trials_08-12-2019_10-00-00.txt';%'multiple_object_tracking_project/datasets/Starling_Trials_10-12-2019_08-15-00.txt';%'datasets/session8/Starling_Trials_10-12-2019_16-00-00_Trajectories_100.csv'; %'datasets/Starling_Trials_10-12-2019_08-30-00.txt';%%'datasets/session8/all.csv'; %
+patternDirectoryName = 'multiple_object_tracking_project/datasets/flock2/patterns';
 filePrefix = strsplit(dataFilename, '.');
 filePrefix = filePrefix{1};
+
+fileNameChunks = strsplit(dataFilename, '/');
+fname = fileNameChunks{end};
+fnames = strsplit(fname, '.');
+fname = fnames{1};
+
+fnameChunks = strsplit(fname, '_');
+date = fnameChunks{3};
+dateChunks = strsplit(date, '-');
+day = str2double(dateChunks{1});
+time = fnameChunks{4};
+timeChunks = strsplit(time, '-');
+hour = str2double(timeChunks{1});
 if isfile([filePrefix, '.mat'])
     load([filePrefix, '.mat']);
 else
@@ -27,6 +40,21 @@ for i=1:length(patternsPlusNames)
     patterns(i,:,:) = patternsPlusNames(i).pattern;
     patternNames{i} = patternsPlusNames(i).name;
 end
+
+colors = distinguishable_colors(length(patternNames));
+
+if day >= 9
+    patterns(7, :, :) = [];
+    patternNames(7) = [];
+    colors(7, :) = [];
+end
+if day >= 9 && hour >= 12
+    patterns(10, :, :) = [];
+    patternNames(10) = [];
+    colors(10, :) = [];
+end
+
+
 fprintf('Loaded data successfully!\n')
 
 
@@ -78,7 +106,7 @@ stdHyperParams.useAssignmentLength = 1;
 stdHyperParams.minAssignmentThreshold = 30; %35%30;
 stdHyperParams.ghostFPFilterDist = 65;
 stdHyperParams.costOfNonAsDtMA = 10;
-stdHyperParams.eucDistWeight = 1/4;%1/3;
+stdHyperParams.eucDistWeight = 1/10;%1/3;
 
 % params regarding: process noise, i.e. how reliable the predictions of the
 % motion models are
@@ -104,8 +132,16 @@ stdHyperParams.minDistToBird = [95 80 50 40]; % number at index i is used when i
 stdHyperParams.minTrustworthyness = 10;
 
 % params regarding: initialization of birds
-stdHyperParams.initThreshold = 0.75;%0.85;
-stdHyperParams.initThreshold4 = 2.5;
+stdHyperParams.initThreshold = 1.15;%0.85;
+stdHyperParams.initThreshold4 = 3;
+stdHyperParams.costDiff = 1.5;
+stdHyperParams.costDiff4 = 1;
+
+stdHyperParams.initThresholdTight = 0.6;%0.65
+stdHyperParams.initThreshold4Tight = 1.65;
+stdHyperParams.costDiffTight = 2;
+stdHyperParams.costDiff4Tight = 1.25;
+
 stdHyperParams.patternSimilarityThreshold = 1.25;%1;
 
 stdHyperParams.modelType = 'LieGroup';
@@ -117,10 +153,10 @@ fprintf('Starting to track!\n')
 
 %profile on;
 beginningFrame = 1;%4000;%7800+ blau macht sehr komische sachen;5300 %+ 1000 jittery;%%2000+4000;
-endFrame = 15000;%length(formattedData);
-stdHyperParams.visualizeTracking = 0;
+endFrame = length(formattedData);
+stdHyperParams.visualizeTracking = 1;
 tic
-[estimatedPositions, estimatedQuats, snapshots, certainties, ghostTracks] = ownMOT(formattedData(beginningFrame:endFrame,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
+[estimatedPositions, estimatedQuats, snapshots, certainties, ghostTracks] = ownMOT(formattedData(beginningFrame:endFrame,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams, colors);
 %[estimatedPositions, estimatedQuats] = ownMOT(formattedData(1000:end,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
 toc
 %profile viewer
@@ -143,7 +179,7 @@ stdHyperParams.visualizeTracking = 0;
 %TODO: kill ghosts when too close to real birds
 % TODO: especially when using forward pass to reinit bird that was lost in
 % backwardMOT (once next checkpoint was passed, witout complete reinit)
-[estimatedPositionsBackward, estimatedQuatsBackward, ~, certainties] = ownMOT(formattedData(beginningFrame:endFrame,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams, snapshots);
+[estimatedPositionsBackward, estimatedQuatsBackward, ~, certainties] = ownMOT(formattedData(beginningFrame:endFrame,:,:), patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams, -1, snapshots);
 %%
 %[estimatedPositionsBackward, estimatedQuatsBackward] = ownMOTbackward(formattedData(beginningFrame:endFrame,:,:), patterns, patternNames, snapshots, 0, stdHyperParams);
 revIdx = sort(1:endFrame, 'descend');
@@ -192,10 +228,10 @@ estQuat(missingFramesForwardQuat) = estimatedQuatsBackward(missingFramesForwardQ
 % exportToCSV(resultsFilename, estimatedPositions, estimatedQuats, beginningFrame, patternNames, 1, 0);
 
 %%
-vizParams.vizSpeed = 10;
+vizParams.vizSpeed = 1;
 vizParams.keepOldTrajectory = 0;
 vizParams.vizHistoryLength = 500;
-vizParams.startFrame = 1;
+vizParams.startFrame = 9150;
 vizParams.endFrame = endFrame;
 dets = formattedData(beginningFrame:endFrame,:,:);
 %revIdx = sort(1:length(formattedData), 'descend');
@@ -203,7 +239,7 @@ dets = formattedData(beginningFrame:endFrame,:,:);
 %reverseIdx = sort(1:size(estimatedPositionsRev, 2), 'descend');
 %vizRes(dets, patterns, estimatedPositionsBackward, estimatedQuatsBackward, vizParams, 0)
 %%
-%vizRes(dets, patterns, estPos, estQuat, vizParams, 0)
+vizRes(dets, patterns, estPos, estQuat, vizParams, 0)
 
 %%
 %
