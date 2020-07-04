@@ -1,9 +1,9 @@
 %% add relevant functions to path, when working on server
 
 % this MATLAB built-in requires at least version R2019a 
-if batchStartupOptionUsed
+%if batchStartupOptionUsed
     cd ../..
-end
+%end
 path = pwd;
 addpath(genpath([path, '/', 'multiple_object_tracking_project']))
 %% Set parameters for code
@@ -72,8 +72,8 @@ patternDirectoryName = 'multiple_object_tracking_project/datasets/flock2';
 %% Process files in parallel 
 disp('starting to process files in parallel!')
 
-parpool(32)
 % number of CPUs to be used
+parpool(32);
 parfor i=1:length(files)
     tic
     fprintf(['Processing File ', num2str(i), ': ', files{i}, '\n'])
@@ -84,7 +84,7 @@ parfor i=1:length(files)
         birdsMOT(files{i}, patternDirectoryName, stdHyperParams);
         % For a successfully processed file, write filename to
         % 'processedFiles.txt'
-        fid = fopen('multiple_object_tracking_project/datasets/processedFiles.txt', 'a');
+        fid = fopen('multiple_object_tracking_project/datasets/flock2/processedFiles.txt', 'a');
         fs = strsplit(files{i}, '/');
         f = fs{end};
         fprintf(fid, '%s\n', f);

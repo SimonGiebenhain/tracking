@@ -71,6 +71,8 @@ if (day == 9 && hour == 8 && minute > 15 ) || ...
 end
 
 
+formattedData = formattedData(1:15000, :, :);
+
 %% Forward MOT
 quatMotionType = 'brownian';
 fprintf('Starting to track!\n')
@@ -99,6 +101,10 @@ if ~exist(exportFolder, 'dir')
        mkdir(exportFolder)
 end
 
-exportToCSV([dirPath, '/', exportFolder, '/', fname, 'RESULT', '.csv'], estPos, estQuat, patternNames, 1)
+T = exportToCSV([dirPath, '/', exportFolder, '/', fname, 'RESULT', '.csv'], estPos, estQuat, patternNames, 1);
+
+fid = fopen('multiple_object_tracking_project/datasets/flock2/recordingLengths.txt', 'a');
+fprintf(fid, '%s\n', [fname , ': ', num2str(T)]);
+fclose(fid);
 end
 
