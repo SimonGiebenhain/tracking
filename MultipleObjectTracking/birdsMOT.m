@@ -59,19 +59,28 @@ end
 fprintf('Loaded data successfully!\n')    
 
 
-if (day == 8 && hour == 9 && minute > 15) || ...
-        (day == 8 && hour > 9) || day > 8
+% if (day == 8 && hour == 9 && minute > 15) || ...
+%         (day == 8 && hour > 9) || day > 8
+%     patterns(7, :, :) = [];
+%     patternNames(7) = [];
+% end
+% if (day == 9 && hour == 8 && minute > 15 ) || ...
+%         (day == 9 && hour > 8) || day > 9
+%     patterns(10, :, :) = [];
+%     patternNames(10) = [];
+% end
+
+if (day == 14 && hour == 14 && minute > 15) || ...
+        (day == 14 && hour > 14) || day > 14
+    patterns(13, :, :) = [];
+    patternNames(13) = [];
+end
+if (day == 17 && hour == 9 && minute > 15 ) || ...
+        (day == 17 && hour > 9) || day > 17
     patterns(7, :, :) = [];
     patternNames(7) = [];
 end
-if (day == 9 && hour == 8 && minute > 15 ) || ...
-        (day == 9 && hour > 8) || day > 9
-    patterns(10, :, :) = [];
-    patternNames(10) = [];
-end
 
-
-formattedData = formattedData(1:15000, :, :);
 
 %% Forward MOT
 quatMotionType = 'brownian';

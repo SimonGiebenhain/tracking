@@ -28,7 +28,7 @@ for i=1:length(fileListing)
     name = fileListing(i).name;
     splitName = strsplit(name, '.');
     if length(splitName)==2
-       if strcmp(splitName{2}, 'txt')
+       if strcmp(splitName{2}, 'txt') || strcmp(splitName{2}, 'mat')
            if ~any(strcmp(processedFiles, name))
                unprocessedFiles{idx} = [fileListing(i).folder, '/', name];
                idx = idx + 1;

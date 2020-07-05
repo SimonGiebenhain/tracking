@@ -61,13 +61,13 @@ stdHyperParams.visualizeTracking = 0;
 
 %% Read files that need to processed
 % Files to be processed must be in this directory
-dirName = 'multiple_object_tracking_project/datasets/flock2';
+dirName = 'multiple_object_tracking_project/datasets/flock3';
 % This file should contain the names of all .txt files that already have been processed 
-processedFileName = 'multiple_object_tracking_project/datasets/flock2/processedFiles.txt';
+processedFileName = 'multiple_object_tracking_project/datasets/flock3/processedFiles.txt';
 files = getUnprocessedFiles(dirName, processedFileName);
 % The .vsk files specifiying the patterns for the recordings need to be
 % stored in this directory
-patternDirectoryName = 'multiple_object_tracking_project/datasets/flock2';
+patternDirectoryName = 'multiple_object_tracking_project/datasets/flock3';
 
 %% Process files in parallel 
 disp('starting to process files in parallel!')
@@ -84,7 +84,7 @@ parfor i=1:length(files)
         birdsMOT(files{i}, patternDirectoryName, stdHyperParams);
         % For a successfully processed file, write filename to
         % 'processedFiles.txt'
-        fid = fopen('multiple_object_tracking_project/datasets/flock2/processedFiles.txt', 'a');
+        fid = fopen('multiple_object_tracking_project/datasets/flock3/processedFiles.txt', 'a');
         fs = strsplit(files{i}, '/');
         f = fs{end};
         fprintf(fid, '%s\n', f);
