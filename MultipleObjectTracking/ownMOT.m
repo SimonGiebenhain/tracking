@@ -138,6 +138,9 @@ if goBackwards == 0
 end
 
 while t < T && ( goBackwards == 0 || ~isempty(birdsOfInterest) )
+    if t == 2500
+        t
+    end
     freshInits = zeros(nObjects,1);
     detections = squeeze(D(t,:,:));
     detections = reshape(detections(~isnan(detections)),[],dim);
@@ -1186,7 +1189,7 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
         nTracks = length(tracks);
         tooCloseBirds = zeros(nTracks,1);
         tooCloseGhosts = zeros(length(ghostTracks),1);
-        tooClose = 40;
+        tooClose = 30;
         positions = NaN*zeros(nTracks,3);
         for i=1:nTracks
             if tracks(i).age > 0

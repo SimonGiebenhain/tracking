@@ -1,11 +1,11 @@
-function [estPos, estQuat, certainties, ghostTracks] = birdsMOT(dataFilename, dataFolder, stdHyperParams)
+function [estPos, estQuat, certainties, ghostTracks] = birdsMOT(dataFilename, dataFolder, stdHyperParams, flock, beginningFrame, endFrame)
 %BIRDSMOT This function takes the central role in this multiple object
 %tracking framwork, by directing everything from reading the input file and
 %patterns, to running the MOT algorithm itself and saving the results.
 %   Arguments:
 %   @dataFilename string containing the name of .txt file containing all detections
 %   from the VICON system, which has to be located inside the 'datasets'
-%   folder.
+%   folder. Note that the file extension is not passed.
 %   @patternDirectoryName string containing the name of folder, containing 
 %   all .vsk files used for the recording.
 %   @stdHyperParams strcut containing relevant paramters for the MOT
@@ -26,13 +26,9 @@ function [estPos, estQuat, certainties, ghostTracks] = birdsMOT(dataFilename, da
 dirPath = pwd;
 % Results will be stored here
 exportFolder = [dataFolder, '/RESULTS'];
-filePrefix = strsplit(dataFilename, '.');
-filePrefix = filePrefix{1};
 
 fileNameChunks = strsplit(dataFilename, '/');
 fname = fileNameChunks{end};
-fnames = strsplit(fname, '.');
-fname = fnames{1};
 
 fnameChunks = strsplit(fname, '_');
 date = fnameChunks{3};
@@ -43,11 +39,11 @@ timeChunks = strsplit(time, '-');
 hour = str2double(timeChunks{1});
 minute = str2double(timeChunks{2});
 
-if isfile([filePrefix, '.mat'])
-    load([filePrefix, '.mat']);
+if isfile([dataFilename, '.mat'])
+    load([dataFilename, '.mat']);
 else
     % old .csv input format: [formattedData, patternsPlusNames] = readVICONcsv(dataFilename, patternDirectoryName);
-    formattedData = readTxtData(dataFilename);
+    formattedData = readTxtData([dataFilename, '.txt']);
 end
 patternsPlusNames = read_patterns([dirPath, '/', dataFolder, '/patterns']);
 patterns = zeros(length(patternsPlusNames),4,3);
@@ -59,34 +55,43 @@ end
 fprintf('Loaded data successfully!\n')    
 
 
-% if (day == 8 && hour == 9 && minute > 15) || ...
-%         (day == 8 && hour > 9) || day > 8
-%     patterns(7, :, :) = [];
-%     patternNames(7) = [];
-% end
-% if (day == 9 && hour == 8 && minute > 15 ) || ...
-%         (day == 9 && hour > 8) || day > 9
-%     patterns(10, :, :) = [];
-%     patternNames(10) = [];
-% end
-
-if (day == 14 && hour == 14 && minute > 15) || ...
-        (day == 14 && hour > 14) || day > 14
-    patterns(13, :, :) = [];
-    patternNames(13) = [];
+if flock == 2
+    if (day == 8 && hour == 9 && minute > 15) || ...
+            (day == 8 && hour > 9) || day > 8
+        patterns(7, :, :) = [];
+        patternNames(7) = [];
+    end
+    if (day == 9 && hour == 8 && minute > 15 ) || ...
+            (day == 9 && hour > 8) || day > 9
+        patterns(10, :, :) = [];
+        patternNames(10) = [];
+    end
+elseif flock == 3 %ATTENTION: not done yet, only first estimate!
+    if (day == 14 && hour == 14 && minute > 15) || ...
+            (day == 14 && hour > 14) || day > 14
+        patterns(13, :, :) = [];
+        patternNames(13) = [];
+    end
+    if (day == 17 && hour == 9 && minute > 15 ) || ...
+            (day == 17 && hour > 9) || day > 17
+        patterns(7, :, :) = [];
+        patternNames(7) = [];
+    end
+else
+    warning(['details for flock ' num2str(flock), 'not yet implemented']) 
 end
-if (day == 17 && hour == 9 && minute > 15 ) || ...
-        (day == 17 && hour > 9) || day > 17
-    patterns(7, :, :) = [];
-    patternNames(7) = [];
-end
 
+if exist('beginningFrame', 'var')
+    if endFrame == -1
+        endFrame = size(formattedData, 1);
+    end
+   formattedData = formattedData(beginningFrame:endFrame, :, :); 
+end
 
 %% Forward MOT
 quatMotionType = 'brownian';
 fprintf('Starting to track!\n')
 
-stdHyperParams.visualizeTracking = 0;
 [estimatedPositions, estimatedQuats, snapshots, certainties, ghostTracks] = ownMOT(formattedData, patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
 %% Backward MOT
 fprintf('starting Backward Track!\n')
