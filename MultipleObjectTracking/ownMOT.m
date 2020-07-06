@@ -138,7 +138,7 @@ if goBackwards == 0
 end
 
 while t < T && ( goBackwards == 0 || ~isempty(birdsOfInterest) )
-    if t == 2500
+    if t == 2800
         t
     end
     freshInits = zeros(nObjects,1);
@@ -748,6 +748,7 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
                 % trajectory of a bird are removed apriori
             unrealisticInits = zeros(size(potentialReInit));
             closeInits = zeros(size(potentialReInit));
+            semiCloseInits = zeros(size(potentialReInit));
             detPos = mean(detectedMarkersForCurrentGhostTrack, 1);
             for j=1:length(unassignedPatternsIdx)
                 pIdx = unassignedPatternsIdx(j);
@@ -755,9 +756,13 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
                         abs(t - tracks(pIdx).kalmanFilter.lastVisibleFrame)*80 < norm(detPos-tracks(pIdx).kalmanFilter.latest5pos(mod(tracks(pIdx).kalmanFilter.latestPosIdx-1, 5)+1, :))
                     unrealisticInits(pIdx) = 1;
                 end
-                if ~isnan(tracks(pIdx).kalmanFilter.lastVisibleFrame) && ...
-                        norm(detPos-tracks(pIdx).kalmanFilter.latest5pos(mod(tracks(pIdx).kalmanFilter.latestPosIdx-1, 5)+1, :)) < 75 && abs(t - tracks(pIdx).kalmanFilter.lastVisibleFrame) < 1000
-                    closeInits(pIdx) = 1;
+                if ~isnan(tracks(pIdx).kalmanFilter.lastVisibleFrame) && abs(t - tracks(pIdx).kalmanFilter.lastVisibleFrame) < 1000
+                    d = norm(detPos-tracks(pIdx).kalmanFilter.latest5pos(mod(tracks(pIdx).kalmanFilter.latestPosIdx-1, 5)+1, :));
+                    if d < 55 
+                        closeInits(pIdx) = 1;
+                    elseif d < 100
+                        semiCloseInits(pIdx) = 1;
+                    end
                 end
             end
             
@@ -874,7 +879,7 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
                 
                 
                 
-              elseif nAssgnDets == 2 && sum(closeInits) == 1
+              elseif nAssgnDets >= 2 && sum(closeInits) == 1 && sum(semiCloseInits) == 1
                 %initialize close init
                 patternIdx = find(closeInits);
                 pattern = squeeze(patterns(patternIdx, :, :));
@@ -1206,38 +1211,43 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
         for r =1:length(rows)
             bird1Idx = rows(r);
             bird2Idx = cols(r);
-            s1 = tracks(bird1Idx).kalmanFilter;
-            s2 = tracks(bird2Idx).kalmanFilter;
-            if tracks(bird1Idx).age < 5 || ...
-                    tracks(bird1Idx).consecutiveInvisibleCount > tracks(bird2Idx).consecutiveInvisibleCount + 5
-                tooCloseBirds(bird1Idx) = 1;
-            elseif tracks(bird2Idx).age < 5 || ...
-                    tracks(bird2Idx).consecutiveInvisibleCount > tracks(bird1Idx).consecutiveInvisibleCount + 5
-                tooCloseBirds(bird2Idx) = 1;
-            elseif s1.mu.motionModel == 0 && s2.mu.motionModel == 0
-                deltas1 = s1.latest5pos - [s1.latest5pos(end, :); s1.latest5pos(1:end-1, :)];
-                deltas1(s1.latestPosIdx+1, :) = [];
-                delta1 = sum(norm(deltas1, 1));
-                deltas2 = s2.latest5pos - [s2.latest5pos(end, :); s2.latest5pos(1:end-1, :)];
-                deltas2(s2.latestPosIdx+1, :) = [];
-                delta2 = sum(norm(deltas2, 1));
-                
-                if delta1 > delta2
-                    tooCloseBirds(bird1Idx) = 1;
-                else
-                    tooCloseBirds(bird2Idx) = 1;
-                end
-            elseif s1.mu.motionModel == 2 && s2.mu.motionModel == 0
-                tooCloseBirds(bird1Idx) = 1;
-            elseif s1.mu.motionModel == 0 && s2.mu.motionModel == 2
-                tooCloseBirds(bird2Idx) = 1;
-            elseif s1.mu.motionModel == 2 && s2.mu.motionModel == 2
-                if norm(s1.mu.v) > norm(s2.mu.v)
-                    tooCloseBirds(bird1Idx) = 1;
-                else
-                    tooCloseBirds(bird2Idx) = 1;
-                end
-            end
+            tooCloseBirds(bird1Idx) = 1;
+            tooCloseBirds(bird2Idx) = 1;
+
+%             bird1Idx = rows(r);
+%             bird2Idx = cols(r);
+%             s1 = tracks(bird1Idx).kalmanFilter;
+%             s2 = tracks(bird2Idx).kalmanFilter;
+%             if tracks(bird1Idx).age < 5 || ...
+%                     tracks(bird1Idx).consecutiveInvisibleCount > tracks(bird2Idx).consecutiveInvisibleCount + 5
+%                 tooCloseBirds(bird1Idx) = 1;
+%             elseif tracks(bird2Idx).age < 5 || ...
+%                     tracks(bird2Idx).consecutiveInvisibleCount > tracks(bird1Idx).consecutiveInvisibleCount + 5
+%                 tooCloseBirds(bird2Idx) = 1;
+%             elseif s1.mu.motionModel == 0 && s2.mu.motionModel == 0
+%                 deltas1 = s1.latest5pos - [s1.latest5pos(end, :); s1.latest5pos(1:end-1, :)];
+%                 deltas1(s1.latestPosIdx+1, :) = [];
+%                 delta1 = sum(norm(deltas1, 1));
+%                 deltas2 = s2.latest5pos - [s2.latest5pos(end, :); s2.latest5pos(1:end-1, :)];
+%                 deltas2(s2.latestPosIdx+1, :) = [];
+%                 delta2 = sum(norm(deltas2, 1));
+%                 
+%                 if delta1 > delta2
+%                     tooCloseBirds(bird1Idx) = 1;
+%                 else
+%                     tooCloseBirds(bird2Idx) = 1;
+%                 end
+%             elseif s1.mu.motionModel == 2 && s2.mu.motionModel == 0
+%                 tooCloseBirds(bird1Idx) = 1;
+%             elseif s1.mu.motionModel == 0 && s2.mu.motionModel == 2
+%                 tooCloseBirds(bird2Idx) = 1;
+%             elseif s1.mu.motionModel == 2 && s2.mu.motionModel == 2
+%                 if norm(s1.mu.v) > norm(s2.mu.v)
+%                     tooCloseBirds(bird1Idx) = 1;
+%                 else
+%                     tooCloseBirds(bird2Idx) = 1;
+%                 end
+%             end
         end
         distsGhosts = triu(squareform(pdist(ghostPositions)));
         [rows, cols] = ind2sub(size(distsGhosts), find(distsGhosts > 0 & distsGhosts < tooClose));

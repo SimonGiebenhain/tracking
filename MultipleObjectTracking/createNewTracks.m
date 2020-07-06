@@ -49,8 +49,6 @@ end
 
 % Ghost birds should be initialized in the proximity of other birds
 minDistToBird = params.minDistToBird;
-initThreshold3 = params.initThreshold;
-initThreshold4 = params.initThreshold4;
 
 % Get positions of all active tracks
 ages = [tracks(:).age];
@@ -135,9 +133,17 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
             else
                 'ERROR';
             end
-            if minCosts2(1) < initThreshold4 && costDiff > 1
+            if minCosts2(1) < params.initThreshold4Tight && costDiff > params.costDiff4Tight
+                % Check whether new bird is too close to existing
+                        % bird!
                 specificPatternIdx = minIdx2(1);
                 pos = squeeze( poss(specificPatternIdx,:) );
+                dists = pdist2(pos, trackedPos);
+                if min(dists) < 75
+                    continue;
+                end
+                        
+                
                 deletedClusters4(j) = 1;
                 if strcmp(params.model, 'LieGroup')
                     rotm = squeeze(rots(specificPatternIdx,:,:));
@@ -261,7 +267,7 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
                     end
                     minPatIdx = safeAndUnassignedPatterns(minIdx2(1));
 
-                    if minMSE2(1) < initThreshold3 && costDiff > 2
+                    if minMSE2(1) < params.initThresholdTight && costDiff > params.costDiffTight
                         % Check whether new bird is too close to existing
                         % bird!
                         pos = squeeze(transVecs(minIdx2(1), :))';
