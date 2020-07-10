@@ -1,6 +1,19 @@
 function [newTrack] = createLGEKFtrack(rotm, pos, l2Error, patternIdx, pattern, patternName, params, motionModel, ghostKF)
-%traLGEKFTRACK Summary of this function goes here
-%   Detailed explanation goes here
+%traLGEKFTRACK This function constructs a struct holding all relevant
+%information of a LG-EKF.
+%   Arguments:
+%   @rotm [3x3] rotation matrix, describing the estimated current
+%   orientation of the bird
+%   @pos 3-d vector descriping the estimated current position of the bird
+%   @l2Error scalar indicating how well rotm and pos explain the current
+%   measurment. The higher l2Error is, the higher will be the initial
+%   uncertainty of the state in the LG-EKF.
+%   @patternIdx
+%   @pattern
+%   @patternName
+%   @params
+%   @motionModel
+%   @ghostKf
 
 if ~exist('motionModel', 'var') || motionModel == -1
     mM = params.initMotionModel;

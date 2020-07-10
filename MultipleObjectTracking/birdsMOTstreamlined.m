@@ -11,8 +11,8 @@
 
 %% load data and patterns
 
-flock = 4;
-recordingName = 'Starling_Trials_14-01-2020_14-00-00'; %'Starling_Trials_10-12-2019_08-15-00'
+flock = 3;
+recordingName = 'Starling_Trials_14-12-2019_15-15-00';%'Starling_Trials_13-01-2020_10-00-00'; %'Starling_Trials_10-12-2019_08-15-00'
 dataFolder = 'multiple_object_tracking_project/datasets';
 patternDirectoryName = [dataFolder, '/flock', num2str(flock), '/patterns'];
 
@@ -49,7 +49,7 @@ stdHyperParams.certaintyScale = 5;%6.5
 
 % params regarding: initialization of ghost birds
 %minimal distance for new ghost birds to other (ghost) birds that has to be free.
-stdHyperParams.minDistToBird = [95 80 50 40]; % number at index i is used when i detections are present
+stdHyperParams.minDistToBird = [95 65 50 40]; % number at index i is used when i detections are present
 % params regarding: initialization of birds from ghost bird when all others are known
 stdHyperParams.minTrustworthyness = 10;
 
@@ -74,23 +74,22 @@ quatMotionType = 'brownian';
 fprintf('Starting to track!\n')
 
 %profile on;
-beginningFrame = 1;%4000;%7800+ blau macht sehr komische sachen;5300 %+ 1000 jittery;%%2000+4000;
+beginningFrame = 30000;%4000;%7800+ blau macht sehr komische sachen;5300 %+ 1000 jittery;%%2000+4000;
 endFrame = -1;
 stdHyperParams.visualizeTracking = 1;
 
-[estPos, estQuat, ~, ~] = birdsMOT([dataFolder, '/flock', num2str(flock), '/', recordingName], ...
+[estPos, estQuat, dets, patterns, ~, ~] = birdsMOT([dataFolder, '/flock', num2str(flock), '/', recordingName], ...
                                     [dataFolder, '/flock', num2str(flock)], stdHyperParams, flock, ...
                                     beginningFrame, endFrame);
 
 
 
 %%
-vizParams.vizSpeed = 1;
+vizParams.vizSpeed = 10;
 vizParams.keepOldTrajectory = 0;
 vizParams.vizHistoryLength = 500;
-vizParams.startFrame = 9150;
+vizParams.startFrame = 1;
 vizParams.endFrame = endFrame;
-dets = formattedData(beginningFrame:endFrame,:,:);
 %revIdx = sort(1:length(formattedData), 'descend');
 %dets = formattedData(revIdx, :, :);
 %reverseIdx = sort(1:size(estimatedPositionsRev, 2), 'descend');

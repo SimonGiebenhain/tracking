@@ -69,18 +69,19 @@ if flock == 2
 elseif flock == 3 %ATTENTION: not done yet, only first estimate!
     if (day == 14 && hour == 15 && minute > 15) || ...
             (day == 14 && hour > 15) || day > 14
-        patterns(13, :, :) = [];
-        patternNames(13) = [];
+        patterns(12, :, :) = [];
+        patternNames(12) = [];
     end
-    if (day == 17 && hour == 9 && minute > 15 ) || ...
-            (day == 17 && hour > 9) || day > 17
+    if (day == 17 && hour == 10 && minute > 0 ) || ...
+            (day == 17 && hour > 10) || day > 17
         patterns(7, :, :) = [];
         patternNames(7) = [];
     end
 else
     warning(['details for flock ' num2str(flock), 'not yet implemented']) 
 end
-
+beginningFrame = 1;
+endFrame = 100;
 if exist('beginningFrame', 'var')
     if endFrame == -1
         endFrame = size(formattedData, 1);
@@ -117,7 +118,7 @@ end
 
 T = exportToCSV([dirPath, '/', exportFolder, '/', fname, 'RESULT', '.csv'], estPos, estQuat, patternNames, 1);
 
-fid = fopen('multiple_object_tracking_project/datasets/flock2/recordingLengths.txt', 'a');
+fid = fopen([dataFolder, '/recordingLengths.txt'], 'a');
 fprintf(fid, '%s\n', [fname , ': ', num2str(T)]);
 fclose(fid);
 end
