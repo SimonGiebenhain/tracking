@@ -30,7 +30,7 @@ for i=1:length(fileListing)
     if length(splitName)==2
        if strcmp(splitName{2}, 'txt') || strcmp(splitName{2}, 'mat')
            if ~any(strcmp(processedFiles, splitName{1}))
-               unprocessedFiles{idx} = [fileListing(i).folder, '/', splitName{2}];
+               unprocessedFiles{idx} = [fileListing(i).folder, '/', splitName{1}];
                idx = idx + 1;
            end
        end
