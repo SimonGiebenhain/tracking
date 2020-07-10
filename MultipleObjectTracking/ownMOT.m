@@ -138,9 +138,6 @@ if goBackwards == 0
 end
 
 while t < T && ( goBackwards == 0 || ~isempty(birdsOfInterest) )
-    if t == 10000
-        t
-    end
     freshInits = zeros(nObjects,1);
     detections = squeeze(D(t,:,:));
     detections = reshape(detections(~isnan(detections)),[],dim);
@@ -712,7 +709,15 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
         nAssignedGhostTracks = length(allAssignedGhostTracksIdx);
         deletedGhostTracks = zeros(length(ghostTracks),1);
         
+        ghostPositions = NaN*zeros(length(ghostTracks),3);
+        for i=1:length(ghostTracks)
+            ghostPositions(i, :) = ghostTracks(i).kalmanFilter.x(1:3);
+        end
+        ghostDistances = squareform(pdist(ghostPositions)) + eye(length(ghostTracks))*1000;
         
+        if isempty(ghostDistances)
+           ghostDistances = 1000; 
+        end
         
         somethingChanged = 1;
         
@@ -760,7 +765,8 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
                     d = norm(detPos-tracks(pIdx).kalmanFilter.latest5pos(mod(tracks(pIdx).kalmanFilter.latestPosIdx-1, 5)+1, :));
                     if d < 55 
                         closeInits(pIdx) = 1;
-                    elseif d < 100
+                    end
+                    if d < 100
                         semiCloseInits(pIdx) = 1;
                     end
                 end
@@ -878,8 +884,8 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
                 end
                 
                 
-                
-              elseif nAssgnDets >= 2 && sum(closeInits) == 1 && sum(semiCloseInits) == 1
+              elseif nAssgnDets >= 2 && sum(closeInits) == 1 && sum(semiCloseInits) == 1 && ...
+                      min(ghostDistances(currentGhostTrackIdx, :)) > 75
                 %initialize close init
                 patternIdx = find(closeInits);
                 pattern = squeeze(patterns(patternIdx, :, :));
@@ -903,43 +909,39 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
 
                 %Automatic ReInit if only 1 bird is unassigned. This is not
                 % super safe however!
-%             elseif ( sum(potentialReInit & ~unrealisticInits) <= 1 + sum(abs(patterns)>=1000, 'all') && ...
-%                          ghostTracks(currentGhostTrackIdx).trustworthyness > hyperParams.minTrustworthyness && ...
-%                          sum([tracks(:).age] > 500) >= nObjects - 1 - sum(abs(patterns)>=1000, 'all') && ...
-%                          ghostTracks(currentGhostTrackIdx).age > 500 && ...
-%                          length(ghostTracks) == 1 ...
-%                     )
-%                 for j=1:size(potentialReInit)
-%                     if ( potentialReInit(j) == 1 &&  unrealisticInits(j) == 0 && ...
-%                          ~any(abs(patterns(j, :, :)) >= 1000, 'all') && ...
-%                          ~(abs(t-tracks(j).kalmanFilter.lastVisibleFrame) < 15 && ...
-%                            norm(tracks(j).kalmanFilter.lastSeen - mean(detectedMarkersForCurrentGhostTrack, 1)') > 150)...
-%                      )
-%                         pattern = squeeze(patterns(j, :, :));
-%                         if isfield(tracks(j).kalmanFilter, 'mu')
-%                             newTrack = createLGEKFtrack(eye(3), ...
-%                                         mean(detectedMarkersForCurrentGhostTrack, 1)', 5, j, ...
-%                                         pattern, patternNames{j}, ...
-%                                         params, tracks(j).kalmanFilter.mu.motionModel, ...
-%                                         ghostTracks(currentGhostTrackIdx).kalmanFilter);
-%                         else
-%                             newTrack = createLGEKFtrack(eye(3), ...
-%                                         mean(detectedMarkersForCurrentGhostTrack, 1)', 5, j, ...
-%                                         pattern, patternNames{j}, ...
-%                                         params, -1, ...
-%                                         ghostTracks(currentGhostTrackIdx).kalmanFilter);
-%                         end
-%                         tracks(j) = newTrack;
-%                         unassignedPatterns(j) = 0;
-%                         potentialReInit(j) = 0;
-%                         % mark ghosst bird as deleted and delete after loop
-%                         deletedGhostTracks(currentGhostTrackIdx) = 1;
-%                         % continue loop, as we don't have to update position of
-%                         % ghost bird
-%                         break;
-%                     end
-%                 end
-%                 continue;
+            elseif sum(potentialReInit & ~unrealisticInits) ==1 && ...
+                         ghostTracks(currentGhostTrackIdx).trustworthyness > hyperParams.minTrustworthyness && ...
+                         sum([tracks(:).age] > 2500) == nObjects - 1  && ...
+                         ghostTracks(currentGhostTrackIdx).age > 5000 && ...
+                         length(ghostTracks) == 1 ...
+                    
+                for j=1:size(potentialReInit)
+                    if potentialReInit(j) == 1 &&  unrealisticInits(j) == 0 
+                        pattern = squeeze(patterns(j, :, :));
+                        if isfield(tracks(j).kalmanFilter, 'mu')
+                            newTrack = createLGEKFtrack(eye(3), ...
+                                        mean(detectedMarkersForCurrentGhostTrack, 1)', 5, j, ...
+                                        pattern, patternNames{j}, ...
+                                        params, tracks(j).kalmanFilter.mu.motionModel, ...
+                                        ghostTracks(currentGhostTrackIdx).kalmanFilter);
+                        else
+                            newTrack = createLGEKFtrack(eye(3), ...
+                                        mean(detectedMarkersForCurrentGhostTrack, 1)', 5, j, ...
+                                        pattern, patternNames{j}, ...
+                                        params, -1, ...
+                                        ghostTracks(currentGhostTrackIdx).kalmanFilter);
+                        end
+                        tracks(j) = newTrack;
+                        unassignedPatterns(j) = 0;
+                        potentialReInit(j) = 0;
+                        % mark ghosst bird as deleted and delete after loop
+                        deletedGhostTracks(currentGhostTrackIdx) = 1;
+                        % continue loop, as we don't have to update position of
+                        % ghost bird
+                        break;
+                    end
+                end
+                continue;
             end
              
             
@@ -1195,33 +1197,51 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
         tooCloseBirds = zeros(nTracks,1);
         tooCloseGhosts = zeros(length(ghostTracks),1);
         tooCloseThresholdGhostGhost = 35;
-        tooCloseThresholdBirdBird = 15;
-        tooCloseThresholdGhostBird = 30;
-
-        positions = NaN*zeros(nTracks,4, 3);
+        tooCloseThresholdBirdBird = 25;
+        tooCloseThresholdGhostBird = 35;
+        
+        anchors = NaN*zeros(nTracks,3);
         for i=1:nTracks
             if tracks(i).age > 2
-                positions(i,:,:) = measFuncNonHomogenous(tracks(i).kalmanFilter.mu, tracks(i).kalmanFilter.pattern);
+                anchors(i,:) = tracks(i).kalmanFilter.mu.X(1:3, 4);
             end
         end
+        
+        %positions = NaN*zeros(nTracks,4, 3);
+        %for i=1:nTracks
+        %    if tracks(i).age > 2
+        %        positions(i,:,:) = measFuncNonHomogenous(tracks(i).kalmanFilter.mu, tracks(i).kalmanFilter.pattern);
+        %    end
+        %end
         ghostPositions = NaN*zeros(length(ghostTracks),3);
         for i=1:length(ghostTracks)
             ghostPositions(i, :) = ghostTracks(i).kalmanFilter.x(1:3);
         end
-        for r=1:nTracks
-            if tracks(r).age > 2
-                for s=r+1:nTracks
-                    if tracks(s).age > 2
-                        d = min(pdist2(squeeze(positions(r, :, :)), squeeze(positions(s, :, :)), 'euclidean', 'Smallest', 1));
-                        if d < tooCloseThresholdBirdBird
-                           tooCloseBirds(r) = 1;
-                           tooCloseBirds(s) = 1;
-                           break;
-                        end
-                    end
-                end
-            end
+        
+        distsBirds = triu(squareform(pdist(anchors)));
+        [rows, cols] = ind2sub(size(distsBirds), find(distsBirds > 0 & distsBirds < tooCloseThresholdBirdBird));
+        
+        for r =1:length(rows)
+            bird1Idx = rows(r);
+            bird2Idx = cols(r);
+            tooCloseBirds(bird1Idx) = 1;
+            tooCloseBirds(bird2Idx) = 1;
         end
+        
+%         for r=1:nTracks
+%             if tracks(r).age > 2
+%                 for s=r+1:nTracks
+%                     if tracks(s).age > 2
+%                         d = min(pdist2(squeeze(positions(r, :, :)), squeeze(positions(s, :, :)), 'euclidean', 'Smallest', 1));
+%                         if d < tooCloseThresholdBirdBird
+%                            tooCloseBirds(r) = 1;
+%                            tooCloseBirds(s) = 1;
+%                            break;
+%                         end
+%                     end
+%                 end
+%             end
+%         end
         
         %TODO update dist ghost-birds
         %TODO new threshold bird-bird, ghost-bird, ghost-ghost
@@ -1255,18 +1275,26 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
             end
         end
         
-        for r=1:size(ghostPositions, 1)
-            for s=1:nTracks
-                if tracks(s).age > 2
-                    d = min(pdist2(squeeze(positions(s, :, :)), ghostPositions(r, :)));
-                    if d < tooCloseThresholdGhostBird
-                       tooCloseGhosts(r) = 1;
-                       tooCloseBirds(s) = 1;
-                       break;
-                    end
-                end
-            end
+        
+        distsBirdsGhosts = pdist2(anchors, ghostPositions);
+        [rows, cols] = find(distsBirdsGhosts > 0 & distsBirdsGhosts < tooCloseThresholdGhostBird);
+        
+        for r =1:length(rows)
+            tooCloseGhosts(cols(r)) = 1;
+            tooCloseBirds(rows(r)) = 1;
         end
+%         for r=1:size(ghostPositions, 1)
+%             for s=1:nTracks
+%                 if tracks(s).age > 2
+%                     d = min(pdist2(squeeze(positions(s, :, :)), ghostPositions(r, :)));
+%                     if d < tooCloseThresholdGhostBird
+%                        tooCloseGhosts(r) = 1;
+%                        tooCloseBirds(s) = 1;
+%                        break;
+%                     end
+%                 end
+%             end
+%         end
         
         
         % Find the indices of 'lost' tracks.

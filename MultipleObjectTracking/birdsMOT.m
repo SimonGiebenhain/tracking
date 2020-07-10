@@ -80,8 +80,7 @@ elseif flock == 3 %ATTENTION: not done yet, only first estimate!
 else
     warning(['details for flock ' num2str(flock), 'not yet implemented']) 
 end
-beginningFrame = 1;
-endFrame = 100;
+
 if exist('beginningFrame', 'var')
     if endFrame == -1
         endFrame = size(formattedData, 1);
