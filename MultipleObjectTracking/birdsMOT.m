@@ -1,4 +1,4 @@
-function [estPos, estQuat, certainties, ghostTracks] = birdsMOT(dataFilename, dataFolder, stdHyperParams, flock, beginningFrame, endFrame)
+function [estPos, estQuat, formattedData, patterns, certainties, ghostTracks] = birdsMOT(dataFilename, dataFolder, stdHyperParams, flock, beginningFrame, endFrame)
 %BIRDSMOT This function takes the central role in this multiple object
 %tracking framwork, by directing everything from reading the input file and
 %patterns, to running the MOT algorithm itself and saving the results.
@@ -67,8 +67,8 @@ if flock == 2
         patternNames(10) = [];
     end
 elseif flock == 3 %ATTENTION: not done yet, only first estimate!
-    if (day == 14 && hour == 14 && minute > 15) || ...
-            (day == 14 && hour > 14) || day > 14
+    if (day == 14 && hour == 15 && minute > 15) || ...
+            (day == 14 && hour > 15) || day > 14
         patterns(13, :, :) = [];
         patternNames(13) = [];
     end
