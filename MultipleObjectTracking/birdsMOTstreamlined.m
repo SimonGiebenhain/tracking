@@ -11,8 +11,10 @@
 
 %% load data and patterns
 
+%flock = 4;
+%recordingName = 'Starling_Trials_11-01-2020_14-00-00';
 flock = 3;
-recordingName = 'Starling_Trials_14-12-2019_15-15-00';%'Starling_Trials_13-01-2020_10-00-00'; %'Starling_Trials_10-12-2019_08-15-00'
+recordingName = 'Starling_Trials_15-12-2019_08-30-00';%'Starling_Trials_14-01-2020_14-00-00'; %
 dataFolder = 'multiple_object_tracking_project/datasets';
 patternDirectoryName = [dataFolder, '/flock', num2str(flock), '/patterns'];
 
@@ -54,12 +56,12 @@ stdHyperParams.minDistToBird = [95 65 50 40]; % number at index i is used when i
 stdHyperParams.minTrustworthyness = 10;
 
 % params regarding: initialization of birds
-stdHyperParams.initThreshold = 1;%0.85;
-stdHyperParams.initThreshold4 = 2.5;
+stdHyperParams.initThreshold = 0.5;%0.85;
+stdHyperParams.initThreshold4 = 2.75;
 stdHyperParams.costDiff = 1.5;
-stdHyperParams.costDiff4 = 0.75;
+stdHyperParams.costDiff4 = 1.25;
 
-stdHyperParams.initThresholdTight = 0.45;%0.65
+stdHyperParams.initThresholdTight = 0.2;%0.65
 stdHyperParams.initThreshold4Tight = 1.35;
 stdHyperParams.costDiffTight = 2;
 stdHyperParams.costDiff4Tight = 1.25;
@@ -74,11 +76,11 @@ quatMotionType = 'brownian';
 fprintf('Starting to track!\n')
 
 %profile on;
-beginningFrame = 30000;%4000;%7800+ blau macht sehr komische sachen;5300 %+ 1000 jittery;%%2000+4000;
+beginningFrame = 1;
 endFrame = -1;
 stdHyperParams.visualizeTracking = 1;
 
-[estPos, estQuat, dets, patterns, ~, ~] = birdsMOT([dataFolder, '/flock', num2str(flock), '/', recordingName], ...
+[estPos, estQuat, dets, patterns, patternNames, ~, ~] = birdsMOT([dataFolder, '/flock', num2str(flock), '/', recordingName], ...
                                     [dataFolder, '/flock', num2str(flock)], stdHyperParams, flock, ...
                                     beginningFrame, endFrame);
 
@@ -109,4 +111,4 @@ vizRes(dets, patterns, estPos, estQuat, vizParams, 0)
 %augPos = postProcessing(estPos, ghostTracks, patterns);
 %vizRes(dets, patterns, augPos, estQuat, vizParams, 0)
 
-exportToCSV('testExport.csv', estPos, estQuat, patternNames, 1)
+exportToCSV('testExportSECOND.csv', estPos, estQuat, patternNames, 1)

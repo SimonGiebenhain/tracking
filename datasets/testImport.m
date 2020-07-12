@@ -9,7 +9,7 @@
 %% load patterns nd detections
 dataFolder = 'multiple_object_tracking_project/datasets';
 flock = 3;
-recordingName = 'Starling_Trials_17-12-2019_10-30-00';
+recordingName = 'Starling_Trials_15-12-2019_08-30-00';
 dataFilename =  [dataFolder, '/flock', num2str(flock), '/', recordingName];
 patternDirectoryName = [dataFolder, '/flock', num2str(flock), '/patterns'];
 
@@ -56,9 +56,9 @@ if flock == 2
 elseif flock == 3
     if (day == 14 && hour == 14 && minute > 15) || ...
             (day == 14 && hour > 14) || day > 14
-        patterns(13, :, :) = [];
-        patternNames(13) = [];
-        colors(13, :) = [];
+        patterns(12, :, :) = [];
+        patternNames(12) = [];
+        colors(12, :) = [];
     end
     if (day == 17 && hour == 9 && minute > 15 ) || ...
             (day == 17 && hour > 9) || day > 17
@@ -71,12 +71,14 @@ else
 end
 
 T = find(any(~isnan(formattedData(:, :, 1)), 2), 1, 'last');
-formattedData = formattedData(1:T, :, :);
+formattedData = formattedData(5000:T, :, :);
 
 %% import csv
 %fname = 'testExport.csv';
 useVICONformat = 1;
-[pos, quats] = importFromCSV([dataFolder, '/flock', num2str(flock), '/RESULTS/', recordingName, 'RESULT.csv'], useVICONformat);
+[pos, quats] = importFromCSV('testExport.csv', useVICONformat);
+
+%[pos, quats] = importFromCSV([dataFolder, '/flock', num2str(flock), '/RESULTS/', recordingName, 'RESULT.csv'], useVICONformat);
 T = min(T, size(pos,2) );
 pos = pos(:, 1:T, :);
 quats = quats(:, 1:T, :);
@@ -84,7 +86,6 @@ quats = quats(:, 1:T, :);
 vizParams.vizSpeed = 10;
 vizParams.keepOldTrajectory = 0;
 vizParams.vizHistoryLength = 500;
-vizParams.startFrame = 70000;
+vizParams.startFrame = 1;
 vizParams.endFrame = -1;
-% check 11.900 light blue bird again!!!
 vizRes(formattedData, patterns, pos, quats, vizParams, 0, colors)

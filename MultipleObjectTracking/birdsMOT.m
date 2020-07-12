@@ -1,4 +1,4 @@
-function [estPos, estQuat, formattedData, patterns, certainties, ghostTracks] = birdsMOT(dataFilename, dataFolder, stdHyperParams, flock, beginningFrame, endFrame)
+function [estPos, estQuat, formattedData, patterns, patternNames, certainties, ghostTracks] = birdsMOT(dataFilename, dataFolder, stdHyperParams, flock, beginningFrame, endFrame)
 %BIRDSMOT This function takes the central role in this multiple object
 %tracking framwork, by directing everything from reading the input file and
 %patterns, to running the MOT algorithm itself and saving the results.

@@ -138,6 +138,9 @@ if goBackwards == 0
 end
 
 while t < T && ( goBackwards == 0 || ~isempty(birdsOfInterest) )
+    if t == 6500
+       t 
+    end
     freshInits = zeros(nObjects,1);
     detections = squeeze(D(t,:,:));
     detections = reshape(detections(~isnan(detections)),[],dim);
@@ -810,7 +813,7 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
                 %direct initialization if fit is almost perfect
                 if ( minCost2(1) < params.initThreshold4Tight && nAssgnDets == 4 && costDiff > params.costDiff4Tight)  || ...
                         ( minCost2(1) < params.initThresholdTight && nAssgnDets == 3 && safePatternsBool(patternIdx)==1 && costDiff > params.costDiffTight) ||... 
-                        ( minCost2(1) < 0.2 && nAssgnDets == 3 && costDiff > params.costDiffTight ) || ...
+                        ( minCost2(1) < 0.1 && nAssgnDets == 3 && costDiff > params.costDiffTight ) || ...
                         ( minCost2(1) < 2.5 && closeInits(patternIdx) )
                     pattern = squeeze(patterns(patternIdx, :, :));
                     if isfield(tracks(patternIdx).kalmanFilter, 'mu')
@@ -842,14 +845,22 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
                 % If fit is good but not perfect, only mark potential initi
                 % in struct of ghost bird. When potential inits uniqule
                 % indicate ID, then initialize bird as well.
-                elseif  ( t - ghostTracks(currentGhostTrackIdx).lastPotentialInit > 15 ) && ( ...
+                elseif  ( t - ghostTracks(currentGhostTrackIdx).lastPotentialInit > 10 ) && ( ...
                         ( minCost2(1) < params.initThreshold4 && nAssgnDets == 4 && costDiff > params.costDiff4)  || ...
                         ( minCost2(1) < params.initThreshold && nAssgnDets == 3 && safePatternsBool(patternIdx)==1 && costDiff > params.costDiff) ||... 
                         ( minCost2(1) < 0.25 && nAssgnDets == 3 && costDiff > params.costDiff) )
                     ghostTracks(currentGhostTrackIdx).lastPotentialInit = t;
-                    ghostTracks(currentGhostTrackIdx).potentialInits(patternIdx) = ghostTracks(currentGhostTrackIdx).potentialInits(patternIdx) + 1;
+                    if nAssgnDets == 4
+                        ghostTracks(currentGhostTrackIdx).potentialInits(patternIdx) = ghostTracks(currentGhostTrackIdx).potentialInits(patternIdx) + 2;
+                    else
+                        if minCost2(1) < 0.3 && costDiff > 1.5
+                            ghostTracks(currentGhostTrackIdx).potentialInits(patternIdx) = ghostTracks(currentGhostTrackIdx).potentialInits(patternIdx) + 2;
+                        else
+                            ghostTracks(currentGhostTrackIdx).potentialInits(patternIdx) = ghostTracks(currentGhostTrackIdx).potentialInits(patternIdx) + 1;
+                        end
+                     end
                     [maxPotentialInits, maxIdx] = maxk(ghostTracks(currentGhostTrackIdx).potentialInits, 2);
-                    if maxPotentialInits(1) - maxPotentialInits(2) > 10
+                    if maxPotentialInits(1) - maxPotentialInits(2) >= 10
                         if maxIdx(1) ~=patternIdx
                             error('something went Wrong in new Init!') 
                         end
@@ -906,14 +917,15 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
                 continue;
                 
                 
-
+            end
                 %Automatic ReInit if only 1 bird is unassigned. This is not
                 % super safe however!
-            elseif sum(potentialReInit & ~unrealisticInits) ==1 && ...
+            if sum(potentialReInit & ~unrealisticInits) ==1 && ...
+                        length(ghostTracks) == 1 && ...
                          ghostTracks(currentGhostTrackIdx).trustworthyness > hyperParams.minTrustworthyness && ...
                          sum([tracks(:).age] > 2500) == nObjects - 1  && ...
-                         ghostTracks(currentGhostTrackIdx).age > 5000 && ...
-                         length(ghostTracks) == 1 ...
+                         ghostTracks(currentGhostTrackIdx).age > 2500 
+                          
                     
                 for j=1:size(potentialReInit)
                     if potentialReInit(j) == 1 &&  unrealisticInits(j) == 0 
@@ -1301,7 +1313,7 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
         movingBirds = zeros(1,length(tracks));
         for i=1:length(tracks)
             if tracks(i).age > 0 && tracks(i).kalmanFilter.mu.motionModel == 2
-                movingBirds = 1;
+                movingBirds(i) = 1;
             end
         end
         lostMovingIdx = [tracks(:).consecutiveInvisibleCount] >= invisibleForTooLongMoving & movingBirds;
