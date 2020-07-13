@@ -6,7 +6,7 @@
 % TODO
 % Explanation goes here
 
-function [estimatedPositions, estimatedQuats, snapshots, certainties, storedGhostTracks] = ownMOT(D, patterns, patternNames, useVICONinit, initialStates, nObjects, shouldShowTruth, trueTrajectory, trueOrientation, quatMotionType, hyperParams, colorsPredicted, snapshots)
+function [estimatedPositions, estimatedQuats, snapshots, certainties, storedGhostTracks] = ownMOT(D, patterns, patternNames, useVICONinit, initialStates, nObjects, shouldShowTruth, trueTrajectory, trueOrientation, quatMotionType, hyperParams, colorsPredicted, snapshots, forwardPos, forwardQuats)
 % OWNMOT does multi object tracking
 %   @D all observations/detections in the format:
 %       T x maxDetectionsPerFrame x 3
@@ -309,7 +309,15 @@ while t < T && ( goBackwards == 0 || ~isempty(birdsOfInterest) )
 
         % if birdsOfInterest is empty: set t to nextSnap.t and set states, i.e.
         % reuse init method maybe
+        % But before: clean up estimated positions and tracks of tracks
+        % that are currently invisible and hence might be wrong
         if isempty(birdsOfInterest) && nextSnapshotIdx <= length(snapshots)
+            for ii=1:length(tracks)
+               if tracks(ii).age > 0 && tracks(ii).consecutiveInvisibleCount > 0
+                   estimatedPositions(ii, t-tracks(ii).consecutiveInvisibleCount+1:t, :) = NaN;
+                   estimatedQuats(ii, t-tracks(ii).consecutiveInvisibleCount+1:t, :) = NaN;
+               end
+            end
             [tracks, ghostTracks] = initializeTracks(nextSnapshotIdx);
             t = T-nextSnapshot.t+1;
             nextSnapshotIdx = nextSnapshotIdx + 1;
@@ -396,6 +404,7 @@ end
             tracks = snapshots{baseFrame}.tracks;
             for i=1:length(tracks)
                 if tracks(i).age > 0
+                    unassignedPatterns(i) = 0;
                     tracks(i).age = 1;
                     tracks(i).totalVisibleCount = 0;
                     tracks(i).consecutiveInvisibleCount = 0;
@@ -412,6 +421,8 @@ end
                         tracks(i).kalmanFilter.mu.v = -tracks(i).kalmanFilter.mu.v;
                         tracks(i).kalmanFilter.mu.a = -tracks(i).kalmanFilter.mu.a;
                     end
+                else
+                    unassignedPatterns(i) = 1;
                 end
             end
             ghostTracks = snapshots{baseFrame}.ghostTracks;
@@ -851,8 +862,14 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
                         ( minCost2(1) < 0.25 && nAssgnDets == 3 && costDiff > params.costDiff) )
                     ghostTracks(currentGhostTrackIdx).lastPotentialInit = t;
                     if nAssgnDets == 4
-                        ghostTracks(currentGhostTrackIdx).potentialInits(patternIdx) = ghostTracks(currentGhostTrackIdx).potentialInits(patternIdx) + 2;
-                    else
+                        if minCost2(1) < 2 && costDiff > 1
+                            ghostTracks(currentGhostTrackIdx).potentialInits(patternIdx) = ghostTracks(currentGhostTrackIdx).potentialInits(patternIdx) + 3;
+                        elseif minCost2(1) < 2.5
+                            ghostTracks(currentGhostTrackIdx).potentialInits(patternIdx) = ghostTracks(currentGhostTrackIdx).potentialInits(patternIdx) + 2;
+                        else
+                            ghostTracks(currentGhostTrackIdx).potentialInits(patternIdx) = ghostTracks(currentGhostTrackIdx).potentialInits(patternIdx) + 1;
+                        end
+                   else
                         if minCost2(1) < 0.3 && costDiff > 1.5
                             ghostTracks(currentGhostTrackIdx).potentialInits(patternIdx) = ghostTracks(currentGhostTrackIdx).potentialInits(patternIdx) + 2;
                         else
@@ -1380,6 +1397,34 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
             end
         end
         ghostTracks(lostGhostsIdx == 1) = [];
+        
+        %if track in backward track got lost, that wasn't lost in forward
+        %track, reinitialize it
+        if goBackwards == 1
+            for i=1:length(tracks)
+               if lostIdxBool(i) == 1
+                   if ~isnan(forwardPos(i, T-t, 1))
+                       %reinitialize
+                       if tracks(i).kalmanFilter.mu.motionModel == 2
+                           fakeGhostKF.isFake = 1;
+                           fakeGhostKF.v = forwardPos(i, T-t-1, :) - forwardPos(i, T-t, :);
+                           newTrack = createLGEKFtrack(quat2rotm(forwardQuats(i, T-t, :)), ...
+                                        squeeze(forwardPos(i, T-t, :))', 4, i, ...
+                                        squeeze(patterns(i, :, :)), patternNames{i}, params, ...
+                                        tracks(i).kalmanFilter.mu.motionModel, ...
+                                        fakeGhostKF);
+                       else
+                           newTrack = createLGEKFtrack(quat2rotm(forwardQuats(i, T-t, :)), ...
+                                        squeeze(forwardPos(i, T-t, :))', 4, i, ...
+                                        squeeze(patterns(i, :, :)), patternNames{i}, params, ...
+                                        tracks(i).kalmanFilter.mu.motionModel);
+                       end
+                       tracks(i) = newTrack;
+                       unassignedPatterns(i) = 0;
+                   end
+               end
+            end
+        end
         
     end
 

@@ -95,7 +95,7 @@ fprintf('Starting to track!\n')
 [estimatedPositions, estimatedQuats, snapshots, certainties, ghostTracks] = ownMOT(formattedData, patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
 %% Backward MOT
 fprintf('starting Backward Track!\n')
-[estimatedPositionsBackward, estimatedQuatsBackward, ~, ~] = ownMOT(formattedData, patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams, -1, snapshots);
+[estimatedPositionsBackward, estimatedQuatsBackward, ~, ~] = ownMOT(formattedData, patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams, -1, snapshots, estimatedPositions, estimatedQuats);
 revIdx = sort(1:length(formattedData), 'descend');
 
 estimatedPositionsBackward = estimatedPositionsBackward(:, revIdx, :);

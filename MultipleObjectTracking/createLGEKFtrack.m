@@ -56,14 +56,24 @@ elseif mM == 1
     s.mu = mu;
 elseif mM == 2
     if exist('ghostKF', 'var')
-        mu.v = ghostKF.x(4:6)/2;
-        mu.a = zeros(3,1);%ghostKF.x(7:9)/2;
-        s.P = diag(repelem([certaintyFactor*params.initialNoise.initQuatVar;
+        if isfield(ghostKF, 'isFake')
+            mu.v = ghostKF.v;
+            mu.a = zeros(3,1);
+            s.P = diag(repelem([certaintyFactor*params.initialNoise.initQuatVar;
                 certaintyFactor*params.initialNoise.initPositionVar;
                 params.initialNoise.initMotionVar;
                 params.initialNoise.initAccVar
                 ],[3, 3, 3, 3]));
-        s.P(4:end, 4:end) = ghostKF.P;
+        else
+            mu.v = ghostKF.x(4:6)/2;
+            mu.a = zeros(3,1);%ghostKF.x(7:9)/2;
+            s.P = diag(repelem([certaintyFactor*params.initialNoise.initQuatVar;
+                    certaintyFactor*params.initialNoise.initPositionVar;
+                    params.initialNoise.initMotionVar;
+                    params.initialNoise.initAccVar
+                    ],[3, 3, 3, 3]));
+            s.P(4:end, 4:end) = ghostKF.P;
+        end
     else
         mu.v = zeros(3,1);
         mu.a = zeros(3,1);
