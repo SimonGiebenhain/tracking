@@ -138,9 +138,6 @@ if goBackwards == 0
 end
 
 while t < T && ( goBackwards == 0 || ~isempty(birdsOfInterest) )
-    if t == 6500
-       t 
-    end
     freshInits = zeros(nObjects,1);
     detections = squeeze(D(t,:,:));
     detections = reshape(detections(~isnan(detections)),[],dim);
@@ -877,7 +874,7 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
                         end
                      end
                     [maxPotentialInits, maxIdx] = maxk(ghostTracks(currentGhostTrackIdx).potentialInits, 2);
-                    if maxPotentialInits(1) - maxPotentialInits(2) >= 10
+                    if maxPotentialInits(1) >= 10 + 1.5 * maxPotentialInits(2)
                         if maxIdx(1) ~=patternIdx
                             error('something went Wrong in new Init!') 
                         end
@@ -1407,18 +1404,19 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
                        %reinitialize
                        if tracks(i).kalmanFilter.mu.motionModel == 2
                            fakeGhostKF.isFake = 1;
-                           fakeGhostKF.v = forwardPos(i, T-t-1, :) - forwardPos(i, T-t, :);
-                           newTrack = createLGEKFtrack(quat2rotm(forwardQuats(i, T-t, :)), ...
-                                        squeeze(forwardPos(i, T-t, :))', 4, i, ...
+                           fakeGhostKF.v = reshape(forwardPos(i, T-t-1, :) - forwardPos(i, T-t, :), 3,1);
+                           newTrack = createLGEKFtrack(quat2rotm(squeeze(forwardQuats(i, T-t, :))'), ...
+                                        reshape(forwardPos(i, T-t, :), 3,1), 4, i, ...
                                         squeeze(patterns(i, :, :)), patternNames{i}, params, ...
                                         tracks(i).kalmanFilter.mu.motionModel, ...
                                         fakeGhostKF);
                        else
-                           newTrack = createLGEKFtrack(quat2rotm(forwardQuats(i, T-t, :)), ...
-                                        squeeze(forwardPos(i, T-t, :))', 4, i, ...
+                           newTrack = createLGEKFtrack(quat2rotm(squeeze(forwardQuats(i, T-t, :))'), ...
+                                        reshape(forwardPos(i, T-t, :), 3,1), 4, i, ...
                                         squeeze(patterns(i, :, :)), patternNames{i}, params, ...
                                         tracks(i).kalmanFilter.mu.motionModel);
                        end
+                       newTrack.kalmanFilter.lastVisibleFrame = lastVisibleFrames(i);
                        tracks(i) = newTrack;
                        unassignedPatterns(i) = 0;
                    end

@@ -54,33 +54,38 @@ for i=1:length(patternsPlusNames)
 end
 fprintf('Loaded data successfully!\n')    
 
-
+colors = distinguishable_colors(size(patterns,1));
 if flock == 2
     if (day == 8 && hour == 9 && minute > 15) || ...
             (day == 8 && hour > 9) || day > 8
         patterns(7, :, :) = [];
         patternNames(7) = [];
+        colors(7, :) = [];
     end
     if (day == 9 && hour == 8 && minute > 15 ) || ...
             (day == 9 && hour > 8) || day > 9
         patterns(10, :, :) = [];
         patternNames(10) = [];
+        colors(10, :) = [];
     end
 elseif flock == 3 %ATTENTION: not done yet, only first estimate!
     if (day == 14 && hour == 15 && minute > 15) || ...
             (day == 14 && hour > 15) || day > 14
         patterns(12, :, :) = [];
         patternNames(12) = [];
+        colors(12, :) = [];
     end
     if (day == 17 && hour == 10 && minute > 0 ) || ...
             (day == 17 && hour > 10) || day > 17
-        patterns(7, :, :) = [];
-        patternNames(7) = [];
+        patterns(6, :, :) = [];
+        patternNames(6) = [];
+        colors(6, :) = [];
     end
 else
     warning(['details for flock ' num2str(flock), 'not yet implemented']) 
 end
 
+endFrame = 33500;
 if exist('beginningFrame', 'var')
     if endFrame == -1
         endFrame = size(formattedData, 1);
@@ -92,10 +97,10 @@ end
 quatMotionType = 'brownian';
 fprintf('Starting to track!\n')
 
-[estimatedPositions, estimatedQuats, snapshots, certainties, ghostTracks] = ownMOT(formattedData, patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams);
+[estimatedPositions, estimatedQuats, snapshots, certainties, ghostTracks] = ownMOT(formattedData, patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams, colors);
 %% Backward MOT
 fprintf('starting Backward Track!\n')
-[estimatedPositionsBackward, estimatedQuatsBackward, ~, ~] = ownMOT(formattedData, patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams, -1, snapshots, estimatedPositions, estimatedQuats);
+[estimatedPositionsBackward, estimatedQuatsBackward, ~, ~] = ownMOT(formattedData, patterns, patternNames ,0 , -1, size(patterns, 1), 0, -1, -1, quatMotionType, stdHyperParams, colors, snapshots, estimatedPositions, estimatedQuats);
 revIdx = sort(1:length(formattedData), 'descend');
 
 estimatedPositionsBackward = estimatedPositionsBackward(:, revIdx, :);

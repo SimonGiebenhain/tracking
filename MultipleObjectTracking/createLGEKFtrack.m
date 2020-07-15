@@ -18,7 +18,7 @@ function [newTrack] = createLGEKFtrack(rotm, pos, l2Error, patternIdx, pattern, 
 if ~exist('motionModel', 'var') || motionModel == -1
     mM = params.initMotionModel;
 else
-    if exist('ghostKF', 'var')
+    if exist('ghostKF', 'var') && ~isfield(ghostKF, 'isFake')
         if length(ghostKF.x) > 3 && norm(ghostKF.x(4:6)) > 5
             mM = 2;
         else

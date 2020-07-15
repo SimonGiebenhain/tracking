@@ -45,12 +45,12 @@ stdHyperParams.minDistToBird = [95 65 50 40]; % number at index i is used when i
 stdHyperParams.minTrustworthyness = 10;
 
 % params regarding: initialization of birds
-stdHyperParams.initThreshold = 1;%0.85;
-stdHyperParams.initThreshold4 = 2.5;
+stdHyperParams.initThreshold = 0.5;%0.85;
+stdHyperParams.initThreshold4 = 2.75;
 stdHyperParams.costDiff = 1.5;
-stdHyperParams.costDiff4 = 0.75;
+stdHyperParams.costDiff4 = 1.25;
 
-stdHyperParams.initThresholdTight = 0.45;%0.65
+stdHyperParams.initThresholdTight = 0.2;%0.65
 stdHyperParams.initThreshold4Tight = 1.35;
 stdHyperParams.costDiffTight = 2;
 stdHyperParams.costDiff4Tight = 1.25;
@@ -58,6 +58,7 @@ stdHyperParams.costDiff4Tight = 1.25;
 stdHyperParams.patternSimilarityThreshold = 1.25;%1;
 
 stdHyperParams.modelType = 'LieGroup';
+quatMotionType = 'brownian';
 
 stdHyperParams.visualizeTracking = 0;
 
@@ -78,11 +79,11 @@ patternDirectoryName = [dirName, '/', flockName, '/patterns'];
 disp('starting to process files in parallel!')
 
 % number of CPUs to be used
-parpool(32);
+parpool(3);
 parfor i=1:length(files)
     tic
     fprintf(['Processing File ', num2str(i), ': ', files{i}, '\n'])
-    try
+    %try
         % 'birdsMOT' does all the work, i.e. read data from .txt to .mat
         % and then runs the MOT algorithm and stores the results in the
         % 'RESULTS' folder
@@ -94,9 +95,9 @@ parfor i=1:length(files)
         f = fs{end};
         fprintf(fid, '%s\n', f);
         fclose(fid);
-    catch MExc
-        disp(MExc.message)
-    end
+    %catch MExc
+    %    disp(MExc.message)
+    %end
     toc
 end
 
