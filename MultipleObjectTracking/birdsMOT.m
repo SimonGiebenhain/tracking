@@ -85,11 +85,15 @@ else
     warning(['details for flock ' num2str(flock), 'not yet implemented']) 
 end
 
+T = find(any(~isnan(squeeze(formattedData(:, :, 1))), 2), 1, 'last');
+
 if exist('beginningFrame', 'var')
     if endFrame == -1
-        endFrame = size(formattedData, 1);
+        endFrame = T;
     end
    formattedData = formattedData(beginningFrame:endFrame, :, :); 
+else
+   formattedData =  formattedData(1:T, :, :); 
 end
 
 %% Forward MOT
