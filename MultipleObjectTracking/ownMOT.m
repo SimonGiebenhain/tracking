@@ -536,6 +536,10 @@ end
             end
         end
         
+        if any(isnan(cost), 'all')
+            cost
+        end
+        
         % Solve the assignment problem.
         costOfNonAssignment = hyperParams.costOfNonAsDtTA;
         [assignments, unassignments, unassignedDetections] = assignDetectionsToTracks(cost, costOfNonAssignment);
@@ -938,7 +942,7 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
                         length(ghostTracks) == 1 && ...
                          ghostTracks(currentGhostTrackIdx).trustworthyness > hyperParams.minTrustworthyness && ...
                          sum([tracks(:).age] > 2500) == nObjects - 1  && ...
-                         ghostTracks(currentGhostTrackIdx).age > 2500 
+                         ghostTracks(currentGhostTrackIdx).age > 5000 
                           
                     
                 for j=1:size(potentialReInit)
@@ -957,9 +961,13 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
                                         params, -1, ...
                                         ghostTracks(currentGhostTrackIdx).kalmanFilter);
                         end
+                        newTrack.kalmanFilter.lastVisibleFrame = lastVisibleFrames(j);
+
                         tracks(j) = newTrack;
                         unassignedPatterns(j) = 0;
                         potentialReInit(j) = 0;
+                        freshInits(j) = true;
+                        somethingChanged = 1;
                         % mark ghosst bird as deleted and delete after loop
                         deletedGhostTracks(currentGhostTrackIdx) = 1;
                         % continue loop, as we don't have to update position of
@@ -1216,6 +1224,15 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
         %visibilityFraction = 0.5;
         
         ages = [tracks(:).age];
+        ghostAges = [ghostTracks(:).age];
+
+        
+        % reset age of ghostTracks that are probably just noise back to 1.
+        if sum(ages > 0) == nObjects || ( sum(ages > 0) == nObjects - 1 && sum(ghostAges > 2500) > 1 )
+            for i=1:length(ghostTracks)
+               ghostTracks(i).age = 1; 
+            end
+        end
         
         % delte tracks that drift towards other birds, because their own
         % detections vanished
@@ -1369,9 +1386,8 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
         lostStationaryIdx = [ghostTracks(:).consecutiveInvisibleCount] >= invisibleForTooLongGhostsStationary & ~movingGhosts;
         
         
-        ages = [ghostTracks(:).age];
         totalVisibleCounts = [ghostTracks(:).totalVisibleCount];
-        visibility = totalVisibleCounts ./ ages;
+        visibility = totalVisibleCounts ./ ghostAges;
         lostGhostsIdx = lostMovingIdx | lostStationaryIdx | visibility < 0.2 ;
         lostGhostsIdx = lostGhostsIdx | deletedGhostTracks' | tooCloseGhosts';
         if goBackwards == 0
@@ -1386,7 +1402,7 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
                         storedGhostTracks{ghostTracks(i).ID}.trajectory(ptr-invisibleForTooLongGhostsStationary:ptr-1, :) = NaN;
                     end
                     % Remove uninteresting GhostBirds from storedGhostBirds
-                    if ages(i) < 100 || deletedGhostTracks(i) == 1 || tooCloseGhosts(i) == 1
+                    if ghostAges(i) < 100 || deletedGhostTracks(i) == 1 || tooCloseGhosts(i) == 1
                         storedGhostTracks{ghostTracks(i).ID} = [];
                     end
 
@@ -1400,7 +1416,7 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
         if goBackwards == 1
             for i=1:length(tracks)
                if lostIdxBool(i) == 1
-                   if ~isnan(forwardPos(i, T-t, 1))
+                   if ~isnan(forwardPos(i, T-t, 1)) && ~isnan(forwardPos(i, T-t-1, 1))
                        %reinitialize
                        if tracks(i).kalmanFilter.mu.motionModel == 2
                            fakeGhostKF.isFake = 1;

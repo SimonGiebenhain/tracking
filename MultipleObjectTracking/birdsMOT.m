@@ -85,7 +85,6 @@ else
     warning(['details for flock ' num2str(flock), 'not yet implemented']) 
 end
 
-endFrame = 33500;
 if exist('beginningFrame', 'var')
     if endFrame == -1
         endFrame = size(formattedData, 1);

@@ -79,11 +79,11 @@ patternDirectoryName = [dirName, '/', flockName, '/patterns'];
 disp('starting to process files in parallel!')
 
 % number of CPUs to be used
-parpool(3);
+parpool(32);
 parfor i=1:length(files)
     tic
     fprintf(['Processing File ', num2str(i), ': ', files{i}, '\n'])
-    %try
+    try
         % 'birdsMOT' does all the work, i.e. read data from .txt to .mat
         % and then runs the MOT algorithm and stores the results in the
         % 'RESULTS' folder
@@ -95,9 +95,9 @@ parfor i=1:length(files)
         f = fs{end};
         fprintf(fid, '%s\n', f);
         fclose(fid);
-    %catch MExc
-    %    disp(MExc.message)
-    %end
+    catch MExc
+        disp(MExc.message)
+    end
     toc
 end
 
