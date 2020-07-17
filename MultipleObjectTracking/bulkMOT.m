@@ -96,7 +96,11 @@ parfor i=1:length(files)
         fprintf(fid, '%s\n', f);
         fclose(fid);
     catch MExc
+        fprintf(['Error in File ', num2str(i), ': ', files{i}, '\n'])
         disp(MExc.message)
+        for k=1:length(MExc.stack)
+           disp(MExc(k)) 
+        end
     end
     toc
 end

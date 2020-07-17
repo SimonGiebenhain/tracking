@@ -81,7 +81,7 @@ elseif flock == 3 %ATTENTION: not done yet, only first estimate!
         patternNames(6) = [];
         colors(6, :) = [];
     end
-else
+elseif flock ~= 4
     warning(['details for flock ' num2str(flock), 'not yet implemented']) 
 end
 
