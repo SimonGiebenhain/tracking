@@ -99,7 +99,7 @@ parfor i=1:length(files)
         fprintf(['Error in File ', num2str(i), ': ', files{i}, '\n'])
         disp(MExc.message)
         for k=1:length(MExc.stack)
-           disp(MExc(k)) 
+           disp(MExc.stack(k)) 
         end
     end
     toc
