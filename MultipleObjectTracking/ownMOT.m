@@ -93,6 +93,7 @@ end
 lastVisibleFrames = zeros(nObjects, 1);
 if goBackwards == 1
     birdsOfInterest = zeros(length(snapshots{1}.freshInits),1);
+    conflictBirds = zeros(0,1);
 end
 nextGhostTrackID = 1;
 if goBackwards == 0
@@ -137,7 +138,10 @@ if goBackwards == 0
     snapshotIdx = 1;
 end
 
-while t < T && ( goBackwards == 0 || ~isempty(birdsOfInterest) )
+while t < T && ( goBackwards == 0 || ~isempty(birdsOfInterest) || ~isempty(conflictBirds))
+    if t==4170
+       t 
+    end
     freshInits = zeros(nObjects,1);
     detections = squeeze(D(t,:,:));
     detections = reshape(detections(~isnan(detections)),[],dim);
@@ -160,7 +164,7 @@ while t < T && ( goBackwards == 0 || ~isempty(birdsOfInterest) )
         oldGhostTrackID = nextGhostTrackID;
         oldNGhostTracks = length(ghostTracks);
         if goBackwards == 0
-            [tracks, ghostTracks, unassignedPatterns, nextGhostTrackID, extraFreshInits] = createNewTracks(unusedDets, unassignedPatterns, tracks, patterns, params, patternNames, similarPairs, lastVisibleFrames, ghostTracks, nextGhostTrackID);
+            [tracks, ghostTracks, unassignedPatterns, nextGhostTrackID, extraFreshInits] = createNewTracks(unusedDets, unassignedPatterns, tracks, t, patterns, params, patternNames, similarPairs, lastVisibleFrames, ghostTracks, nextGhostTrackID);
             freshInits = freshInits | extraFreshInits;
             nNewGhostTracks = nextGhostTrackID - oldGhostTrackID;
             %For every fresh ghost track, add space in storedGhostTracks
@@ -174,7 +178,7 @@ while t < T && ( goBackwards == 0 || ~isempty(birdsOfInterest) )
                 end
             end
         else
-            [tracks, ghostTracks, unassignedPatterns, nextGhostTrackID] = createNewTracks(unusedDets, unassignedPatterns, tracks, patterns, params, patternNames, similarPairs, NaN*zeros(length(tracks),1), ghostTracks, nextGhostTrackID);
+            [tracks, ghostTracks, unassignedPatterns, nextGhostTrackID] = createNewTracks(unusedDets, unassignedPatterns, tracks, t, patterns, params, patternNames, similarPairs, NaN*zeros(length(tracks),1), ghostTracks, nextGhostTrackID);
             nNewGhostTracks = nextGhostTrackID - oldGhostTrackID;
             %For every fresh ghost track, add space in storedGhostTracks
 %             if nNewGhostTracks > 0
@@ -194,7 +198,7 @@ while t < T && ( goBackwards == 0 || ~isempty(birdsOfInterest) )
     
     % Store tracking results
     for ii = 1:nObjects
-        if tracks(ii).age > 0
+        if tracks(ii).age > 0 && tracks(ii).consecutiveInvisibleCount < 10
             if strcmp(model, 'LieGroup')
                 estimatedPositions(ii, t, :) = tracks(ii).kalmanFilter.mu.X(1:3, 4);
 %                 rotm = tracks(ii).kalmanFilter.mu.X(1:3,1:3);
@@ -254,7 +258,6 @@ while t < T && ( goBackwards == 0 || ~isempty(birdsOfInterest) )
                 % als take care of lastVisibleFrames
                 nextSnapshotIdx = nextSnapshotIdx + 1;
                 birdsOfInterest = [birdsOfInterest; nextSnapshot.freshInits];
-                %TODO: also init new bOI manually from snapshot
                 for ii=1:length(tracks)
                    if tracks(ii).age == 0 && nextSnapshot.tracks(ii).age > 0
                     tracks(ii) = nextSnapshot.tracks(ii);
@@ -302,13 +305,46 @@ while t < T && ( goBackwards == 0 || ~isempty(birdsOfInterest) )
         end
         birdsOfInterest = birdsOfInterest(filledGaps ~=1);
         lastVisibleFramesBack = lastVisibleFramesBack(filledGaps ~=1);
+        
+        % check for conflicts in forward and backward track
+        % A conflict is a bird at different positions in the forward and
+        % backward track at the same time.
+        for ii=1:length(tracks)
+            if tracks(ii).age > 0 && ~isnan(forwardPos(ii, T-t, 1))
+                posBackward = squeeze(tracks(ii).kalmanFilter.mu.X(1:3, 4));
+                posForward = squeeze(forwardPos(ii, T-t, :));
+                dist = norm(posForward - posBackward);
+                if dist > 75
+                   conflictBirds(end+1) = ii;  
+                end
+            end
+        end
+        
+        resolvedConflicts = zeros(length(conflicBirds));
+        for ii=1:length(conflictBirds)
+            px = conflictBirds(ii);
+            if ~(tracks(px).age > 0) || isnan(forwardPos(px, T-t, 1))
+                resolvedConflicts(ii) = 1;
+                
+            else
+                posBackward = squeeze(tracks(px).kalmanFilter.mu.X(1:3, 4));
+                posForward = squeeze(forwardPos(px, T-t, :));
+                dist = norm(posForward - posBackward);
+                if dist < 50
+                   resolvedConflicts(ii) = 1;
+                end
+            end
+        end
+        
+        conflictBirds = conflictBirds(resolvedConflicts == 0);
 
 
         % if birdsOfInterest is empty: set t to nextSnap.t and set states, i.e.
         % reuse init method maybe
         % But before: clean up estimated positions and tracks of tracks
         % that are currently invisible and hence might be wrong
-        if isempty(birdsOfInterest) && nextSnapshotIdx <= length(snapshots)
+        if isempty(birdsOfInterest) && nextSnapshotIdx <= length(snapshots) && ...
+                isempty(conflictBirds)
             for ii=1:length(tracks)
                if tracks(ii).age > 0 && tracks(ii).consecutiveInvisibleCount > 0
                    estimatedPositions(ii, t-tracks(ii).consecutiveInvisibleCount+1:t, :) = NaN;
@@ -382,7 +418,7 @@ end
             unassignedDetections = reshape(unassignedDetections(~isnan(unassignedDetections)),[],dim);
             oldGhostTrackID = nextGhostTrackID;
             oldNGhostTracks = 0;
-            [tracks, ghostTracks, unassignedPatterns, nextGhostTrackID, freshInits] = createNewTracks(unassignedDetections, unassignedPatterns, tracks, patterns, params, patternNames, similarPairs, lastVisibleFrames);
+            [tracks, ghostTracks, unassignedPatterns, nextGhostTrackID, freshInits] = createNewTracks(unassignedDetections, unassignedPatterns, tracks, 1, patterns, params, patternNames, similarPairs, lastVisibleFrames);
             nNewGhostTracks = nextGhostTrackID - oldGhostTrackID;
             %For every fresh ghost track, add space in storedGhostTracks
             if nNewGhostTracks > 0
@@ -768,16 +804,20 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
                 % trajectory of a bird are removed apriori
             unrealisticInits = zeros(size(potentialReInit));
             closeInits = zeros(size(potentialReInit));
+            superCloseInits = zeros(size(potentialReInit));
             semiCloseInits = zeros(size(potentialReInit));
             detPos = mean(detectedMarkersForCurrentGhostTrack, 1);
             for j=1:length(unassignedPatternsIdx)
                 pIdx = unassignedPatternsIdx(j);
                 if ~isnan(tracks(pIdx).kalmanFilter.lastVisibleFrame) && ...
-                        abs(t - tracks(pIdx).kalmanFilter.lastVisibleFrame)*80 < norm(detPos-tracks(pIdx).kalmanFilter.latest5pos(mod(tracks(pIdx).kalmanFilter.latestPosIdx-1, 5)+1, :))
+                        abs(t - tracks(pIdx).kalmanFilter.lastVisibleFrame)*80 < norm(detPos-tracks(pIdx).kalmanFilter.lastSeen)
                     unrealisticInits(pIdx) = 1;
                 end
                 if ~isnan(tracks(pIdx).kalmanFilter.lastVisibleFrame) && abs(t - tracks(pIdx).kalmanFilter.lastVisibleFrame) < 1000
-                    d = norm(detPos-tracks(pIdx).kalmanFilter.latest5pos(mod(tracks(pIdx).kalmanFilter.latestPosIdx-1, 5)+1, :));
+                    d = norm(detPos-tracks(pIdx).kalmanFilter.lastSeen);
+                    if d < 35
+                        superCloseInits(pIdx) = 1;
+                    end
                     if d < 55 
                         closeInits(pIdx) = 1;
                     end
@@ -913,8 +953,10 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
                 end
                 
                 
-              elseif nAssgnDets >= 2 && sum(closeInits) == 1 && sum(semiCloseInits) == 1 && ...
-                      min(ghostDistances(currentGhostTrackIdx, :)) > 75
+              elseif ( nAssgnDets >= 2 && sum(closeInits) == 1 && sum(semiCloseInits) == 1 && ...
+                      min(ghostDistances(currentGhostTrackIdx, :)) > 75 ) || ...
+                      ( nAssgnDets >= 1 && sum(superCloseInits) == 1 && sum(closeInits) == 1 && sum(semiCloseInits) == 1 && ...
+                      min(ghostDistances(currentGhostTrackIdx, :)) > 85 )
                 %initialize close init
                 patternIdx = find(closeInits);
                 pattern = squeeze(patterns(patternIdx, :, :));

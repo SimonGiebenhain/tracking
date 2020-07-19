@@ -1,4 +1,4 @@
-function [tracks, ghostTracks, unassignedPatternsReturn, nextGhostTrackID, freshInits] = createNewTracks(detections, unassignedPatternsReturn, tracks, patterns, params, patternNames, similarPairs, lastVisibleFrames, ghostTracks, nextGhostTrackID)
+function [tracks, ghostTracks, unassignedPatternsReturn, nextGhostTrackID, freshInits] = createNewTracks(detections, unassignedPatternsReturn, tracks, t, patterns, params, patternNames, similarPairs, lastVisibleFrames, ghostTracks, nextGhostTrackID)
 %CREATENEWTRACKS Search for patterns of untracked birds in unassigned
 %detections in order to initialize new tracks.
 %   Arguments:
@@ -28,6 +28,26 @@ function [tracks, ghostTracks, unassignedPatternsReturn, nextGhostTrackID, fresh
 %   @unassignedPatternsReturn list of IDs of birds that are still untracked
 %   @nextGhostTrackID ghostTrackID to be used next
 %   @freshInits binary array indicating which birds are still not tracked
+
+
+
+function populateNewTrack(rotm, pos, l2Err, patternIdx, pattern, patternName, mM)
+    if exist('mM', 'var')
+        newTrack = createLGEKFtrack(rotm, pos, l2Err, ...
+            patternIdx, pattern, patternName, params, ...
+            mM);
+    else
+        newTrack = createLGEKFtrack(rotm, pos, l2Err, ...
+            patternIdx, pattern, patternName, params);
+    end
+    newTrack.kalmanFilter.lastVisibleFrame = lastVisibleFrames(patternIdx);
+    tracks(patternIdx) = newTrack;
+    unassignedPatterns(patternIdx) = 0;
+    unassignedPatternsReturn(patternIdx) = 0;
+    freshInits(patternIdx) = true;
+end
+
+
 
 freshInits = zeros(length(tracks),1);
 
@@ -154,18 +174,10 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
                         patternIdx = unassignedPatternsIdx(specificPatternIdx);
                         pattern = squeeze( patterns(patternIdx,:,:));
                         if isfield(tracks(patternIdx).kalmanFilter, 'mu')
-                            newTrack = createLGEKFtrack(rotm, pos', l2Error, patternIdx, pattern, patternNames{patternIdx}, params, tracks(patternIdx).kalmanFilter.mu.motionModel);
+                            populateNewTrack(rotm, pos', l2Error, patternIdx, pattern, patternNames{patternIdx}, tracks(patternIdx).kalmanFilter.mu.motionModel);
                         else
-                            newTrack = createLGEKFtrack(rotm, pos', l2Error, patternIdx, pattern, patternNames{patternIdx}, params);
+                            populateNewTrack(rotm, pos', l2Error, patternIdx, pattern, patternNames{patternIdx});
                         end
-
-                        newTrack.kalmanFilter.lastVisibleFrame = lastVisibleFrames(patternIdx);
-                        % Add it to the array of tracks.
-                        tracks(patternIdx) = newTrack;
-
-                        unassignedPatterns(patternIdx) = 0;
-                        unassignedPatternsReturn(patternIdx) = 0;
-                        freshInits(patternIdx) = true;
 
                     else
                         quat = rotm2quat( squeeze(rots(specificPatternIdx, :,:)) );
@@ -272,6 +284,7 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
                     if minMSE2(1) < params.initThresholdTight && costDiff > params.costDiffTight
                         % Check whether new bird is too close to existing
                         % bird!
+                        rotm = squeeze(rotMats(minIdx2(1), :, :));
                         pos = squeeze(transVecs(minIdx2(1), :))';
                         dists = pdist2(pos', trackedPos);
                         if min(dists) < 75
@@ -279,25 +292,12 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
                         end
                         
                         if isfield(tracks(minPatIdx).kalmanFilter, 'mu')
-                            newTrack = createLGEKFtrack(squeeze(rotMats(minIdx2(1), :, :)), ...
-                                pos, ...
-                                minMSE2(1), minPatIdx, ...
-                                squeeze(patterns(minPatIdx, :, :)),...
-                                patternNames{minPatIdx}, params, ...
-                                tracks(minPatIdx).kalmanFilter.mu.motionModel);
+                            populateNewTrack(rotm, pos, minMSE2(1), minPatIdx, squeeze(patterns(minPatIdx, :, :)), patternNames{minPatIdx}, tracks(minPatIdx).kalmanFilter.mu.motionModel)
                         else
-                            newTrack = createLGEKFtrack(squeeze(rotMats(minIdx2(1), :, :)), ...
-                                squeeze(transVecs(minIdx2(1), :))', ...
-                                minMSE2(1), minPatIdx, ...
-                                squeeze(patterns(minPatIdx, :, :)),...
-                                patternNames{minPatIdx}, params);
+                            populateNewTrack(rotm, pos, minMSE2(1), minPatIdx, squeeze(patterns(minPatIdx, :, :)), patternNames{minPatIdx})
                         end
-                        newTrack.kalmanFilter.lastVisibleFrame = lastVisibleFrames(minPatIdx);
-                        tracks(minPatIdx) = newTrack;
-                        unassignedPatterns(minPatIdx) = 0;
-                        unassignedPatternsReturn(minPatIdx) = 0;
-                        freshInits(minPatIdx) = true;
                         deletedClusters3(c) = 1;
+
                     end
                 end
                 nClusters3 = nClusters3 - nnz(deletedClusters3);
@@ -316,9 +316,30 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
            positions(length(tracks)+i, :) = ghostTracks(i).kalmanFilter.x(1:3); 
         end
         
+        lastSeenPositions = NaN*ones(sum(unassignedPatterns), 3);
+        unassignedPatternIdx = find(unassignedPatterns);
+        for i=1:length(unassignedPatternIdx)
+            pdx = unassignedPatternIdx(i);
+            if isfield(tracks(pdx).kalmanFilter, 'lastSeen')
+                lastSeenPositions(i, :) = tracks(pdx).kalmanFilter.lastSeen;
+            end
+        end
+        
         % for each unassigned cluster of size 4 create a ghost bird
         for i=1:nClusters4
             dists = pdist2(potentialBirds4{i}, positions);
+            distsToLastSeen = pdist2(mean(potentialBirds4{i}, 1), lastSeenPositions);
+            m = mink(distsToLastSeen, 2);
+            if m(1) < 45 && (length(m)==1||m(2)) > 80 && min(dists, [], 'all') > 50
+                [~, minIdx] = min(distsToLastSeen);
+                pIdx = unassignedPatternIdx(minIdx);
+                if ~isnan(tracks(pIdx).kalmanFilter.lastVisibleFrame) && abs(t - tracks(pIdx).kalmanFilter.lastVisibleFrame) < 1000
+                   rotm = eye(3);
+                   pos = tracks(pIdx).kalmanFilter.lastSeen;
+                   populateNewTrack(rotm, pos, 8, pIdx, squeeze(patterns(pIdx, :, :)), patternNames{pIdx}, tracks(pIdx).kalmanFilter.mu.motionModel);
+                   continue;
+                end
+            end
             if min(dists, [], 'all') > minDistToBird(4)
                 pos = mean(potentialBirds4{i}, 1);
                 kF = constructGhostKF(pos, params);
@@ -337,9 +358,30 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
             end
         end
         
+        lastSeenPositions = NaN*ones(sum(unassignedPatterns), 3);
+        unassignedPatternIdx = find(unassignedPatterns);
+        for i=1:length(unassignedPatternIdx)
+            pdx = unassignedPatternIdx(i);
+            if isfield(tracks(pdx).kalmanFilter, 'lastSeen')
+                lastSeenPositions(i, :) = tracks(pdx).kalmanFilter.lastSeen;
+            end
+        end
+        
         % for each unassigned cluster of size 3 create a ghost bird
         for i=1:nClusters3
             dists = pdist2(potentialBirds3{i}, positions);
+            distsToLastSeen = pdist2(mean(potentialBirds3{i}, 1), lastSeenPositions);
+            m = mink(distsToLastSeen, 2);
+            if m(1) < 45 && (length(m)==1||m(2)) > 80 && min(dists, [], 'all') > 50
+                [~, minIdx] = min(distsToLastSeen);
+                pIdx = unassignedPatternIdx(minIdx);
+                if ~isnan(tracks(pIdx).kalmanFilter.lastVisibleFrame) && abs(t - tracks(pIdx).kalmanFilter.lastVisibleFrame) < 1000
+                   rotm = eye(3);
+                   pos = tracks(pIdx).kalmanFilter.lastSeen;
+                   populateNewTrack(rotm, pos, 8, pIdx, squeeze(patterns(pIdx, :, :)), patternNames{pIdx}, tracks(pIdx).kalmanFilter.mu.motionModel);
+                   continue;
+                end
+            end
             if min(dists, [], 'all') > minDistToBird(3)
                pos = mean(potentialBirds3{i}, 1);
                kF = constructGhostKF(pos, params);
@@ -374,8 +416,31 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
            positions(length(tracks)+i, :) = ghostTracks(i).kalmanFilter.x(1:3); 
         end
     end
+    
+    lastSeenPositions = NaN*ones(sum(unassignedPatterns), 3);
+        unassignedPatternIdx = find(unassignedPatterns);
+        for i=1:length(unassignedPatternIdx)
+            pdx = unassignedPatternIdx(i);
+            if isfield(tracks(pdx).kalmanFilter, 'lastSeen')
+                lastSeenPositions(i, :) = tracks(pdx).kalmanFilter.lastSeen;
+            end
+        end
+        
     for i=1:size(potentialGhosts)
         dists = pdist2(potentialGhosts{i}, positions);
+        distsToLastSeen = pdist2(mean(potentialGhosts{i}, 1), lastSeenPositions);
+        m = mink(distsToLastSeen, 2);
+        if m(1) < 45 && (length(m)==1||m(2)) > 80 && min(dists, [], 'all') > 50
+            [~, minIdx] = min(distsToLastSeen);
+            pIdx = unassignedPatternIdx(minIdx);
+            if ~isnan(tracks(pIdx).kalmanFilter.lastVisibleFrame) && abs(t - tracks(pIdx).kalmanFilter.lastVisibleFrame) < 1000
+                rotm = eye(3);
+                pos = tracks(pIdx).kalmanFilter.lastSeen;
+                populateNewTrack(rotm, pos, 8, pIdx, squeeze(patterns(pIdx, :, :)), patternNames{pIdx}, tracks(pIdx).kalmanFilter.mu.motionModel);
+                continue;
+            end
+        end
+            
         if min(dists, [], 'all') > minDistToBird(2)
             pos = mean(potentialGhosts{i}, 1);
             kF = constructGhostKF(pos, params);
@@ -440,4 +505,3 @@ kF.latest5pos = zeros(5,3);
 kF.latest5pos(1, :) = pos;
 kF.latestPosIdx = 1;
 end
-

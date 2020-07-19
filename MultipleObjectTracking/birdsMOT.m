@@ -110,8 +110,8 @@ estimatedPositionsBackward = estimatedPositionsBackward(:, revIdx, :);
 estimatedQuatsBackward = estimatedQuatsBackward(:, revIdx, :);
 
 %% Combine forward and backward MOT results
-missingFramesForwardPos = isnan(estimatedPositions);
-missingFramesForwardQuat = isnan(estimatedQuats);
+missingFramesForwardPos = ~isnan(estimatedPositionsBackward);
+missingFramesForwardQuat = ~isnan(estimatedQuatsBackward);
 
 estPos = estimatedPositions;
 estQuat = estimatedQuats;
