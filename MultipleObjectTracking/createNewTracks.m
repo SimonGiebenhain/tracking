@@ -330,7 +330,7 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
             dists = pdist2(potentialBirds4{i}, positions);
             distsToLastSeen = pdist2(mean(potentialBirds4{i}, 1), lastSeenPositions);
             m = mink(distsToLastSeen, 2);
-            if m(1) < 45 && (length(m)==1||m(2)>80) && min(dists, [], 'all') > 50
+            if ~isempty(m) && m(1) < 45 && (length(m)==1||m(2)>80) && min(dists, [], 'all') > 50
                 [~, minIdx] = min(distsToLastSeen);
                 pIdx = unassignedPatternIdx(minIdx);
                 if ~isnan(tracks(pIdx).kalmanFilter.lastVisibleFrame) && abs(t - tracks(pIdx).kalmanFilter.lastVisibleFrame) < 1000
@@ -372,7 +372,7 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
             dists = pdist2(potentialBirds3{i}, positions);
             distsToLastSeen = pdist2(mean(potentialBirds3{i}, 1), lastSeenPositions);
             m = mink(distsToLastSeen, 2);
-            if m(1) < 45 && (length(m)==1||m(2)>80) && min(dists, [], 'all') > 50
+            if ~isempty(m) && m(1) < 45 && (length(m)==1||m(2)>80) && min(dists, [], 'all') > 50
                 [~, minIdx] = min(distsToLastSeen);
                 pIdx = unassignedPatternIdx(minIdx);
                 if ~isnan(tracks(pIdx).kalmanFilter.lastVisibleFrame) && abs(t - tracks(pIdx).kalmanFilter.lastVisibleFrame) < 1000
@@ -430,7 +430,7 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
         dists = pdist2(potentialGhosts{i}, positions);
         distsToLastSeen = pdist2(mean(potentialGhosts{i}, 1), lastSeenPositions);
         m = mink(distsToLastSeen, 2);
-        if m(1) < 45 && (length(m)==1|| m(2) > 80 ) && min(dists, [], 'all') > 50
+        if ~isempty(m) && m(1) < 45 && (length(m)==1|| m(2) > 80 ) && min(dists, [], 'all') > 50
             [~, minIdx] = min(distsToLastSeen);
             pIdx = unassignedPatternIdx(minIdx);
             if ~isnan(tracks(pIdx).kalmanFilter.lastVisibleFrame) && abs(t - tracks(pIdx).kalmanFilter.lastVisibleFrame) < 1000
