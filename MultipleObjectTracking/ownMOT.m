@@ -139,7 +139,7 @@ if goBackwards == 0
 end
 
 while t < T && ( goBackwards == 0 || ~isempty(birdsOfInterest) || ~isempty(conflictBirds))
-    if t==4170
+    if t==17000
        t 
     end
     freshInits = zeros(nObjects,1);
@@ -562,7 +562,7 @@ end
                 end
             else
                 if ghostTracks(i-length(tracks)).age > 0
-                    cost((i-1)*nMarkers+1:i*nMarkers, :) = 1.3*repmat(...
+                    cost((i-1)*nMarkers+1:i*nMarkers, :) = 1.1*repmat(...
                         pdist2( ghostTracks(i-length(tracks)).kalmanFilter.x(1:3)', detections), ...
                                                                   [nMarkers, 1]);
                 else
