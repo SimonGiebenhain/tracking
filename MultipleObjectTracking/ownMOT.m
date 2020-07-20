@@ -983,8 +983,8 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
             if sum(potentialReInit & ~unrealisticInits) ==1 && ...
                         length(ghostTracks) == 1 && ...
                          ghostTracks(currentGhostTrackIdx).trustworthyness > hyperParams.minTrustworthyness && ...
-                         sum([tracks(:).age] > 2500) == nObjects - 1  && ...
-                         ghostTracks(currentGhostTrackIdx).age > 5000 
+                         sum([tracks(:).age] > 1000) == nObjects - 1  && ...
+                         ghostTracks(currentGhostTrackIdx).age > 3000 
                           
                     
                 for j=1:size(potentialReInit)
@@ -1270,7 +1270,7 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
 
         
         % reset age of ghostTracks that are probably just noise back to 1.
-        if sum(ages > 0) == nObjects || ( sum(ages > 0) == nObjects - 1 && sum(ghostAges > 2500) > 1 )
+        if sum(ages > 10) == nObjects || ( sum(ages > 10) == nObjects - 1 && sum(ghostAges > 1500) > 1 )
             for i=1:length(ghostTracks)
                ghostTracks(i).age = 1; 
             end
