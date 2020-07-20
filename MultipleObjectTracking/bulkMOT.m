@@ -66,7 +66,7 @@ stdHyperParams.visualizeTracking = 0;
 %% Read files that need to processed
 % Files to be processed must be in this directory
 dirName = 'multiple_object_tracking_project/datasets';
-flock = 2;
+flock = 4;
 flockName = ['flock', num2str(flock)];
 % This file should contain the names of all .txt files that already have been processed 
 processedFileName = [dirName, '/', flockName , '/processedFiles.txt'];

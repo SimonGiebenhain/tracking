@@ -320,8 +320,8 @@ while t < T && ( goBackwards == 0 || ~isempty(birdsOfInterest) || ~isempty(confl
             end
         end
         
-        resolvedConflicts = zeros(length(conflicBirds));
-        for ii=1:length(conflictBirds)
+        resolvedConflicts = zeros(size(conflictBirds,1));
+        for ii=1:size(conflictBirds, 1)
             px = conflictBirds(ii);
             if ~(tracks(px).age > 0) || isnan(forwardPos(px, T-t, 1))
                 resolvedConflicts(ii) = 1;
