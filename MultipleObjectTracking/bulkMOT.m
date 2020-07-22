@@ -40,7 +40,7 @@ stdHyperParams.certaintyScale = 5;%6.5
 
 % params regarding: initialization of ghost birds
 %minimal distance for new ghost birds to other (ghost) birds that has to be free.
-stdHyperParams.minDistToBird = [95 65 50 40]; % number at index i is used when i detections are present
+stdHyperParams.minDistToBird = [70 50 50 40]; % number at index i is used when i detections are present
 % params regarding: initialization of birds from ghost bird when all others are known
 stdHyperParams.minTrustworthyness = 10;
 
@@ -51,7 +51,7 @@ stdHyperParams.costDiff = 1.5;
 stdHyperParams.costDiff4 = 1.25;
 
 stdHyperParams.initThresholdTight = 0.2;%0.65
-stdHyperParams.initThreshold4Tight = 1.35;
+stdHyperParams.initThreshold4Tight = 1;
 stdHyperParams.costDiffTight = 2;
 stdHyperParams.costDiff4Tight = 1.25;
 
@@ -74,6 +74,12 @@ files = getUnprocessedFiles([dirName, '/', flockName], processedFileName);
 % The .vsk files specifiying the patterns for the recordings need to be
 % stored in this directory
 patternDirectoryName = [dirName, '/', flockName, '/patterns'];
+
+if flock == 4
+    stdHyperParams.allowAutoInit = 1;
+else
+    stdHyperParams.allowAutoInit = 0;
+end
 
 %% Process files in parallel 
 disp('starting to process files in parallel!')

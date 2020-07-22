@@ -426,7 +426,7 @@ if size(detections, 1) > 1 && sum(unassignedPatterns) > 0
             end
         end
         
-    for i=1:size(potentialGhosts)
+    for i=1:length(potentialGhosts)
         dists = pdist2(potentialGhosts{i}, positions);
         distsToLastSeen = pdist2(mean(potentialGhosts{i}, 1), lastSeenPositions);
         m = mink(distsToLastSeen, 2);

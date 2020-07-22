@@ -43,7 +43,7 @@ end
 rejectedDetectionsIdx = zeros(nDets, 1);
 if age > 5 && s.mu.motionModel == 0 && hyperParams.doFPFiltering == 1 && ~skipFPFiltering
     threshold = hyperParams.minAssignmentThreshold + (vNorm/3)^2;% + (aNorm)^2;
-    if nnz(dists > threshold) < nDets %|| (s.flying < 1 && s.consecutiveInvisibleCount == 0 && nnz(dists > threshold) == 1)
+    if nnz(dists > threshold) < nDets || s.consecutiveInvisibleCount > 10 %|| (s.flying < 1 && s.consecutiveInvisibleCount == 0 && nnz(dists > threshold) == 1)
         rejectedDetectionsIdx = dists > threshold;
         rejectedDetections = detections(rejectedDetectionsIdx, :);
         ds(rejectedDetectionsIdx, :) = [];

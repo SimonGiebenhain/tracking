@@ -139,9 +139,6 @@ if goBackwards == 0
 end
 
 while t < T && ( goBackwards == 0 || ~isempty(birdsOfInterest) || ~isempty(conflictBirds))
-    if t==17000
-       t 
-    end
     freshInits = zeros(nObjects,1);
     detections = squeeze(D(t,:,:));
     detections = reshape(detections(~isnan(detections)),[],dim);
@@ -818,7 +815,7 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
                     if d < 35
                         superCloseInits(pIdx) = 1;
                     end
-                    if d < 55 
+                    if d < 65 
                         closeInits(pIdx) = 1;
                     end
                     if d < 100
@@ -978,46 +975,47 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
                 
                 
             end
+            
+            
                 %Automatic ReInit if only 1 bird is unassigned. This is not
                 % super safe however!
-            if sum(potentialReInit & ~unrealisticInits) ==1 && ...
+            if hyperParams.allowAutoInit == 1 && ...
+                sum(potentialReInit & ~unrealisticInits) ==1 && ...
                         length(ghostTracks) == 1 && ...
                          ghostTracks(currentGhostTrackIdx).trustworthyness > hyperParams.minTrustworthyness && ...
                          sum([tracks(:).age] > 1000) == nObjects - 1  && ...
-                         ghostTracks(currentGhostTrackIdx).age > 3000 
-                          
-                    
-                for j=1:size(potentialReInit)
-                    if potentialReInit(j) == 1 &&  unrealisticInits(j) == 0 
-                        pattern = squeeze(patterns(j, :, :));
-                        if isfield(tracks(j).kalmanFilter, 'mu')
-                            newTrack = createLGEKFtrack(eye(3), ...
-                                        mean(detectedMarkersForCurrentGhostTrack, 1)', 5, j, ...
-                                        pattern, patternNames{j}, ...
-                                        params, tracks(j).kalmanFilter.mu.motionModel, ...
-                                        ghostTracks(currentGhostTrackIdx).kalmanFilter);
-                        else
-                            newTrack = createLGEKFtrack(eye(3), ...
-                                        mean(detectedMarkersForCurrentGhostTrack, 1)', 5, j, ...
-                                        pattern, patternNames{j}, ...
-                                        params, -1, ...
-                                        ghostTracks(currentGhostTrackIdx).kalmanFilter);
-                        end
-                        newTrack.kalmanFilter.lastVisibleFrame = lastVisibleFrames(j);
+                         ghostTracks(currentGhostTrackIdx).age > 3000
+                    for j=1:size(potentialReInit)
+                        if potentialReInit(j) == 1 &&  unrealisticInits(j) == 0 
+                            pattern = squeeze(patterns(j, :, :));
+                            if isfield(tracks(j).kalmanFilter, 'mu')
+                                newTrack = createLGEKFtrack(eye(3), ...
+                                            mean(detectedMarkersForCurrentGhostTrack, 1)', 5, j, ...
+                                            pattern, patternNames{j}, ...
+                                            params, tracks(j).kalmanFilter.mu.motionModel, ...
+                                            ghostTracks(currentGhostTrackIdx).kalmanFilter);
+                            else
+                                newTrack = createLGEKFtrack(eye(3), ...
+                                            mean(detectedMarkersForCurrentGhostTrack, 1)', 5, j, ...
+                                            pattern, patternNames{j}, ...
+                                            params, -1, ...
+                                            ghostTracks(currentGhostTrackIdx).kalmanFilter);
+                            end
+                            newTrack.kalmanFilter.lastVisibleFrame = lastVisibleFrames(j);
 
-                        tracks(j) = newTrack;
-                        unassignedPatterns(j) = 0;
-                        potentialReInit(j) = 0;
-                        freshInits(j) = true;
-                        somethingChanged = 1;
-                        % mark ghosst bird as deleted and delete after loop
-                        deletedGhostTracks(currentGhostTrackIdx) = 1;
-                        % continue loop, as we don't have to update position of
-                        % ghost bird
-                        break;
+                            tracks(j) = newTrack;
+                            unassignedPatterns(j) = 0;
+                            potentialReInit(j) = 0;
+                            freshInits(j) = true;
+                            somethingChanged = 1;
+                            % mark ghosst bird as deleted and delete after loop
+                            deletedGhostTracks(currentGhostTrackIdx) = 1;
+                            % continue loop, as we don't have to update position of
+                            % ghost bird
+                            break;
+                        end
                     end
-                end
-                continue;
+                    continue;
             end
              
             
@@ -1283,7 +1281,7 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
         tooCloseGhosts = zeros(length(ghostTracks),1);
         tooCloseThresholdGhostGhost = 35;
         tooCloseThresholdBirdBird = 25;
-        tooCloseThresholdGhostBird = 35;
+        tooCloseThresholdGhostBird = 30;
         
         anchors = NaN*zeros(nTracks,3);
         for i=1:nTracks
