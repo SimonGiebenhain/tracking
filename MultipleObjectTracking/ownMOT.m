@@ -145,12 +145,13 @@ while t < T && ( goBackwards == 0 || ~isempty(birdsOfInterest) || ~isempty(confl
     
     predictNewLocationsOfTracks();
     [assignedTracks, unassignedTracks, assignedGhostTracks, unassignedGhostTracks, unassignedDetections] = detectionToTrackAssignment();
-%     if t==6662
+     if t==4100
+         t
 %         for ii=1:nObjects
 %            disp(rotm2quat(tracks(ii).kalmanFilter.mu.X(1:3,1:3)))
 %            disp(tracks(ii).name)
 %         end
-%     end
+     end
     [deletedGhostTracks, rejectedDetections] = updateAssignedTracks();
     updateUnassignedTracks();
     deleteLostTracks(deletedGhostTracks);
@@ -811,14 +812,16 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
                     unrealisticInits(pIdx) = 1;
                 end
                 if ~isnan(tracks(pIdx).kalmanFilter.lastVisibleFrame) && abs(t - tracks(pIdx).kalmanFilter.lastVisibleFrame) < 1000
+                    temp_d = abs(t - tracks(pIdx).kalmanFilter.lastVisibleFrame);
                     d = norm(detPos-tracks(pIdx).kalmanFilter.lastSeen);
                     if d < 35
                         superCloseInits(pIdx) = 1;
-                    end
-                    if d < 65 
                         closeInits(pIdx) = 1;
-                    end
-                    if d < 100
+                        semiCloseInits(pIdx) = 1;
+                    elseif d < 55 && temp_d < 250
+                        closeInits(pIdx) = 1;
+                        semiCloseInits(pIdx) = 1;
+                    elseif d < 85 && temp_d < 250
                         semiCloseInits(pIdx) = 1;
                     end
                 end
@@ -1255,7 +1258,7 @@ function [assignedTracks, unassignedTracks, assignedGhosts, unassignedGhosts, un
 
     function deleteLostTracks(deletedGhostTracks)
         invisibleForTooLongMoving = 10;
-        invisibleForTooLongStationary = 150;
+        invisibleForTooLongStationary = 100;
         invisibleForTooLongGhosts = 10;
         invisibleForTooLongGhostsStationary = 50;
 
